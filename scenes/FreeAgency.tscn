@@ -1,0 +1,119 @@
+[gd_scene format=3 uid="uid://dpyuyr3putky8"]
+
+[ext_resource type="Script" uid="uid://m21rgnb6as47" path="res://scenes/FreeAgency.gd" id="1_freeagency"]
+
+[node name="FreeAgency" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_freeagency")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+
+[node name="Header" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TitleLabel" type="Label" parent="VBoxContainer/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Free Agency"
+
+[node name="CapSpaceLabel" type="Label" parent="VBoxContainer/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Cap Space: $0"
+
+[node name="RosterCountLabel" type="Label" parent="VBoxContainer/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Roster: 0/15"
+
+[node name="TopSeparator" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="MainArea" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 16
+
+[node name="LeftPanel" type="VBoxContainer" parent="VBoxContainer/MainArea"]
+custom_minimum_size = Vector2(380, 0)
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AvailablePlayersTitle" type="Label" parent="VBoxContainer/MainArea/LeftPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "AVAILABLE PLAYERS"
+
+[node name="PositionFilter" type="OptionButton" parent="VBoxContainer/MainArea/LeftPanel"]
+custom_minimum_size = Vector2(200, 36)
+layout_mode = 2
+
+[node name="FreeAgentList" type="ItemList" parent="VBoxContainer/MainArea/LeftPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="PanelSeparator" type="VSeparator" parent="VBoxContainer/MainArea"]
+layout_mode = 2
+
+[node name="RightPanel" type="VBoxContainer" parent="VBoxContainer/MainArea"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="RosterTitle" type="Label" parent="VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "YOUR ROSTER"
+
+[node name="RosterList" type="ItemList" parent="VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="InfoSeparator" type="HSeparator" parent="VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+
+[node name="PlayerInfoLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+text = "Select a player to see details"
+autowrap_mode = 1
+
+[node name="BottomSeparator" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="Actions" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="SignPlayerButton" type="Button" parent="VBoxContainer/Actions"]
+custom_minimum_size = Vector2(200, 48)
+layout_mode = 2
+disabled = true
+text = "Sign Player"
+
+[node name="ReleasePlayerButton" type="Button" parent="VBoxContainer/Actions"]
+custom_minimum_size = Vector2(200, 48)
+layout_mode = 2
+disabled = true
+text = "Release Player"
+
+[node name="AdvanceToSeasonButton" type="Button" parent="VBoxContainer/Actions"]
+custom_minimum_size = Vector2(240, 48)
+layout_mode = 2
+text = "Advance to Season"

@@ -1,0 +1,154 @@
+[gd_scene format=3 uid="uid://die7tdh4kfsoy"]
+
+[ext_resource type="Script" uid="uid://b80sgh6qbq66t" path="res://scenes/PreSeasonHub.gd" id="1_preseason"]
+
+[node name="PreSeasonHub" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_preseason")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+
+[node name="Header" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TeamLabel" type="Label" parent="VBoxContainer/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Your Team"
+
+[node name="YearLabel" type="Label" parent="VBoxContainer/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Year 1"
+
+[node name="BudgetLabel" type="Label" parent="VBoxContainer/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Budget: $0"
+
+[node name="TopSeparator" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="MainArea" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 16
+
+[node name="LeftPanel" type="VBoxContainer" parent="VBoxContainer/MainArea"]
+custom_minimum_size = Vector2(320, 0)
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="RosterTitle" type="Label" parent="VBoxContainer/MainArea/LeftPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "ROSTER"
+
+[node name="RosterList" type="ItemList" parent="VBoxContainer/MainArea/LeftPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="PanelSeparator" type="VSeparator" parent="VBoxContainer/MainArea"]
+layout_mode = 2
+
+[node name="RightPanel" type="VBoxContainer" parent="VBoxContainer/MainArea"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="StaffTitle" type="Label" parent="VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "STAFF & FACILITIES"
+
+[node name="CoachRow" type="HBoxContainer" parent="VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="CoachLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/CoachRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Coach: Level 1"
+
+[node name="UpgradeCoachButton" type="Button" parent="VBoxContainer/MainArea/RightPanel/CoachRow"]
+custom_minimum_size = Vector2(200, 48)
+layout_mode = 2
+text = "Upgrade ($2M)"
+
+[node name="ScoutRow" type="HBoxContainer" parent="VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="ScoutLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/ScoutRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Scout: Level 1"
+
+[node name="UpgradeScoutButton" type="Button" parent="VBoxContainer/MainArea/RightPanel/ScoutRow"]
+custom_minimum_size = Vector2(200, 48)
+layout_mode = 2
+text = "Upgrade ($2M)"
+
+[node name="MedicalRow" type="HBoxContainer" parent="VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="MedicalLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/MedicalRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Medical: Level 1"
+
+[node name="UpgradeMedicalButton" type="Button" parent="VBoxContainer/MainArea/RightPanel/MedicalRow"]
+custom_minimum_size = Vector2(200, 48)
+layout_mode = 2
+text = "Upgrade ($2M)"
+
+[node name="FacilitiesRow" type="HBoxContainer" parent="VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="FacilitiesLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/FacilitiesRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Facilities: Level 1"
+
+[node name="UpgradeFacilitiesButton" type="Button" parent="VBoxContainer/MainArea/RightPanel/FacilitiesRow"]
+custom_minimum_size = Vector2(200, 48)
+layout_mode = 2
+text = "Upgrade ($3M)"
+
+[node name="RightSeparator" type="HSeparator" parent="VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+
+[node name="CapSummaryLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+text = "Cap Space: $0"
+
+[node name="PayrollLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+text = "Payroll: $0"
+
+[node name="BottomSeparator" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="AdvanceToDraftButton" type="Button" parent="VBoxContainer"]
+custom_minimum_size = Vector2(240, 52)
+layout_mode = 2
+text = "Advance to Draft"

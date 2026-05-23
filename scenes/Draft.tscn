@@ -1,0 +1,97 @@
+[gd_scene format=3 uid="uid://djp5u06as73yb"]
+
+[ext_resource type="Script" uid="uid://ctcw26buuurkj" path="res://scenes/Draft.gd" id="1_draft"]
+
+[node name="Draft" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_draft")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+
+[node name="Header" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="RoundLabel" type="Label" parent="VBoxContainer/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Round 1"
+
+[node name="PickLabel" type="Label" parent="VBoxContainer/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Pick 1"
+
+[node name="OnTheClockLabel" type="Label" parent="VBoxContainer/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "On The Clock: —"
+
+[node name="TopSeparator" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="MainArea" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 16
+
+[node name="LeftPanel" type="VBoxContainer" parent="VBoxContainer/MainArea"]
+custom_minimum_size = Vector2(340, 0)
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="DraftBoardTitle" type="Label" parent="VBoxContainer/MainArea/LeftPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "DRAFT BOARD"
+
+[node name="DraftBoardList" type="ItemList" parent="VBoxContainer/MainArea/LeftPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="PanelSeparator" type="VSeparator" parent="VBoxContainer/MainArea"]
+layout_mode = 2
+
+[node name="RightPanel" type="VBoxContainer" parent="VBoxContainer/MainArea"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="RosterTitle" type="Label" parent="VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "YOUR ROSTER"
+
+[node name="RosterList" type="ItemList" parent="VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="BottomSeparator" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="PlayerInfoLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "Select a player to see details"
+autowrap_mode = 1
+
+[node name="DraftPlayerButton" type="Button" parent="VBoxContainer"]
+custom_minimum_size = Vector2(240, 52)
+layout_mode = 2
+disabled = true
+text = "Draft Selected Player"
