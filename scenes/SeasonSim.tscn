@@ -1,0 +1,103 @@
+[gd_scene load_steps=2 format=3 uid="uid://cn8mqd5brsck7"]
+
+[ext_resource type="Script" uid="uid://irrhocx131h" path="res://scenes/SeasonSim.gd" id="1_seasonsim"]
+
+[node name="SeasonSim" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_seasonsim")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+
+[node name="Header" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="YearLabel" type="Label" parent="VBoxContainer/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Season Year 1"
+
+[node name="WeekLabel" type="Label" parent="VBoxContainer/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Week 1 of 24"
+
+[node name="TeamRecordLabel" type="Label" parent="VBoxContainer/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Your Record: 0-0"
+
+[node name="TopSeparator" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="MainArea" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 16
+
+[node name="LeftPanel" type="VBoxContainer" parent="VBoxContainer/MainArea"]
+custom_minimum_size = Vector2(320, 0)
+layout_mode = 2
+
+[node name="StandingsTitle" type="Label" parent="VBoxContainer/MainArea/LeftPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "STANDINGS"
+
+[node name="StandingsList" type="ItemList" parent="VBoxContainer/MainArea/LeftPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="PanelSeparator" type="VSeparator" parent="VBoxContainer/MainArea"]
+layout_mode = 2
+
+[node name="RightPanel" type="VBoxContainer" parent="VBoxContainer/MainArea"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ResultsTitle" type="Label" parent="VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "THIS WEEK RESULTS"
+
+[node name="WeekResultsList" type="ItemList" parent="VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="BottomSeparator" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="Actions" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="SimWeekButton" type="Button" parent="VBoxContainer/Actions"]
+custom_minimum_size = Vector2(200, 48)
+layout_mode = 2
+text = "Sim Next Week"
+
+[node name="SimSeasonButton" type="Button" parent="VBoxContainer/Actions"]
+custom_minimum_size = Vector2(240, 48)
+layout_mode = 2
+text = "Skip to End of Season"
+
+[node name="AdvanceButton" type="Button" parent="VBoxContainer/Actions"]
+custom_minimum_size = Vector2(200, 48)
+layout_mode = 2
+disabled = true
+text = "Advance to Play-In"

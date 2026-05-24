@@ -106,6 +106,8 @@ STANDINGS CHECK
   - 1st–6th  → Playoffs directly
   - 7th–10th → Play-In Tournament
   - 11th–15th → Lottery (sets next year's draft order)
+  - GameState.playoff_status is one of: "playoffs", "playin", "lottery", "eliminated"
+  - "eliminated" is set by PlayIn.gd when a play-in team loses and does not qualify
   ↓
 PLAY-IN TOURNAMENT
   - 7 vs 8: winner = 7th seed
@@ -390,24 +392,29 @@ Serialization rule: Resources serialize to dictionaries. Implement `to_dict()` a
 Work on these steps sequentially. Do not start step N+1 until step N is complete and reviewed.
 
 ```
-Step 1  → Player.gd + Team.gd (Resource definitions)
-Step 2  → PlayerGenerator.gd (procedural player creation)
-Step 3  → LeagueGenerator.gd (30 teams, rosters by situation)
-Step 4  → CapEngine.gd (cap space tracking, salary validation)
-Step 5  → GameState.gd (phase enum, team reference, year)
-Step 6  → MainMenu.tscn + NewGame.tscn (team name, city, situation picker)
-Step 7  → LeagueManager.gd (standings, schedule shell)
-Step 8  → PreSeasonHub.tscn (roster view, staff/facility upgrade UI)
-Step 9  → DraftSystem.gd + Draft.tscn
-Step 10 → FreeAgency.tscn
-Step 11 → ScheduleGenerator.gd + SimEngine.gd
-Step 12 → SeasonSim.tscn (week-by-week and skip-to-end modes)
-Step 13 → PlayIn.tscn
-Step 14 → Playoffs.tscn + Finals resolution
-Step 15 → EndOfSeason.tscn (progression, aging, contract expiry)
-Step 16 → Save/Load system
-Step 17 → Full loop test (New Game → Champion → Year 2)
+✅ Step 1  → Player.gd + Team.gd (Resource definitions)
+✅ Step 2  → PlayerGenerator.gd (procedural player creation)
+✅ Step 3  → LeagueGenerator.gd (30 teams, rosters by situation)
+✅ Step 4  → CapEngine.gd (cap space tracking, salary validation)
+✅ Step 5  → GameState.gd (phase enum, team reference, year)
+✅ Step 6  → MainMenu.tscn + NewGame.tscn (team name, city, situation picker)
+✅ Step 7  → LeagueManager.gd (standings, schedule shell)
+✅ Step 8  → PreSeasonHub.tscn (roster view, staff/facility upgrade UI)
+✅ Step 9  → DraftSystem.gd + Draft.tscn
+✅ Step 10 → FreeAgency.tscn
+✅ Step 11 → ScheduleGenerator.gd + SimEngine.gd
+✅ Step 12 → SeasonSim.tscn (week-by-week and skip-to-end modes)
+✅ Step 13 → PlayIn.tscn
+✅ Step 14 → Playoffs.tscn + Finals resolution
+✅ Step 15 → EndOfSeason.tscn (progression, aging, contract expiry)
+✅ Step 16 → Save/Load system
+✅ Step 17 → Full loop test (New Game → Champion → Year 2)
 ```
+
+Step 17 note: update `Draft.gd` `_initialize_draft()` to check if
+`GameState.draft_pool_next` is non-empty. If so, use it as the draft pool instead of
+calling `DraftSystem.build_draft_pool()`. After consuming it, clear
+`GameState.draft_pool_next`.
 
 ---
 
@@ -421,3 +428,20 @@ Step 17 → Full loop test (New Game → Champion → Year 2)
 6. **No UI polish yet.** Functionality before aesthetics. Placeholder buttons and labels are fine.
 7. **Comment non-obvious logic.** Especially in SimEngine and PlayerGenerator.
 8. **Signal over coupling.** If two systems need to talk, use signals. Don't hold direct references to scenes.
+
+---
+
+## Phase 2 — Polish & Depth
+
+```
+P01 → Player scouting system (reveal potential via scout level)
+P02 → Mid-season trades (player-for-player, with cap validation)
+P03 → Injury system visible in UI (injured players flagged in roster views)
+P04 → Player morale / locker room (Leadership + Composure affect team performance)
+P05 → Season awards (MVP, DPOY, ROY, All-League teams)
+P06 → Historical records (track champions, MVPs per year)
+P07 → AI free agency (AI teams sign from free agent pool, not just draft)
+P08 → Contract extensions (re-sign your own players before they hit FA)
+P09 → Better sim feedback (box scores, player stat lines per game)
+P10 → Visual polish (team colors, consistent UI theme, fonts)
+```

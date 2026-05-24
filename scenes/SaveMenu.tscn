@@ -1,0 +1,66 @@
+[gd_scene load_steps=2 format=3 uid="uid://drixs6jxif0sl"]
+
+[ext_resource type="Script" uid="uid://cnmtgmoen0p2j" path="res://scenes/SaveMenu.gd" id="1_savemenu"]
+
+[node name="SaveMenu" type="CanvasLayer"]
+script = ExtResource("1_savemenu")
+
+[node name="Control" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="PanelContainer" type="PanelContainer" parent="Control"]
+custom_minimum_size = Vector2(300, 280)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -150.0
+offset_top = -140.0
+offset_right = 150.0
+offset_bottom = 140.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Control/PanelContainer"]
+layout_mode = 2
+theme_override_constants/separation = 16
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 24
+
+[node name="Label" type="Label" parent="Control/PanelContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "MENU"
+horizontal_alignment = 1
+
+[node name="SaveButton" type="Button" parent="Control/PanelContainer/VBoxContainer"]
+custom_minimum_size = Vector2(240, 48)
+layout_mode = 2
+text = "Save Game"
+
+[node name="LoadButton" type="Button" parent="Control/PanelContainer/VBoxContainer"]
+custom_minimum_size = Vector2(240, 48)
+layout_mode = 2
+text = "Load & Restart"
+
+[node name="HSeparator" type="HSeparator" parent="Control/PanelContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="MainMenuButton" type="Button" parent="Control/PanelContainer/VBoxContainer"]
+custom_minimum_size = Vector2(240, 48)
+layout_mode = 2
+text = "Return to Main Menu"
+
+[node name="CloseButton" type="Button" parent="Control/PanelContainer/VBoxContainer"]
+custom_minimum_size = Vector2(240, 48)
+layout_mode = 2
+text = "Close"

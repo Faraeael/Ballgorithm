@@ -19,7 +19,9 @@ config/icon="res://icon.svg"
 
 GameState="*res://autoloads/GameState.gd"
 LeagueManager="*res://autoloads/LeagueManager.gd"
+PlayerDB="*res://autoloads/PlayerDB.gd"
 CapEngine="*res://autoloads/CapEngine.gd"
+SaveMenu="*res://scenes/SaveMenu.tscn"
 
 [physics]
 

@@ -1,0 +1,70 @@
+[gd_scene load_steps=2 format=3 uid="uid://b4h6pvn0c8s2m"]
+
+[ext_resource type="Script" uid="uid://c1wu23vxeur7o" path="res://scenes/EndOfSeason.gd" id="1_end_of_season"]
+
+[node name="EndOfSeason" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_end_of_season")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+
+[node name="TitleLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "End of Season"
+
+[node name="ChampionLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+autowrap_mode = 1
+
+[node name="TopSeparator" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="TeamSummaryLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "YOUR TEAM SUMMARY"
+
+[node name="RecordLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "Record: 0-0"
+
+[node name="ResultLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="MiddleSeparator" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="RosterChangesLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "ROSTER CHANGES"
+
+[node name="RosterChangesList" type="ItemList" parent="VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="BottomSeparator" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="NextSeasonButton" type="Button" parent="VBoxContainer"]
+custom_minimum_size = Vector2(240, 52)
+layout_mode = 2
+text = "Start Next Season"

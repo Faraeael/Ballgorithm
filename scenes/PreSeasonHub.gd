@@ -5,7 +5,6 @@ const SCOUT_UPGRADE_COST: int = 2_000_000
 const MEDICAL_UPGRADE_COST: int = 2_000_000
 const FACILITIES_UPGRADE_COST: int = 3_000_000
 const MAX_LEVEL: int = 5
-const MIN_DRAFT_ADVANCE_ROSTER: int = 10
 
 @onready var root_layout: VBoxContainer = $VBoxContainer
 @onready var header: HBoxContainer = $VBoxContainer/Header
@@ -119,13 +118,7 @@ func _on_upgrade_facilities() -> void:
 		_refresh_ui()
 
 
-# Prevents entering the draft with an invalid roster shell.
 func _on_advance() -> void:
-	var team: Team = GameState.get_player_team()
-	if team == null or team.roster.size() < MIN_DRAFT_ADVANCE_ROSTER:
-		advance_to_draft_button.text = "Need at least 10 players"
-		return
-
 	GameState.set_phase(GameState.Phase.DRAFT)
 	get_tree().change_scene_to_file("res://scenes/Draft.tscn")
 

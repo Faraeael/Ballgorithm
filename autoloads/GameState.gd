@@ -23,8 +23,13 @@ var current_phase: Phase = Phase.MAIN_MENU
 var current_year: int = 1
 var player_team_id: String = ""
 var sim_mode: String = "week"
+var playoff_status: String = ""
+var playoff_bracket: Array = []
+var champion_team_id: String = ""
+var champion_name: String = ""
 var all_teams: Array = []
 var free_agents: Array = []
+var draft_pool_next: Array = []
 var schedule: Array = []
 
 
@@ -54,8 +59,13 @@ func reset() -> void:
 	current_year = 1
 	player_team_id = ""
 	sim_mode = "week"
+	playoff_status = ""
+	playoff_bracket = []
+	champion_team_id = ""
+	champion_name = ""
 	all_teams = []
 	free_agents = []
+	draft_pool_next = []
 	schedule = []
 
 
@@ -65,6 +75,7 @@ func initialize_league(player_situation: String, player_city: String, player_nam
 	set_phase(Phase.LEAGUE_GENERATING)
 	all_teams = LeagueGenerator.generate_league(player_situation, player_city, player_name)
 	free_agents = []
+	PlayerDB.build_index()
 
 	var player_team: Team = get_player_team()
 	player_team_id = player_team.team_id if player_team != null else ""
@@ -81,13 +92,26 @@ func save_game() -> void:
 	for player in free_agents:
 		free_agent_data.append(player.to_dict())
 
+	var draft_pool_next_data: Array = []
+	for player in draft_pool_next:
+		draft_pool_next_data.append(player.to_dict())
+
+	var playoff_bracket_team_ids: Array = []
+	for team in playoff_bracket:
+		playoff_bracket_team_ids.append(team.team_id)
+
 	var save_data: Dictionary = {
 		"current_phase": current_phase,
 		"current_year": current_year,
 		"player_team_id": player_team_id,
 		"sim_mode": sim_mode,
+		"playoff_status": playoff_status,
+		"playoff_bracket": playoff_bracket_team_ids,
+		"champion_team_id": champion_team_id,
+		"champion_name": champion_name,
 		"all_teams": team_data,
 		"free_agents": free_agent_data,
+		"draft_pool_next": draft_pool_next_data,
 		"schedule": schedule
 	}
 
@@ -128,6 +152,9 @@ func load_game() -> void:
 	current_year = save_data.get("current_year", 1)
 	player_team_id = save_data.get("player_team_id", "")
 	sim_mode = save_data.get("sim_mode", "week")
+	playoff_status = save_data.get("playoff_status", "")
+	champion_team_id = save_data.get("champion_team_id", "")
+	champion_name = save_data.get("champion_name", "")
 	schedule = save_data.get("schedule", [])
 
 	all_teams = []
@@ -136,10 +163,30 @@ func load_game() -> void:
 		team.from_dict(team_data)
 		all_teams.append(team)
 
+	playoff_bracket = []
+	for team_id in save_data.get("playoff_bracket", []):
+		var bracket_team: Team = _find_team_by_id(team_id)
+		if bracket_team != null:
+			playoff_bracket.append(bracket_team)
+
 	free_agents = []
 	for player_data in save_data.get("free_agents", []):
 		var player: Player = Player.new()
 		player.from_dict(player_data)
 		free_agents.append(player)
 
+	draft_pool_next = []
+	for player_data in save_data.get("draft_pool_next", []):
+		var draft_player: Player = Player.new()
+		draft_player.from_dict(player_data)
+		draft_pool_next.append(draft_player)
+
 	current_phase = save_data.get("current_phase", Phase.MAIN_MENU) as Phase
+	PlayerDB.build_index()
+
+
+func _find_team_by_id(team_id: String) -> Team:
+	for team in all_teams:
+		if team.team_id == team_id:
+			return team
+	return null
