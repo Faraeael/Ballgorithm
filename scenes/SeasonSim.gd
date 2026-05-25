@@ -13,6 +13,8 @@ const SEASON_WEEKS: int = 24
 
 var current_week: int = 1
 var season_complete: bool = false
+var displayed_standings: Array = []
+var displayed_results: Array = []
 
 
 func _ready() -> void:
@@ -20,6 +22,8 @@ func _ready() -> void:
 	sim_week_button.pressed.connect(_on_sim_week)
 	sim_season_button.pressed.connect(_on_sim_season)
 	advance_button.pressed.connect(_on_advance)
+	standings_list.item_activated.connect(_on_standings_team_activated)
+	week_results_list.item_activated.connect(_on_week_result_activated)
 	_refresh_ui()
 
 
@@ -70,6 +74,21 @@ func _on_advance() -> void:
 	get_tree().change_scene_to_file("res://scenes/PlayIn.tscn")
 
 
+# Double-click a standings row to inspect that team's current roster.
+func _on_standings_team_activated(index: int) -> void:
+	if index < 0 or index >= displayed_standings.size():
+		return
+
+	RosterViewer.show_team(displayed_standings[index])
+
+
+func _on_week_result_activated(index: int) -> void:
+	if index < 0 or index >= displayed_results.size():
+		return
+
+	BoxScoreViewer.show_box_score(displayed_results[index])
+
+
 # Rebuilds standings and latest results from authoritative league state.
 func _refresh_ui(results: Array = []) -> void:
 	var player_team: Team = GameState.get_player_team()
@@ -80,9 +99,9 @@ func _refresh_ui(results: Array = []) -> void:
 		team_record_label.text = "Your Record: %d-%d" % [player_team.wins, player_team.losses]
 
 	standings_list.clear()
-	var standings: Array = LeagueManager.get_standings()
-	for index in standings.size():
-		var team: Team = standings[index]
+	displayed_standings = LeagueManager.get_standings()
+	for index in displayed_standings.size():
+		var team: Team = displayed_standings[index]
 		var prefix: String = "★ " if team.is_player_team else ""
 		standings_list.add_item("%s%d. %s %s  %d-%d" % [
 			prefix,
@@ -94,6 +113,7 @@ func _refresh_ui(results: Array = []) -> void:
 		])
 
 	week_results_list.clear()
+	displayed_results = results
 	for result in results:
 		var home_name: String = _find_team_name(result.get("home_team_id", ""))
 		var away_name: String = _find_team_name(result.get("away_team_id", ""))

@@ -7,6 +7,7 @@ const FACILITY_BONUS_MULTIPLIER: int = 1
 const HOME_COURT_ADVANTAGE: float = 0.03
 const SEASON_WEEKS: int = 24
 const PLAYOFF_HOME_COURT_PATTERN: Array = [true, true, false, false, true, false, true]
+const BOX_SCORE_PLAYER_COUNT: int = 10
 
 
 static func simulate_game(home_team: Team, away_team: Team) -> Dictionary:
@@ -29,9 +30,13 @@ static func simulate_game(home_team: Team, away_team: Team) -> Dictionary:
 	return {
 		"home_team_id": home_team.team_id,
 		"away_team_id": away_team.team_id,
+		"home_team_name": "%s %s" % [home_team.city, home_team.name],
+		"away_team_name": "%s %s" % [away_team.city, away_team.name],
 		"home_won": home_won,
 		"home_score": home_score,
-		"away_score": away_score
+		"away_score": away_score,
+		"home_box_score": _build_team_box_score(home_team, home_score),
+		"away_box_score": _build_team_box_score(away_team, away_score)
 	}
 
 
@@ -126,6 +131,65 @@ static func _calculate_effective_strength(team: Team) -> float:
 	var coach_bonus: float = float(team.staff_coach * COACH_BONUS_MULTIPLIER)
 	var facility_bonus: float = float(team.facilities * FACILITY_BONUS_MULTIPLIER)
 	return team_strength + coach_bonus + facility_bonus
+
+
+# Generates lightweight stat lines for feedback only; standings still use the v1 win formula above.
+static func _build_team_box_score(team: Team, team_score: int) -> Array:
+	var rotation: Array = _get_top_players(team, BOX_SCORE_PLAYER_COUNT)
+	var lines: Array = []
+	if rotation.is_empty():
+		return lines
+
+	var weights: Array[float] = []
+	var total_weight: float = 0.0
+	for player in rotation:
+		var scoring_weight: float = float(player.get_overall())
+		scoring_weight += float(player.skills.get("Shooting3", 0)) * 0.25
+		scoring_weight += float(player.skills.get("Finishing", 0)) * 0.25
+		scoring_weight += randf_range(0.0, 18.0)
+		weights.append(scoring_weight)
+		total_weight += scoring_weight
+
+	var assigned_points: int = 0
+	for index in rotation.size():
+		var player: Player = rotation[index]
+		var points: int = team_score - assigned_points if index == rotation.size() - 1 else int(round(float(team_score) * weights[index] / total_weight))
+		points = maxi(points, 0)
+		assigned_points += points
+
+		var three_point_made: int = mini(points / 3, randi_range(0, 5))
+		var field_goals_made: int = maxi(int(ceil(float(points - three_point_made) / 2.0)), three_point_made)
+		var field_goals_attempted: int = field_goals_made + randi_range(2, 9)
+		var three_point_attempted: int = three_point_made + randi_range(0, 5)
+
+		lines.append({
+			"player": player,
+			"player_name": player.full_name,
+			"position": player.position,
+			"minutes": randi_range(18, 36),
+			"points": points,
+			"rebounds": _roll_stat(player.physicals.get("Strength", 0), player.defense.get("PostD", 0), 0, 14),
+			"assists": _roll_stat(player.skills.get("Passing", 0), player.mental.get("OffIQ", 0), 0, 11),
+			"steals": _roll_stat(player.defense.get("Steal", 0), player.defense.get("PerimeterD", 0), 0, 4),
+			"blocks": _roll_stat(player.defense.get("Block", 0), player.physicals.get("Vertical", 0), 0, 5),
+			"fgm": field_goals_made,
+			"fga": field_goals_attempted,
+			"tpm": three_point_made,
+			"tpa": three_point_attempted
+		})
+
+	lines.sort_custom(_sort_box_score_by_points)
+	return lines
+
+
+static func _roll_stat(primary: int, secondary: int, minimum: int, maximum: int) -> int:
+	var rating_factor: float = float(primary + secondary) / 198.0
+	var stat_ceiling: int = maxi(minimum, int(round(lerpf(float(minimum), float(maximum), rating_factor))))
+	return randi_range(minimum, stat_ceiling)
+
+
+static func _sort_box_score_by_points(line_a: Dictionary, line_b: Dictionary) -> bool:
+	return line_a.get("points", 0) > line_b.get("points", 0)
 
 
 static func _sort_players_by_overall(player_a: Player, player_b: Player) -> bool:

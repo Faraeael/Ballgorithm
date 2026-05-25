@@ -17,6 +17,8 @@ var selected_player: Player = null
 
 func _ready() -> void:
 	draft_board_list.item_selected.connect(_on_player_selected)
+	draft_board_list.item_activated.connect(_on_draft_player_activated)
+	roster_list.item_activated.connect(_on_roster_player_activated)
 	draft_player_button.pressed.connect(_on_draft_player)
 	_initialize_draft()
 
@@ -109,6 +111,22 @@ func _on_draft_player() -> void:
 	if current_round <= DraftSystem.DRAFT_ROUNDS:
 		_refresh_ui()
 		_process_until_player_turn()
+
+
+# Double-click opens details without changing draft selection state.
+func _on_draft_player_activated(index: int) -> void:
+	if index < 0 or index >= draft_pool.size():
+		return
+
+	PlayerDetail.show_player(draft_pool[index])
+
+
+func _on_roster_player_activated(index: int) -> void:
+	var player_team: Team = GameState.get_player_team()
+	if player_team == null or index < 0 or index >= player_team.roster.size():
+		return
+
+	PlayerDetail.show_player(player_team.roster[index])
 
 
 func _refresh_ui() -> void:

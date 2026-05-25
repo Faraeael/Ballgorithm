@@ -27,7 +27,9 @@ func _ready() -> void:
 	_populate_position_filter()
 	position_filter.item_selected.connect(_on_position_filter_selected)
 	free_agent_list.item_selected.connect(_on_free_agent_selected)
+	free_agent_list.item_activated.connect(_on_free_agent_activated)
 	roster_list.item_selected.connect(_on_roster_player_selected)
+	roster_list.item_activated.connect(_on_roster_player_activated)
 	sign_player_button.pressed.connect(_on_sign_player)
 	release_player_button.pressed.connect(_on_release_player)
 	advance_to_season_button.pressed.connect(_on_advance)
@@ -110,6 +112,22 @@ func _on_roster_player_selected(index: int) -> void:
 	]
 	sign_player_button.disabled = true
 	release_player_button.disabled = false
+
+
+# Double-click opens the shared detail overlay for market and roster players.
+func _on_free_agent_activated(index: int) -> void:
+	if index < 0 or index >= filtered_agents.size():
+		return
+
+	PlayerDetail.show_player(filtered_agents[index])
+
+
+func _on_roster_player_activated(index: int) -> void:
+	var team: Team = GameState.get_player_team()
+	if team == null or index < 0 or index >= team.roster.size():
+		return
+
+	PlayerDetail.show_player(team.roster[index])
 
 
 func _on_sign_player() -> void:

@@ -22,6 +22,9 @@ LeagueManager="*res://autoloads/LeagueManager.gd"
 PlayerDB="*res://autoloads/PlayerDB.gd"
 CapEngine="*res://autoloads/CapEngine.gd"
 SaveMenu="*res://scenes/SaveMenu.tscn"
+PlayerDetail="*res://scenes/PlayerDetail.tscn"
+RosterViewer="*res://scenes/RosterViewer.tscn"
+BoxScoreViewer="*res://scenes/BoxScoreViewer.tscn"
 
 [physics]
 

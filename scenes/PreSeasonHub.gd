@@ -44,6 +44,7 @@ func _ready() -> void:
 	upgrade_medical_button.pressed.connect(_on_upgrade_medical)
 	upgrade_facilities_button.pressed.connect(_on_upgrade_facilities)
 	advance_to_draft_button.pressed.connect(_on_advance)
+	roster_list.item_activated.connect(_on_roster_player_activated)
 	_refresh_ui()
 
 
@@ -121,6 +122,15 @@ func _on_upgrade_facilities() -> void:
 func _on_advance() -> void:
 	GameState.set_phase(GameState.Phase.DRAFT)
 	get_tree().change_scene_to_file("res://scenes/Draft.tscn")
+
+
+# Double-click opens the shared detail overlay for the matching roster entry.
+func _on_roster_player_activated(index: int) -> void:
+	var team: Team = GameState.get_player_team()
+	if team == null or index < 0 or index >= team.roster.size():
+		return
+
+	PlayerDetail.show_player(team.roster[index])
 
 
 func _format_money(amount: int) -> String:

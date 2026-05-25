@@ -3,10 +3,14 @@ extends Control
 @onready var title_label: Label = $VBoxContainer/TitleLabel
 @onready var status_label: Label = $VBoxContainer/StatusLabel
 @onready var matchups_container: VBoxContainer = $VBoxContainer/MatchupsContainer
-@onready var east_game_1_label: Label = $VBoxContainer/MatchupsContainer/EastGame1Label
-@onready var east_game_2_label: Label = $VBoxContainer/MatchupsContainer/EastGame2Label
-@onready var west_game_1_label: Label = $VBoxContainer/MatchupsContainer/WestGame1Label
-@onready var west_game_2_label: Label = $VBoxContainer/MatchupsContainer/WestGame2Label
+@onready var east_game_1_team_a_button: Button = $VBoxContainer/MatchupsContainer/EastGame1Row/EastGame1TeamAButton
+@onready var east_game_1_team_b_button: Button = $VBoxContainer/MatchupsContainer/EastGame1Row/EastGame1TeamBButton
+@onready var east_game_2_team_a_button: Button = $VBoxContainer/MatchupsContainer/EastGame2Row/EastGame2TeamAButton
+@onready var east_game_2_team_b_button: Button = $VBoxContainer/MatchupsContainer/EastGame2Row/EastGame2TeamBButton
+@onready var west_game_1_team_a_button: Button = $VBoxContainer/MatchupsContainer/WestGame1Row/WestGame1TeamAButton
+@onready var west_game_1_team_b_button: Button = $VBoxContainer/MatchupsContainer/WestGame1Row/WestGame1TeamBButton
+@onready var west_game_2_team_a_button: Button = $VBoxContainer/MatchupsContainer/WestGame2Row/WestGame2TeamAButton
+@onready var west_game_2_team_b_button: Button = $VBoxContainer/MatchupsContainer/WestGame2Row/WestGame2TeamBButton
 @onready var sim_playin_button: Button = $VBoxContainer/Actions/SimPlayInButton
 @onready var advance_button: Button = $VBoxContainer/Actions/AdvanceButton
 
@@ -23,6 +27,14 @@ func _ready() -> void:
 
 	sim_playin_button.pressed.connect(_on_sim_playin)
 	advance_button.pressed.connect(_on_advance)
+	east_game_1_team_a_button.pressed.connect(_on_east_game_1_team_a_pressed)
+	east_game_1_team_b_button.pressed.connect(_on_east_game_1_team_b_pressed)
+	east_game_2_team_a_button.pressed.connect(_on_east_game_2_team_a_pressed)
+	east_game_2_team_b_button.pressed.connect(_on_east_game_2_team_b_pressed)
+	west_game_1_team_a_button.pressed.connect(_on_west_game_1_team_a_pressed)
+	west_game_1_team_b_button.pressed.connect(_on_west_game_1_team_b_pressed)
+	west_game_2_team_a_button.pressed.connect(_on_west_game_2_team_a_pressed)
+	west_game_2_team_b_button.pressed.connect(_on_west_game_2_team_b_pressed)
 	_update_status_label()
 	_update_matchup_labels()
 
@@ -32,8 +44,8 @@ func _on_sim_playin() -> void:
 		return
 
 	playoff_field = LeagueManager.get_playoff_teams().duplicate()
-	var east_qualifiers: Array = _simulate_conference_playin(east_playin_teams, east_game_1_label, east_game_2_label)
-	var west_qualifiers: Array = _simulate_conference_playin(west_playin_teams, west_game_1_label, west_game_2_label)
+	var east_qualifiers: Array = _simulate_conference_playin(east_playin_teams)
+	var west_qualifiers: Array = _simulate_conference_playin(west_playin_teams)
 
 	# The 12 direct playoff teams plus two Play-In qualifiers per conference form the v1 playoff field.
 	playoff_field.append_array(east_qualifiers)
@@ -45,7 +57,10 @@ func _on_sim_playin() -> void:
 	playin_complete = true
 	sim_playin_button.disabled = true
 	advance_button.disabled = false
-	status_label.text = "Play-In complete. %d teams are set for the playoffs." % playoff_field.size()
+	status_label.text = "Play-In complete. Qualifiers: %s. %d teams are set for the playoffs." % [
+		_format_qualifier_names(east_qualifiers + west_qualifiers),
+		playoff_field.size()
+	]
 
 
 func _on_advance() -> void:
@@ -64,8 +79,44 @@ func _on_advance() -> void:
 		get_tree().change_scene_to_file("res://scenes/EndOfSeason.tscn")
 
 
-func _format_matchup(team_a: Team, team_b: Team) -> String:
-	return "%s vs %s" % [_format_team_name(team_a), _format_team_name(team_b)]
+# Matchup buttons are styled as labels; each team name opens its own roster.
+func _on_east_game_1_team_a_pressed() -> void:
+	_show_playin_team(east_playin_teams, 0)
+
+
+func _on_east_game_1_team_b_pressed() -> void:
+	_show_playin_team(east_playin_teams, 1)
+
+
+func _on_east_game_2_team_a_pressed() -> void:
+	_show_playin_team(east_playin_teams, 2)
+
+
+func _on_east_game_2_team_b_pressed() -> void:
+	_show_playin_team(east_playin_teams, 3)
+
+
+func _on_west_game_1_team_a_pressed() -> void:
+	_show_playin_team(west_playin_teams, 0)
+
+
+func _on_west_game_1_team_b_pressed() -> void:
+	_show_playin_team(west_playin_teams, 1)
+
+
+func _on_west_game_2_team_a_pressed() -> void:
+	_show_playin_team(west_playin_teams, 2)
+
+
+func _on_west_game_2_team_b_pressed() -> void:
+	_show_playin_team(west_playin_teams, 3)
+
+
+func _show_playin_team(teams: Array, index: int) -> void:
+	if index < 0 or index >= teams.size():
+		return
+
+	RosterViewer.show_team(teams[index])
 
 
 func _update_status_label() -> void:
@@ -81,16 +132,19 @@ func _update_status_label() -> void:
 
 
 func _update_matchup_labels() -> void:
-	east_game_1_label.text = _get_matchup_text(east_playin_teams, 0, 1, "7th vs 8th")
-	east_game_2_label.text = _get_matchup_text(east_playin_teams, 2, 3, "9th vs 10th")
-	west_game_1_label.text = _get_matchup_text(west_playin_teams, 0, 1, "7th vs 8th")
-	west_game_2_label.text = _get_matchup_text(west_playin_teams, 2, 3, "9th vs 10th")
+	_set_matchup_buttons(east_playin_teams, 0, 1, east_game_1_team_a_button, east_game_1_team_b_button, "7th", "8th")
+	_set_matchup_buttons(east_playin_teams, 2, 3, east_game_2_team_a_button, east_game_2_team_b_button, "9th", "10th")
+	_set_matchup_buttons(west_playin_teams, 0, 1, west_game_1_team_a_button, west_game_1_team_b_button, "7th", "8th")
+	_set_matchup_buttons(west_playin_teams, 2, 3, west_game_2_team_a_button, west_game_2_team_b_button, "9th", "10th")
 
 
-func _simulate_conference_playin(conference_teams: Array, game_1_label: Label, game_2_label: Label) -> Array:
+func _set_matchup_buttons(teams: Array, first_index: int, second_index: int, first_button: Button, second_button: Button, first_fallback: String, second_fallback: String) -> void:
+	first_button.text = _format_team_name(teams[first_index]) if teams.size() > first_index else first_fallback
+	second_button.text = _format_team_name(teams[second_index]) if teams.size() > second_index else second_fallback
+
+
+func _simulate_conference_playin(conference_teams: Array) -> Array:
 	if conference_teams.size() < 4:
-		game_1_label.text = "Not enough teams"
-		game_2_label.text = "Not enough teams"
 		return []
 
 	var seed_7: Team = conference_teams[0]
@@ -109,15 +163,14 @@ func _simulate_conference_playin(conference_teams: Array, game_1_label: Label, g
 	var final_game: Dictionary = SimEngine.simulate_series(game_1_loser, game_2_winner, 1)
 	var second_qualifier: Team = final_game["winner"]
 
-	game_1_label.text = "%s -> %s advances" % [_format_matchup(seed_7, seed_8), _format_team_name(first_qualifier)]
-	game_2_label.text = "%s; final spot -> %s" % [_format_matchup(seed_9, seed_10), _format_team_name(second_qualifier)]
 	return [first_qualifier, second_qualifier]
 
 
-func _get_matchup_text(teams: Array, first_index: int, second_index: int, fallback: String) -> String:
-	if teams.size() <= max(first_index, second_index):
-		return fallback
-	return _format_matchup(teams[first_index], teams[second_index])
+func _format_qualifier_names(teams: Array) -> String:
+	var names: Array[String] = []
+	for team in teams:
+		names.append(_format_team_name(team))
+	return ", ".join(names)
 
 
 func _format_team_name(team: Team) -> String:

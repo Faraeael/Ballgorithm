@@ -1,0 +1,200 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/PlayerDetail.gd" id="1_playerdetail"]
+
+[node name="PlayerDetail" type="CanvasLayer"]
+script = ExtResource("1_playerdetail")
+
+[node name="Control" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="Control"]
+custom_minimum_size = Vector2(580, 680)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -290.0
+offset_top = -340.0
+offset_right = 290.0
+offset_bottom = 340.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Content" type="VBoxContainer" parent="Control/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 20
+
+[node name="Header" type="HBoxContainer" parent="Control/Panel/Content"]
+layout_mode = 2
+
+[node name="Identity" type="VBoxContainer" parent="Control/Panel/Content/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="PlayerNameLabel" type="Label" parent="Control/Panel/Content/Header/Identity"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Player Name"
+
+[node name="PositionArchetypeLabel" type="Label" parent="Control/Panel/Content/Header/Identity"]
+layout_mode = 2
+text = "POS — Archetype"
+
+[node name="TeamLabel" type="Label" parent="Control/Panel/Content/Header/Identity"]
+layout_mode = 2
+text = "Free Agent"
+
+[node name="Ratings" type="VBoxContainer" parent="Control/Panel/Content/Header"]
+layout_mode = 2
+alignment = 2
+
+[node name="OverallLabel" type="Label" parent="Control/Panel/Content/Header/Ratings"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "OVR 00"
+
+[node name="PotentialLabel" type="Label" parent="Control/Panel/Content/Header/Ratings"]
+layout_mode = 2
+text = "POT ??"
+
+[node name="HSeparator" type="HSeparator" parent="Control/Panel/Content"]
+layout_mode = 2
+
+[node name="Attributes" type="HBoxContainer" parent="Control/Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="PhysicalsCol" type="VBoxContainer" parent="Control/Panel/Content/Attributes"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="PhysicalsTitle" type="Label" parent="Control/Panel/Content/Attributes/PhysicalsCol"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "PHYSICALS"
+
+[node name="SpeedLabel" type="Label" parent="Control/Panel/Content/Attributes/PhysicalsCol"]
+layout_mode = 2
+
+[node name="VerticalLabel" type="Label" parent="Control/Panel/Content/Attributes/PhysicalsCol"]
+layout_mode = 2
+
+[node name="StrengthLabel" type="Label" parent="Control/Panel/Content/Attributes/PhysicalsCol"]
+layout_mode = 2
+
+[node name="StaminaLabel" type="Label" parent="Control/Panel/Content/Attributes/PhysicalsCol"]
+layout_mode = 2
+
+[node name="DurabilityLabel" type="Label" parent="Control/Panel/Content/Attributes/PhysicalsCol"]
+layout_mode = 2
+
+[node name="SkillsCol" type="VBoxContainer" parent="Control/Panel/Content/Attributes"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="SkillsTitle" type="Label" parent="Control/Panel/Content/Attributes/SkillsCol"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "SKILLS"
+
+[node name="Shooting3Label" type="Label" parent="Control/Panel/Content/Attributes/SkillsCol"]
+layout_mode = 2
+
+[node name="ShootingMidLabel" type="Label" parent="Control/Panel/Content/Attributes/SkillsCol"]
+layout_mode = 2
+
+[node name="FreeThrowLabel" type="Label" parent="Control/Panel/Content/Attributes/SkillsCol"]
+layout_mode = 2
+
+[node name="FinishingLabel" type="Label" parent="Control/Panel/Content/Attributes/SkillsCol"]
+layout_mode = 2
+
+[node name="BallHandlingLabel" type="Label" parent="Control/Panel/Content/Attributes/SkillsCol"]
+layout_mode = 2
+
+[node name="PassingLabel" type="Label" parent="Control/Panel/Content/Attributes/SkillsCol"]
+layout_mode = 2
+
+[node name="PostPlayLabel" type="Label" parent="Control/Panel/Content/Attributes/SkillsCol"]
+layout_mode = 2
+
+[node name="DefenseCol" type="VBoxContainer" parent="Control/Panel/Content/Attributes"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="DefenseTitle" type="Label" parent="Control/Panel/Content/Attributes/DefenseCol"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "DEFENSE"
+
+[node name="PerimeterDLabel" type="Label" parent="Control/Panel/Content/Attributes/DefenseCol"]
+layout_mode = 2
+
+[node name="PostDLabel" type="Label" parent="Control/Panel/Content/Attributes/DefenseCol"]
+layout_mode = 2
+
+[node name="StealLabel" type="Label" parent="Control/Panel/Content/Attributes/DefenseCol"]
+layout_mode = 2
+
+[node name="BlockLabel" type="Label" parent="Control/Panel/Content/Attributes/DefenseCol"]
+layout_mode = 2
+
+[node name="DefIQLabel" type="Label" parent="Control/Panel/Content/Attributes/DefenseCol"]
+layout_mode = 2
+
+[node name="MentalCol" type="VBoxContainer" parent="Control/Panel/Content/Attributes"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="MentalTitle" type="Label" parent="Control/Panel/Content/Attributes/MentalCol"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "MENTAL"
+
+[node name="OffIQLabel" type="Label" parent="Control/Panel/Content/Attributes/MentalCol"]
+layout_mode = 2
+
+[node name="ClutchLabel" type="Label" parent="Control/Panel/Content/Attributes/MentalCol"]
+layout_mode = 2
+
+[node name="ComposureLabel" type="Label" parent="Control/Panel/Content/Attributes/MentalCol"]
+layout_mode = 2
+
+[node name="LeadershipLabel" type="Label" parent="Control/Panel/Content/Attributes/MentalCol"]
+layout_mode = 2
+
+[node name="WorkEthicLabel" type="Label" parent="Control/Panel/Content/Attributes/MentalCol"]
+layout_mode = 2
+
+[node name="HSeparator2" type="HSeparator" parent="Control/Panel/Content"]
+layout_mode = 2
+
+[node name="ContractRow" type="HBoxContainer" parent="Control/Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="AgeLabel" type="Label" parent="Control/Panel/Content/ContractRow"]
+layout_mode = 2
+
+[node name="SalaryLabel" type="Label" parent="Control/Panel/Content/ContractRow"]
+layout_mode = 2
+
+[node name="ContractLabel" type="Label" parent="Control/Panel/Content/ContractRow"]
+layout_mode = 2
+
+[node name="CloseButton" type="Button" parent="Control/Panel/Content"]
+custom_minimum_size = Vector2(120, 40)
+layout_mode = 2
+text = "Close"

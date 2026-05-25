@@ -46,13 +46,49 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "EAST CONFERENCE"
 
-[node name="EastGame1Label" type="Label" parent="VBoxContainer/MatchupsContainer"]
+[node name="EastGame1Row" type="HBoxContainer" parent="VBoxContainer/MatchupsContainer"]
 layout_mode = 2
-text = "7th vs 8th"
+theme_override_constants/separation = 8
 
-[node name="EastGame2Label" type="Label" parent="VBoxContainer/MatchupsContainer"]
+[node name="EastGame1TeamAButton" type="Button" parent="VBoxContainer/MatchupsContainer/EastGame1Row"]
 layout_mode = 2
+size_flags_horizontal = 3
+flat = true
+text = "7th vs 8th"
+alignment = 0
+
+[node name="EastGame1VsLabel" type="Label" parent="VBoxContainer/MatchupsContainer/EastGame1Row"]
+layout_mode = 2
+text = "vs"
+
+[node name="EastGame1TeamBButton" type="Button" parent="VBoxContainer/MatchupsContainer/EastGame1Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+flat = true
+text = "7th vs 8th"
+alignment = 0
+
+[node name="EastGame2Row" type="HBoxContainer" parent="VBoxContainer/MatchupsContainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="EastGame2TeamAButton" type="Button" parent="VBoxContainer/MatchupsContainer/EastGame2Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+flat = true
 text = "9th vs 10th"
+alignment = 0
+
+[node name="EastGame2VsLabel" type="Label" parent="VBoxContainer/MatchupsContainer/EastGame2Row"]
+layout_mode = 2
+text = "vs"
+
+[node name="EastGame2TeamBButton" type="Button" parent="VBoxContainer/MatchupsContainer/EastGame2Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+flat = true
+text = "9th vs 10th"
+alignment = 0
 
 [node name="ConferenceSeparator" type="HSeparator" parent="VBoxContainer/MatchupsContainer"]
 layout_mode = 2
@@ -62,13 +98,49 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "WEST CONFERENCE"
 
-[node name="WestGame1Label" type="Label" parent="VBoxContainer/MatchupsContainer"]
+[node name="WestGame1Row" type="HBoxContainer" parent="VBoxContainer/MatchupsContainer"]
 layout_mode = 2
-text = "7th vs 8th"
+theme_override_constants/separation = 8
 
-[node name="WestGame2Label" type="Label" parent="VBoxContainer/MatchupsContainer"]
+[node name="WestGame1TeamAButton" type="Button" parent="VBoxContainer/MatchupsContainer/WestGame1Row"]
 layout_mode = 2
+size_flags_horizontal = 3
+flat = true
+text = "7th vs 8th"
+alignment = 0
+
+[node name="WestGame1VsLabel" type="Label" parent="VBoxContainer/MatchupsContainer/WestGame1Row"]
+layout_mode = 2
+text = "vs"
+
+[node name="WestGame1TeamBButton" type="Button" parent="VBoxContainer/MatchupsContainer/WestGame1Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+flat = true
+text = "7th vs 8th"
+alignment = 0
+
+[node name="WestGame2Row" type="HBoxContainer" parent="VBoxContainer/MatchupsContainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="WestGame2TeamAButton" type="Button" parent="VBoxContainer/MatchupsContainer/WestGame2Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+flat = true
 text = "9th vs 10th"
+alignment = 0
+
+[node name="WestGame2VsLabel" type="Label" parent="VBoxContainer/MatchupsContainer/WestGame2Row"]
+layout_mode = 2
+text = "vs"
+
+[node name="WestGame2TeamBButton" type="Button" parent="VBoxContainer/MatchupsContainer/WestGame2Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+flat = true
+text = "9th vs 10th"
+alignment = 0
 
 [node name="BottomSeparator" type="HSeparator" parent="VBoxContainer"]
 layout_mode = 2

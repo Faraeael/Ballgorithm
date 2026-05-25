@@ -1,0 +1,109 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/RosterViewer.gd" id="1_rosterviewer"]
+
+[node name="RosterViewer" type="CanvasLayer"]
+script = ExtResource("1_rosterviewer")
+
+[node name="Control" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="Control"]
+custom_minimum_size = Vector2(560, 620)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -280.0
+offset_top = -310.0
+offset_right = 280.0
+offset_bottom = 310.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Content" type="VBoxContainer" parent="Control/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 20
+
+[node name="Header" type="HBoxContainer" parent="Control/Panel/Content"]
+layout_mode = 2
+
+[node name="Identity" type="VBoxContainer" parent="Control/Panel/Content/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="TeamNameLabel" type="Label" parent="Control/Panel/Content/Header/Identity"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "City Name"
+
+[node name="TeamSituationLabel" type="Label" parent="Control/Panel/Content/Header/Identity"]
+layout_mode = 2
+text = "Situation"
+
+[node name="Summary" type="VBoxContainer" parent="Control/Panel/Content/Header"]
+layout_mode = 2
+alignment = 2
+
+[node name="RecordLabel" type="Label" parent="Control/Panel/Content/Header/Summary"]
+layout_mode = 2
+text = "0-0"
+
+[node name="CapLabel" type="Label" parent="Control/Panel/Content/Header/Summary"]
+layout_mode = 2
+text = "Cap: $0"
+
+[node name="HSeparator" type="HSeparator" parent="Control/Panel/Content"]
+layout_mode = 2
+
+[node name="StaffRow" type="HBoxContainer" parent="Control/Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="StaffCoachLabel" type="Label" parent="Control/Panel/Content/StaffRow"]
+layout_mode = 2
+text = "Coach: L1"
+
+[node name="StaffScoutLabel" type="Label" parent="Control/Panel/Content/StaffRow"]
+layout_mode = 2
+text = "Scout: L1"
+
+[node name="StaffMedicalLabel" type="Label" parent="Control/Panel/Content/StaffRow"]
+layout_mode = 2
+text = "Medical: L1"
+
+[node name="FacilitiesLabel" type="Label" parent="Control/Panel/Content/StaffRow"]
+layout_mode = 2
+text = "Facilities: L1"
+
+[node name="HSeparator2" type="HSeparator" parent="Control/Panel/Content"]
+layout_mode = 2
+
+[node name="RosterTitle" type="Label" parent="Control/Panel/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "ROSTER"
+
+[node name="RosterList" type="ItemList" parent="Control/Panel/Content"]
+custom_minimum_size = Vector2(0, 320)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="HSeparator3" type="HSeparator" parent="Control/Panel/Content"]
+layout_mode = 2
+
+[node name="CloseButton" type="Button" parent="Control/Panel/Content"]
+custom_minimum_size = Vector2(120, 40)
+layout_mode = 2
+text = "Close"

@@ -22,6 +22,7 @@ func _ready() -> void:
 	bracket = GameState.playoff_bracket.duplicate()
 	sim_round_button.pressed.connect(_on_sim_round)
 	advance_button.pressed.connect(_on_advance)
+	matchups_list.item_activated.connect(_on_matchup_activated)
 
 	if bracket.size() != 16:
 		status_label.text = "Playoff bracket must contain 16 teams. Found %d." % bracket.size()
@@ -116,6 +117,18 @@ func _show_advance_to_end_of_season() -> void:
 
 func _on_go_to_end_of_season() -> void:
 	get_tree().change_scene_to_file("res://scenes/EndOfSeason.tscn")
+
+
+# Double-click opens the first listed team in the selected matchup.
+func _on_matchup_activated(index: int) -> void:
+	if index < 0 or index >= current_matchups.size():
+		return
+
+	var matchup: Array = current_matchups[index]
+	if matchup.is_empty():
+		return
+
+	RosterViewer.show_team(matchup[0])
 
 
 func _refresh_matchups_list(matchups: Array, results: Array = []) -> void:
