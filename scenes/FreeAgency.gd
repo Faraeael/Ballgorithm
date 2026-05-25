@@ -1,5 +1,7 @@
 extends Control
 
+const ScoutingSystemScript = preload("res://scripts/ScoutingSystem.gd")
+
 const ROSTER_MAX: int = 15
 const ROSTER_MIN_TO_ADVANCE: int = 10
 const EXTRA_FREE_AGENT_COUNT: int = 40
@@ -83,11 +85,13 @@ func _on_free_agent_selected(index: int) -> void:
 	selected_free_agent = filtered_agents[index]
 	selected_roster_player = null
 	var team: Team = GameState.get_player_team()
-	player_info_label.text = "%s | %s | %s | OVR %d | %s/yr | %d yrs" % [
+	var visibility: Dictionary = _get_scouting_visibility(selected_free_agent)
+	var archetype_text: String = selected_free_agent.archetype if visibility["show_archetype"] else "??"
+	player_info_label.text = "%s | %s | %s | OVR %s | %s/yr | %d yrs" % [
 		selected_free_agent.full_name,
 		selected_free_agent.position,
-		selected_free_agent.archetype,
-		selected_free_agent.get_overall(),
+		archetype_text,
+		_get_scouted_overall_text(selected_free_agent, visibility),
 		_format_money(selected_free_agent.salary),
 		selected_free_agent.contract_years
 	]
@@ -119,7 +123,7 @@ func _on_free_agent_activated(index: int) -> void:
 	if index < 0 or index >= filtered_agents.size():
 		return
 
-	PlayerDetail.show_player(filtered_agents[index])
+	PlayerDetail.show_player(filtered_agents[index], true)
 
 
 func _on_roster_player_activated(index: int) -> void:
@@ -127,7 +131,7 @@ func _on_roster_player_activated(index: int) -> void:
 	if team == null or index < 0 or index >= team.roster.size():
 		return
 
-	PlayerDetail.show_player(team.roster[index])
+	PlayerDetail.show_player(team.roster[index], false)
 
 
 func _on_sign_player() -> void:
@@ -182,13 +186,7 @@ func _refresh_ui() -> void:
 
 	free_agent_list.clear()
 	for player in filtered_agents:
-		free_agent_list.add_item("[%s] %s — OVR %d — %s/yr — %d yrs" % [
-			player.position,
-			player.full_name,
-			player.get_overall(),
-			_format_money(player.salary),
-			player.contract_years
-		])
+		free_agent_list.add_item(_format_scouted_free_agent_row(player))
 
 	roster_list.clear()
 	for player in team.roster:
@@ -215,3 +213,27 @@ func _format_money(amount: int) -> String:
 	if absolute_amount >= 1_000:
 		return "%s$%dK" % [sign, int(round(float(absolute_amount) / 1_000.0))]
 	return "%s$%d" % [sign, absolute_amount]
+
+
+# Free agents are external players, so visible rating/archetype data depends on scout level.
+func _format_scouted_free_agent_row(player: Player) -> String:
+	var visibility: Dictionary = _get_scouting_visibility(player)
+	if visibility["show_exact_overall"]:
+		return "[%s] %s — OVR %d — %s — %s/yr — %d yrs" % [player.position, player.full_name, player.get_overall(), player.archetype, _format_money(player.salary), player.contract_years]
+	if visibility["show_overall_range"]:
+		return "[%s] %s — OVR %s — %s/yr — %d yrs" % [player.position, player.full_name, visibility["overall_range"], _format_money(player.salary), player.contract_years]
+	return "[%s] %s — ??? — %s/yr — %d yrs" % [player.position, player.full_name, _format_money(player.salary), player.contract_years]
+
+
+func _get_scouting_visibility(player: Player) -> Dictionary:
+	var player_team: Team = GameState.get_player_team()
+	var scout_level: int = player_team.staff_scout if player_team != null else 1
+	return ScoutingSystemScript.get_player_info(player, scout_level, true)
+
+
+func _get_scouted_overall_text(player: Player, visibility: Dictionary) -> String:
+	if visibility["show_exact_overall"]:
+		return str(player.get_overall())
+	if visibility["show_overall_range"] and visibility["overall_range"] != "":
+		return visibility["overall_range"]
+	return "??"

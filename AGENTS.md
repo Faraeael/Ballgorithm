@@ -444,4 +444,5 @@ P07 → AI free agency (AI teams sign from free agent pool, not just draft)
 P08 → Contract extensions (re-sign your own players before they hit FA)
 P09 → Better sim feedback (box scores, player stat lines per game)
 P10 → Visual polish (team colors, consistent UI theme, fonts)
+P11 → Staff serialization cleanup (use StaffMember.from_dict when staff objects need reconstruction; remove fallback StaffMember generation in UI refresh)
 ```

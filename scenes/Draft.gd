@@ -1,5 +1,7 @@
 extends Control
 
+const ScoutingSystemScript = preload("res://scripts/ScoutingSystem.gd")
+
 @onready var round_label: Label = $VBoxContainer/Header/RoundLabel
 @onready var pick_label: Label = $VBoxContainer/Header/PickLabel
 @onready var on_the_clock_label: Label = $VBoxContainer/Header/OnTheClockLabel
@@ -85,12 +87,14 @@ func _on_player_selected(index: int) -> void:
 		return
 
 	selected_player = draft_pool[index]
-	var potential_text: String = str(selected_player.potential) if selected_player.is_potential_revealed else "??"
-	player_info_label.text = "%s | %s | %s | OVR %d | Potential %s" % [
+	var visibility: Dictionary = _get_scouting_visibility(selected_player)
+	var potential_text: String = str(selected_player.potential) if visibility["show_potential"] else "??"
+	var archetype_text: String = selected_player.archetype if visibility["show_archetype"] else "??"
+	player_info_label.text = "%s | %s | %s | OVR %s | Potential %s" % [
 		selected_player.full_name,
 		selected_player.position,
-		selected_player.archetype,
-		selected_player.get_overall(),
+		archetype_text,
+		_get_scouted_overall_text(selected_player, visibility),
 		potential_text
 	]
 	draft_player_button.disabled = false
@@ -118,7 +122,7 @@ func _on_draft_player_activated(index: int) -> void:
 	if index < 0 or index >= draft_pool.size():
 		return
 
-	PlayerDetail.show_player(draft_pool[index])
+	PlayerDetail.show_player(draft_pool[index], true)
 
 
 func _on_roster_player_activated(index: int) -> void:
@@ -137,12 +141,7 @@ func _refresh_ui() -> void:
 
 	draft_board_list.clear()
 	for player in draft_pool:
-		draft_board_list.add_item("[%s] %s — OVR %d — %s" % [
-			player.position,
-			player.full_name,
-			player.get_overall(),
-			player.archetype
-		])
+		draft_board_list.add_item(_format_scouted_player_row(player))
 
 	roster_list.clear()
 	var player_team: Team = GameState.get_player_team()
@@ -168,3 +167,27 @@ func _get_team_display_name(team: Team) -> String:
 	if team == null:
 		return "—"
 	return "%s %s" % [team.city, team.name]
+
+
+# Draft prospects are external players, so their visible data depends on scout level.
+func _format_scouted_player_row(player: Player) -> String:
+	var visibility: Dictionary = _get_scouting_visibility(player)
+	if visibility["show_exact_overall"]:
+		return "[%s] %s — OVR %d — %s" % [player.position, player.full_name, player.get_overall(), player.archetype]
+	if visibility["show_overall_range"]:
+		return "[%s] %s — OVR %s" % [player.position, player.full_name, visibility["overall_range"]]
+	return "[%s] %s — ???" % [player.position, player.full_name]
+
+
+func _get_scouting_visibility(player: Player) -> Dictionary:
+	var player_team: Team = GameState.get_player_team()
+	var scout_level: int = player_team.staff_scout if player_team != null else 1
+	return ScoutingSystemScript.get_player_info(player, scout_level, true)
+
+
+func _get_scouted_overall_text(player: Player, visibility: Dictionary) -> String:
+	if visibility["show_exact_overall"]:
+		return str(player.get_overall())
+	if visibility["show_overall_range"] and visibility["overall_range"] != "":
+		return visibility["overall_range"]
+	return "??"

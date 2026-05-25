@@ -18,6 +18,9 @@ class_name Team
 @export var staff_coach: int = 1
 @export var staff_scout: int = 1
 @export var staff_medical: int = 1
+@export var staff_coach_member: Dictionary = {}
+@export var staff_scout_member: Dictionary = {}
+@export var staff_medical_member: Dictionary = {}
 
 # Facility level 1–5
 @export var facilities: int = 1
@@ -45,6 +48,9 @@ func to_dict() -> Dictionary:
 		"staff_coach": staff_coach,
 		"staff_scout": staff_scout,
 		"staff_medical": staff_medical,
+		"staff_coach_member": staff_coach_member,
+		"staff_scout_member": staff_scout_member,
+		"staff_medical_member": staff_medical_member,
 		"facilities": facilities,
 		"budget": budget
 	}
@@ -68,5 +74,8 @@ func from_dict(data: Dictionary) -> void:
 	staff_coach = data.get("staff_coach", 1)
 	staff_scout = data.get("staff_scout", 1)
 	staff_medical = data.get("staff_medical", 1)
+	staff_coach_member = data.get("staff_coach_member", {})
+	staff_scout_member = data.get("staff_scout_member", {})
+	staff_medical_member = data.get("staff_medical_member", {})
 	facilities = data.get("facilities", 1)
 	budget = data.get("budget", 0)

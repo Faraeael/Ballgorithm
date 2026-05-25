@@ -1,5 +1,7 @@
 extends Control
 
+const StaffGeneratorScript = preload("res://scripts/StaffGenerator.gd")
+
 const DRAFT_CLASS_POSITIONS: Array = [
 	"PG", "PG", "PG", "PG", "PG", "PG", "PG", "PG", "PG", "PG",
 	"SG", "SG", "SG", "SG", "SG", "SG", "SG", "SG", "SG", "SG",
@@ -34,6 +36,7 @@ func _process_end_of_season() -> int:
 		# Records are cleared for the next year, so capture the player's result first.
 		player_wins = player_team.wins
 		player_losses = player_team.losses
+		_deduct_staff_salaries(player_team)
 
 	_reassign_draft_picks_by_record()
 
@@ -81,6 +84,18 @@ func _on_next_season() -> void:
 	GameState.schedule = []
 	GameState.set_phase(GameState.Phase.PRE_SEASON_HUB)
 	get_tree().change_scene_to_file("res://scenes/PreSeasonHub.tscn")
+
+
+# Staff salaries are annual operating costs paid before the next preseason budget decisions.
+func _deduct_staff_salaries(team: Team) -> void:
+	var total_salary: int = 0
+	for member in [team.staff_coach_member, team.staff_scout_member, team.staff_medical_member]:
+		if member.is_empty():
+			continue
+		var tier: int = member.get("tier", 1)
+		total_salary += StaffGeneratorScript.get_tier_salary(tier)
+
+	team.budget = maxi(team.budget - total_salary, 0)
 
 
 func _apply_player_development(player: Player) -> void:

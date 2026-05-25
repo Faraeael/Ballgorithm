@@ -13,6 +13,7 @@ extends CanvasLayer
 
 var sorted_roster: Array = []
 var reopen_after_player_detail: bool = false
+var is_viewing_opponent_team: bool = false
 
 
 func _ready() -> void:
@@ -28,6 +29,7 @@ func show_team(team: Team) -> void:
 		return
 
 	var cap_summary: Dictionary = CapEngine.get_cap_summary(team)
+	is_viewing_opponent_team = not team.is_player_team
 	team_name_label.text = "%s %s" % [team.city, team.name]
 	team_situation_label.text = team.situation
 	record_label.text = "%d-%d" % [team.wins, team.losses]
@@ -61,7 +63,7 @@ func _on_player_activated(index: int) -> void:
 	# Hide the roster overlay so the player detail panel is not visually stacked under it.
 	visible = false
 	reopen_after_player_detail = true
-	PlayerDetail.show_player(sorted_roster[index])
+	PlayerDetail.show_player(sorted_roster[index], is_viewing_opponent_team)
 
 
 func _on_player_detail_closed() -> void:

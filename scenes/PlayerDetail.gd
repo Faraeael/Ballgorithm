@@ -2,6 +2,8 @@ extends CanvasLayer
 
 signal closed
 
+const ScoutingSystemScript = preload("res://scripts/ScoutingSystem.gd")
+
 @onready var player_name_label: Label = $Control/Panel/Content/Header/Identity/PlayerNameLabel
 @onready var position_archetype_label: Label = $Control/Panel/Content/Header/Identity/PositionArchetypeLabel
 @onready var team_label: Label = $Control/Panel/Content/Header/Identity/TeamLabel
@@ -41,18 +43,26 @@ func _ready() -> void:
 
 
 # Populates every field from the provided player resource before showing the overlay.
-func show_player(player: Player) -> void:
+func show_player(player: Player, is_opponent: bool = false) -> void:
 	if player == null:
 		return
 
+	var visibility: Dictionary = _get_visibility(player, is_opponent)
+	var archetype_text: String = player.archetype if visibility["show_archetype"] else "??"
+	var overall_text: String = _get_overall_text(player, visibility)
 	player_name_label.text = player.full_name
-	position_archetype_label.text = "%s — %s" % [player.position, player.archetype]
+	position_archetype_label.text = "%s — %s" % [player.position, archetype_text]
 	team_label.text = _get_team_name(player)
-	overall_label.text = "OVR %d" % player.get_overall()
-	potential_label.text = "POT %s" % (str(player.potential) if player.is_potential_revealed else "??")
+	overall_label.text = "OVR %s" % overall_text
+	potential_label.text = "POT %s" % (str(player.potential) if visibility["show_potential"] else "??")
 	age_label.text = "Age: %d" % player.age
 	salary_label.text = "Salary: $%.1fM" % (float(player.salary) / 1_000_000.0)
 	contract_label.text = "Contract: %d yrs" % player.contract_years
+
+	if not visibility["show_attributes"]:
+		_hide_attribute_labels()
+		visible = true
+		return
 
 	_set_attribute_label(speed_label, "Speed", player.physicals.get("Speed", 0))
 	_set_attribute_label(vertical_label, "Vertical", player.physicals.get("Vertical", 0))
@@ -90,8 +100,40 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _on_close() -> void:
-	visible = false
 	closed.emit()
+	visible = false
+
+
+func _get_visibility(player: Player, is_opponent: bool) -> Dictionary:
+	if not is_opponent:
+		return ScoutingSystemScript.get_player_info(player, 5, false)
+
+	var player_team: Team = GameState.get_player_team()
+	var scout_level: int = player_team.staff_scout if player_team != null else 1
+	return ScoutingSystemScript.get_player_info(player, scout_level, true)
+
+
+func _get_overall_text(player: Player, visibility: Dictionary) -> String:
+	if visibility["show_exact_overall"]:
+		return str(player.get_overall())
+	if visibility["show_overall_range"] and visibility["overall_range"] != "":
+		return visibility["overall_range"]
+	return "??"
+
+
+func _hide_attribute_labels() -> void:
+	for label in _get_attribute_labels():
+		label.text = "??"
+		label.remove_theme_color_override("font_color")
+
+
+func _get_attribute_labels() -> Array[Label]:
+	return [
+		speed_label, vertical_label, strength_label, stamina_label, durability_label,
+		shooting3_label, shooting_mid_label, free_throw_label, finishing_label, ball_handling_label,
+		passing_label, post_play_label, perimeter_d_label, post_d_label, steal_label, block_label,
+		def_iq_label, off_iq_label, clutch_label, composure_label, leadership_label, work_ethic_label
+	]
 
 
 # Finds the current roster owner by player id; unmatched players are displayed as free agents.

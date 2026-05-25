@@ -1,6 +1,8 @@
 extends RefCounted
 class_name LeagueGenerator
 
+const StaffGeneratorScript = preload("res://scripts/StaffGenerator.gd")
+
 const TEAM_COUNT: int = 30
 const ROSTER_SIZE: int = 13
 
@@ -114,6 +116,9 @@ static func _create_team(combo: Dictionary, situation: String, is_player_team: b
 	team.staff_coach = 1
 	team.staff_scout = 1
 	team.staff_medical = 1
+	team.staff_coach_member = StaffGeneratorScript.generate_staff("Coach", team.staff_coach).to_dict()
+	team.staff_scout_member = StaffGeneratorScript.generate_staff("Scout", team.staff_scout).to_dict()
+	team.staff_medical_member = StaffGeneratorScript.generate_staff("Doctor", team.staff_medical).to_dict()
 	team.facilities = 1
 	team.budget = SITUATION_BUDGET.get(situation, 7_000_000)
 	return team

@@ -78,61 +78,89 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 18
 text = "STAFF & FACILITIES"
 
-[node name="CoachRow" type="HBoxContainer" parent="VBoxContainer/MainArea/RightPanel"]
+[node name="CoachRow" type="VBoxContainer" parent="VBoxContainer/MainArea/RightPanel"]
 layout_mode = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 4
 
-[node name="CoachLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/CoachRow"]
+[node name="CoachNameLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/CoachRow"]
 layout_mode = 2
-size_flags_horizontal = 3
-text = "Coach: Level 1"
+text = "Coach: Vacant"
+
+[node name="CoachEffectLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/CoachRow"]
+layout_mode = 2
+text = "Level 1 - Team OVR +2 in simulations"
+
+[node name="CoachCostLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/CoachRow"]
+layout_mode = 2
+text = "Next hire: $2.0M"
 
 [node name="UpgradeCoachButton" type="Button" parent="VBoxContainer/MainArea/RightPanel/CoachRow"]
 custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
-text = "Upgrade ($2M)"
+text = "Hire Tier 2 Staff ($2.0M)"
 
-[node name="ScoutRow" type="HBoxContainer" parent="VBoxContainer/MainArea/RightPanel"]
+[node name="ScoutRow" type="VBoxContainer" parent="VBoxContainer/MainArea/RightPanel"]
 layout_mode = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 4
 
-[node name="ScoutLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/ScoutRow"]
+[node name="ScoutNameLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/ScoutRow"]
 layout_mode = 2
-size_flags_horizontal = 3
-text = "Scout: Level 1"
+text = "Scout: Vacant"
+
+[node name="ScoutEffectLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/ScoutRow"]
+layout_mode = 2
+text = "Level 1 - Reveals tier 1 player info"
+
+[node name="ScoutCostLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/ScoutRow"]
+layout_mode = 2
+text = "Next hire: $2.0M"
 
 [node name="UpgradeScoutButton" type="Button" parent="VBoxContainer/MainArea/RightPanel/ScoutRow"]
 custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
-text = "Upgrade ($2M)"
+text = "Hire Tier 2 Staff ($2.0M)"
 
-[node name="MedicalRow" type="HBoxContainer" parent="VBoxContainer/MainArea/RightPanel"]
+[node name="MedicalRow" type="VBoxContainer" parent="VBoxContainer/MainArea/RightPanel"]
 layout_mode = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 4
 
-[node name="MedicalLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/MedicalRow"]
+[node name="MedicalNameLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/MedicalRow"]
 layout_mode = 2
-size_flags_horizontal = 3
-text = "Medical: Level 1"
+text = "Doctor: Vacant"
+
+[node name="MedicalEffectLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/MedicalRow"]
+layout_mode = 2
+text = "Level 1 - Reduces injury duration by 5%"
+
+[node name="MedicalCostLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/MedicalRow"]
+layout_mode = 2
+text = "Next hire: $2.0M"
 
 [node name="UpgradeMedicalButton" type="Button" parent="VBoxContainer/MainArea/RightPanel/MedicalRow"]
 custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
-text = "Upgrade ($2M)"
+text = "Hire Tier 2 Staff ($2.0M)"
 
-[node name="FacilitiesRow" type="HBoxContainer" parent="VBoxContainer/MainArea/RightPanel"]
+[node name="FacilitiesRow" type="VBoxContainer" parent="VBoxContainer/MainArea/RightPanel"]
 layout_mode = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 4
 
-[node name="FacilitiesLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/FacilitiesRow"]
+[node name="FacilitiesNameLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/FacilitiesRow"]
 layout_mode = 2
-size_flags_horizontal = 3
-text = "Facilities: Level 1"
+text = "Facilities"
+
+[node name="FacilitiesEffectLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/FacilitiesRow"]
+layout_mode = 2
+text = "Level 1 - Simulation bonus +1"
+
+[node name="FacilitiesCostLabel" type="Label" parent="VBoxContainer/MainArea/RightPanel/FacilitiesRow"]
+layout_mode = 2
+text = "Next upgrade: $3.0M"
 
 [node name="UpgradeFacilitiesButton" type="Button" parent="VBoxContainer/MainArea/RightPanel/FacilitiesRow"]
 custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
-text = "Upgrade ($3M)"
+text = "Upgrade Tier 2 Facilities ($3.0M)"
 
 [node name="RightSeparator" type="HSeparator" parent="VBoxContainer/MainArea/RightPanel"]
 layout_mode = 2
