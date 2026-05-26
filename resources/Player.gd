@@ -10,6 +10,9 @@ class_name Player
 @export var contract_years: int = 0
 @export var potential: int = 0          # 40–99, hidden until scouted
 @export var is_potential_revealed: bool = false
+@export var is_injured: bool = false
+@export var injury_games_remaining: int = 0
+@export var injury_type: String = ""
 
 # Attribute groups — all values 0–99
 @export var physicals: Dictionary = {
@@ -48,6 +51,9 @@ func to_dict() -> Dictionary:
 		"contract_years": contract_years,
 		"potential": potential,
 		"is_potential_revealed": is_potential_revealed,
+		"is_injured": is_injured,
+		"injury_games_remaining": injury_games_remaining,
+		"injury_type": injury_type,
 		"physicals": physicals,
 		"skills": skills,
 		"defense": defense,
@@ -65,6 +71,9 @@ func from_dict(data: Dictionary) -> void:
 	contract_years = data.get("contract_years", 0)
 	potential = data.get("potential", 0)
 	is_potential_revealed = data.get("is_potential_revealed", false)
+	is_injured = data.get("is_injured", false)
+	injury_games_remaining = data.get("injury_games_remaining", 0)
+	injury_type = data.get("injury_type", "")
 	physicals = data.get("physicals", {
 		"Speed": 0, "Vertical": 0, "Strength": 0, "Stamina": 0, "Durability": 0
 	})

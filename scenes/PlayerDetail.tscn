@@ -194,6 +194,10 @@ layout_mode = 2
 [node name="ContractLabel" type="Label" parent="Control/Panel/Content/ContractRow"]
 layout_mode = 2
 
+[node name="InjuryStatusLabel" type="Label" parent="Control/Panel/Content"]
+layout_mode = 2
+text = "Healthy"
+
 [node name="CloseButton" type="Button" parent="Control/Panel/Content"]
 custom_minimum_size = Vector2(120, 40)
 layout_mode = 2

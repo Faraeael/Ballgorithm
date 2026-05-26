@@ -94,10 +94,10 @@ text = "Level 1 - Team OVR +2 in simulations"
 layout_mode = 2
 text = "Next hire: $2.0M"
 
-[node name="UpgradeCoachButton" type="Button" parent="VBoxContainer/MainArea/RightPanel/CoachRow"]
+[node name="FindCoachButton" type="Button" parent="VBoxContainer/MainArea/RightPanel/CoachRow"]
 custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
-text = "Hire Tier 2 Staff ($2.0M)"
+text = "Find Candidates"
 
 [node name="ScoutRow" type="VBoxContainer" parent="VBoxContainer/MainArea/RightPanel"]
 layout_mode = 2
@@ -115,10 +115,10 @@ text = "Level 1 - Reveals tier 1 player info"
 layout_mode = 2
 text = "Next hire: $2.0M"
 
-[node name="UpgradeScoutButton" type="Button" parent="VBoxContainer/MainArea/RightPanel/ScoutRow"]
+[node name="FindScoutButton" type="Button" parent="VBoxContainer/MainArea/RightPanel/ScoutRow"]
 custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
-text = "Hire Tier 2 Staff ($2.0M)"
+text = "Find Candidates"
 
 [node name="MedicalRow" type="VBoxContainer" parent="VBoxContainer/MainArea/RightPanel"]
 layout_mode = 2
@@ -136,10 +136,10 @@ text = "Level 1 - Reduces injury duration by 5%"
 layout_mode = 2
 text = "Next hire: $2.0M"
 
-[node name="UpgradeMedicalButton" type="Button" parent="VBoxContainer/MainArea/RightPanel/MedicalRow"]
+[node name="FindMedicalButton" type="Button" parent="VBoxContainer/MainArea/RightPanel/MedicalRow"]
 custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
-text = "Hire Tier 2 Staff ($2.0M)"
+text = "Find Candidates"
 
 [node name="FacilitiesRow" type="VBoxContainer" parent="VBoxContainer/MainArea/RightPanel"]
 layout_mode = 2

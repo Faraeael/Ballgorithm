@@ -34,6 +34,7 @@ const ScoutingSystemScript = preload("res://scripts/ScoutingSystem.gd")
 @onready var age_label: Label = $Control/Panel/Content/ContractRow/AgeLabel
 @onready var salary_label: Label = $Control/Panel/Content/ContractRow/SalaryLabel
 @onready var contract_label: Label = $Control/Panel/Content/ContractRow/ContractLabel
+@onready var injury_status_label: Label = $Control/Panel/Content/InjuryStatusLabel
 @onready var close_button: Button = $Control/Panel/Content/CloseButton
 
 
@@ -58,6 +59,7 @@ func show_player(player: Player, is_opponent: bool = false) -> void:
 	age_label.text = "Age: %d" % player.age
 	salary_label.text = "Salary: $%.1fM" % (float(player.salary) / 1_000_000.0)
 	contract_label.text = "Contract: %d yrs" % player.contract_years
+	_set_injury_status(player)
 
 	if not visibility["show_attributes"]:
 		_hide_attribute_labels()
@@ -148,6 +150,16 @@ func _get_team_name(player: Player) -> String:
 func _set_attribute_label(label: Label, attribute_name: String, value: int) -> void:
 	label.text = "%s: %d" % [attribute_name, value]
 	label.add_theme_color_override("font_color", _get_attribute_color(value))
+
+
+func _set_injury_status(player: Player) -> void:
+	if player.is_injured:
+		injury_status_label.text = "%s — %d games remaining" % [player.injury_type, player.injury_games_remaining]
+		injury_status_label.add_theme_color_override("font_color", Color(0.95, 0.25, 0.25))
+		return
+
+	injury_status_label.text = "Healthy"
+	injury_status_label.add_theme_color_override("font_color", Color(0.25, 0.85, 0.35))
 
 
 func _get_attribute_color(value: int) -> Color:

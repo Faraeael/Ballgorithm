@@ -8,6 +8,12 @@ const HOME_COURT_ADVANTAGE: float = 0.03
 const SEASON_WEEKS: int = 24
 const PLAYOFF_HOME_COURT_PATTERN: Array = [true, true, false, false, true, false, true]
 const BOX_SCORE_PLAYER_COUNT: int = 10
+const INJURY_CHANCE_PER_GAME: float = 0.03
+const INJURY_TYPES: Array = [
+	"Sprained Ankle", "Hamstring Strain", "Knee Contusion",
+	"Back Spasms", "Shoulder Soreness", "Wrist Sprain",
+	"Calf Strain", "Hip Flexor", "Foot Bruise", "Concussion"
+]
 
 
 static func simulate_game(home_team: Team, away_team: Team) -> Dictionary:
@@ -26,6 +32,9 @@ static func simulate_game(home_team: Team, away_team: Team) -> Dictionary:
 	var loser_score: int = maxi(winner_score - randi_range(1, 25), 70)
 	var home_score: int = winner_score if home_won else loser_score
 	var away_score: int = loser_score if home_won else winner_score
+	var injuries: Array = []
+	injuries.append_array(_roll_team_injuries(home_team))
+	injuries.append_array(_roll_team_injuries(away_team))
 
 	return {
 		"home_team_id": home_team.team_id,
@@ -35,6 +44,7 @@ static func simulate_game(home_team: Team, away_team: Team) -> Dictionary:
 		"home_won": home_won,
 		"home_score": home_score,
 		"away_score": away_score,
+		"injuries": injuries,
 		"home_box_score": _build_team_box_score(home_team, home_score),
 		"away_box_score": _build_team_box_score(away_team, away_score)
 	}
@@ -57,7 +67,22 @@ static func simulate_week(schedule: Array, week: int, all_teams: Array) -> Array
 		LeagueManager.record_result(home_team.team_id, away_team.team_id, result["home_won"])
 		results.append(result)
 
+	# Injuries are tracked in game-length units, but recovery advances once per simulated week.
+	tick_injuries(all_teams)
 	return results
+
+
+static func tick_injuries(all_teams: Array) -> void:
+	for team in all_teams:
+		for player in team.roster:
+			if not player.is_injured:
+				continue
+
+			player.injury_games_remaining -= 7
+			if player.injury_games_remaining <= 0:
+				player.is_injured = false
+				player.injury_type = ""
+				player.injury_games_remaining = 0
 
 
 static func simulate_full_season(schedule: Array, all_teams: Array) -> void:
@@ -116,8 +141,18 @@ static func _get_top_players(team: Team, count: int) -> Array:
 	return players.slice(0, mini(count, players.size()))
 
 
+static func _get_top_players_healthy(team: Team, count: int) -> Array:
+	var players: Array = []
+	for player in team.roster:
+		if not player.is_injured:
+			players.append(player)
+
+	players.sort_custom(_sort_players_by_overall)
+	return players.slice(0, mini(count, players.size()))
+
+
 static func _calculate_effective_strength(team: Team) -> float:
-	var top_players: Array = _get_top_players(team, TOP_PLAYER_COUNT)
+	var top_players: Array = _get_top_players_healthy(team, TOP_PLAYER_COUNT)
 	var total_overall: int = 0
 	for player in top_players:
 		total_overall += player.get_overall()
@@ -131,6 +166,32 @@ static func _calculate_effective_strength(team: Team) -> float:
 	var coach_bonus: float = float(team.staff_coach * COACH_BONUS_MULTIPLIER)
 	var facility_bonus: float = float(team.facilities * FACILITY_BONUS_MULTIPLIER)
 	return team_strength + coach_bonus + facility_bonus
+
+
+static func _roll_team_injuries(team: Team) -> Array:
+	var injuries: Array = []
+	for player in team.roster:
+		if player.is_injured:
+			continue
+
+		# Every active roster player has an independent game injury roll.
+		if randf() >= INJURY_CHANCE_PER_GAME:
+			continue
+
+		var base_duration: int = randi_range(3, 21)
+		# Medical staff reduce the rolled duration by 5% per tier, with a one-game minimum.
+		var doctor_multiplier: float = 1.0 - (float(team.staff_medical) * 0.05)
+		var adjusted_duration: int = maxi(ceili(float(base_duration) * doctor_multiplier), 1)
+		player.is_injured = true
+		player.injury_type = INJURY_TYPES.pick_random()
+		player.injury_games_remaining = adjusted_duration
+		injuries.append({
+			"player_name": player.full_name,
+			"team_id": team.team_id,
+			"injury_type": player.injury_type,
+			"games_remaining": player.injury_games_remaining
+		})
+	return injuries
 
 
 # Generates lightweight stat lines for feedback only; standings still use the v1 win formula above.

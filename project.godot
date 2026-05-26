@@ -25,6 +25,7 @@ SaveMenu="*res://scenes/SaveMenu.tscn"
 PlayerDetail="*res://scenes/PlayerDetail.tscn"
 RosterViewer="*res://scenes/RosterViewer.tscn"
 BoxScoreViewer="*res://scenes/BoxScoreViewer.tscn"
+StaffBrowser="*res://scenes/StaffBrowser.tscn"
 
 [physics]
 

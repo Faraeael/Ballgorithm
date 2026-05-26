@@ -31,6 +31,7 @@ func _ready() -> void:
 func _process_end_of_season() -> int:
 	var season_year: int = GameState.current_year
 	roster_changes = []
+	_clear_all_injuries()
 	var player_team: Team = GameState.get_player_team()
 	if player_team != null:
 		# Records are cleared for the next year, so capture the player's result first.
@@ -96,6 +97,21 @@ func _deduct_staff_salaries(team: Team) -> void:
 		total_salary += StaffGeneratorScript.get_tier_salary(tier)
 
 	team.budget = maxi(team.budget - total_salary, 0)
+
+
+func _clear_all_injuries() -> void:
+	# Offseason recovery resets every active roster and free agent before aging/progression runs.
+	for team in GameState.all_teams:
+		for player in team.roster:
+			_clear_player_injury(player)
+	for player in GameState.free_agents:
+		_clear_player_injury(player)
+
+
+func _clear_player_injury(player: Player) -> void:
+	player.is_injured = false
+	player.injury_games_remaining = 0
+	player.injury_type = ""
 
 
 func _apply_player_development(player: Player) -> void:

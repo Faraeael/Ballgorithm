@@ -124,6 +124,17 @@ func _refresh_ui(results: Array = []) -> void:
 			away_name
 		])
 
+	var weekly_injuries: Array = _collect_weekly_injuries(results)
+	if not weekly_injuries.is_empty():
+		week_results_list.add_item("INJURIES THIS WEEK")
+		for injury in weekly_injuries:
+			week_results_list.add_item("[%s] %s — %s (%d games)" % [
+				_find_team_name(injury.get("team_id", "")),
+				injury.get("player_name", "Unknown Player"),
+				injury.get("injury_type", "Unknown Injury"),
+				injury.get("games_remaining", 0)
+			])
+
 	if season_complete:
 		sim_week_button.disabled = true
 		sim_season_button.disabled = true
@@ -135,3 +146,10 @@ func _find_team_name(team_id: String) -> String:
 		if team.team_id == team_id:
 			return "%s %s" % [team.city, team.name]
 	return "Unknown Team"
+
+
+func _collect_weekly_injuries(results: Array) -> Array:
+	var injuries: Array = []
+	for result in results:
+		injuries.append_array(result.get("injuries", []))
+	return injuries

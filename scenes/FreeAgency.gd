@@ -190,13 +190,14 @@ func _refresh_ui() -> void:
 
 	roster_list.clear()
 	for player in team.roster:
-		roster_list.add_item("[%s] %s — OVR %d — %s/yr — %d yrs" % [
+		var roster_line: String = "[%s] %s — OVR %d — %s/yr — %d yrs" % [
 			player.position,
 			player.full_name,
 			player.get_overall(),
 			_format_money(player.salary),
 			player.contract_years
-		])
+		]
+		roster_list.add_item(_append_injury_flag(roster_line, player))
 
 	sign_player_button.disabled = true
 	release_player_button.disabled = true
@@ -218,11 +219,20 @@ func _format_money(amount: int) -> String:
 # Free agents are external players, so visible rating/archetype data depends on scout level.
 func _format_scouted_free_agent_row(player: Player) -> String:
 	var visibility: Dictionary = _get_scouting_visibility(player)
+	var row: String = ""
 	if visibility["show_exact_overall"]:
-		return "[%s] %s — OVR %d — %s — %s/yr — %d yrs" % [player.position, player.full_name, player.get_overall(), player.archetype, _format_money(player.salary), player.contract_years]
-	if visibility["show_overall_range"]:
-		return "[%s] %s — OVR %s — %s/yr — %d yrs" % [player.position, player.full_name, visibility["overall_range"], _format_money(player.salary), player.contract_years]
-	return "[%s] %s — ??? — %s/yr — %d yrs" % [player.position, player.full_name, _format_money(player.salary), player.contract_years]
+		row = "[%s] %s — OVR %d — %s — %s/yr — %d yrs" % [player.position, player.full_name, player.get_overall(), player.archetype, _format_money(player.salary), player.contract_years]
+	elif visibility["show_overall_range"]:
+		row = "[%s] %s — OVR %s — %s/yr — %d yrs" % [player.position, player.full_name, visibility["overall_range"], _format_money(player.salary), player.contract_years]
+	else:
+		row = "[%s] %s — ??? — %s/yr — %d yrs" % [player.position, player.full_name, _format_money(player.salary), player.contract_years]
+	return _append_injury_flag(row, player)
+
+
+func _append_injury_flag(row: String, player: Player) -> String:
+	if player.is_injured:
+		return "%s ⚠ [%s]" % [row, player.injury_type]
+	return row
 
 
 func _get_scouting_visibility(player: Player) -> Dictionary:
