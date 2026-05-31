@@ -11,6 +11,7 @@ enum Phase {
 	DRAFT,
 	FREE_AGENCY,
 	SEASON_SIM,
+	AWARDS,
 	PLAY_IN,
 	PLAYOFFS,
 	FINALS,
@@ -31,6 +32,10 @@ var all_teams: Array = []
 var free_agents: Array = []
 var draft_pool_next: Array = []
 var schedule: Array = []
+var season_stats: Dictionary = {}
+var prior_ratings: Dictionary = {}
+var history: Array = []
+var current_awards: Dictionary = {}
 
 
 # Changes game flow phase through the single approved path and notifies active scenes.
@@ -67,6 +72,10 @@ func reset() -> void:
 	free_agents = []
 	draft_pool_next = []
 	schedule = []
+	season_stats = {}
+	prior_ratings = {}
+	history = []
+	current_awards = {}
 
 
 # Builds a new league using the player's chosen team identity, then enters the preseason hub.
@@ -112,7 +121,11 @@ func save_game() -> void:
 		"all_teams": team_data,
 		"free_agents": free_agent_data,
 		"draft_pool_next": draft_pool_next_data,
-		"schedule": schedule
+		"schedule": schedule,
+		"season_stats": season_stats,
+		"prior_ratings": prior_ratings,
+		"history": history,
+		"current_awards": current_awards
 	}
 
 	var save_file: FileAccess = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -156,6 +169,10 @@ func load_game() -> void:
 	champion_team_id = save_data.get("champion_team_id", "")
 	champion_name = save_data.get("champion_name", "")
 	schedule = save_data.get("schedule", [])
+	season_stats = save_data.get("season_stats", {})
+	prior_ratings = save_data.get("prior_ratings", {})
+	history = save_data.get("history", [])
+	current_awards = save_data.get("current_awards", {})
 
 	all_teams = []
 	for team_data in save_data.get("all_teams", []):

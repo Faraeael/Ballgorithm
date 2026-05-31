@@ -1,5 +1,7 @@
 extends Control
 
+const AwardsEngineScript = preload("res://scripts/AwardsEngine.gd")
+
 const SEASON_WEEKS: int = 24
 
 @onready var year_label: Label = $VBoxContainer/Header/YearLabel
@@ -9,6 +11,7 @@ const SEASON_WEEKS: int = 24
 @onready var week_results_list: ItemList = $VBoxContainer/MainArea/RightPanel/WeekResultsList
 @onready var sim_week_button: Button = $VBoxContainer/Actions/SimWeekButton
 @onready var sim_season_button: Button = $VBoxContainer/Actions/SimSeasonButton
+@onready var stats_button: Button = $VBoxContainer/Actions/StatsButton
 @onready var advance_button: Button = $VBoxContainer/Actions/AdvanceButton
 
 var current_week: int = 1
@@ -21,6 +24,7 @@ func _ready() -> void:
 	LeagueManager.reset_season_records()
 	sim_week_button.pressed.connect(_on_sim_week)
 	sim_season_button.pressed.connect(_on_sim_season)
+	stats_button.pressed.connect(_on_stats)
 	advance_button.pressed.connect(_on_advance)
 	standings_list.item_activated.connect(_on_standings_team_activated)
 	week_results_list.item_activated.connect(_on_week_result_activated)
@@ -33,6 +37,7 @@ func _on_sim_week() -> void:
 
 	var results: Array = SimEngine.simulate_week(GameState.schedule, current_week, GameState.all_teams)
 	current_week += 1
+	_refresh_season_stats()
 	if current_week > SEASON_WEEKS:
 		season_complete = true
 		sim_week_button.disabled = true
@@ -48,6 +53,7 @@ func _on_sim_season() -> void:
 	SimEngine.simulate_full_season(GameState.schedule, GameState.all_teams)
 	current_week = SEASON_WEEKS
 	season_complete = true
+	_refresh_season_stats()
 	sim_week_button.disabled = true
 	sim_season_button.disabled = true
 	advance_button.disabled = false
@@ -70,8 +76,12 @@ func _on_advance() -> void:
 	else:
 		GameState.playoff_status = "lottery"
 
-	GameState.set_phase(GameState.Phase.PLAY_IN)
-	get_tree().change_scene_to_file("res://scenes/PlayIn.tscn")
+	GameState.set_phase(GameState.Phase.AWARDS)
+	get_tree().change_scene_to_file("res://scenes/AwardsScreen.tscn")
+
+
+func _on_stats() -> void:
+	SeasonStatsViewer.show_stats()
 
 
 # Double-click a standings row to inspect that team's current roster.
@@ -139,6 +149,7 @@ func _refresh_ui(results: Array = []) -> void:
 		sim_week_button.disabled = true
 		sim_season_button.disabled = true
 		advance_button.disabled = false
+	stats_button.disabled = current_week <= 1
 
 
 func _find_team_name(team_id: String) -> String:
@@ -153,3 +164,7 @@ func _collect_weekly_injuries(results: Array) -> Array:
 	for result in results:
 		injuries.append_array(result.get("injuries", []))
 	return injuries
+
+
+func _refresh_season_stats() -> void:
+	GameState.season_stats = AwardsEngineScript.build_season_stats(GameState.schedule, GameState.all_teams)

@@ -1,6 +1,7 @@
 extends Control
 
 const StaffGeneratorScript = preload("res://scripts/StaffGenerator.gd")
+const ContractExtensionScript = preload("res://scripts/ContractExtension.gd")
 
 const FACILITIES_UPGRADE_COST: int = 3_000_000
 const MAX_LEVEL: int = 5
@@ -10,11 +11,14 @@ const MAX_LEVEL: int = 5
 @onready var team_label: Label = $VBoxContainer/Header/TeamLabel
 @onready var year_label: Label = $VBoxContainer/Header/YearLabel
 @onready var budget_label: Label = $VBoxContainer/Header/BudgetLabel
+@onready var trade_center_button: Button = $VBoxContainer/Header/TradeCenterButton
+@onready var history_button: Button = $VBoxContainer/Header/HistoryButton
 @onready var top_separator: HSeparator = $VBoxContainer/TopSeparator
 @onready var main_area: HBoxContainer = $VBoxContainer/MainArea
 @onready var left_panel: VBoxContainer = $VBoxContainer/MainArea/LeftPanel
 @onready var roster_title: Label = $VBoxContainer/MainArea/LeftPanel/RosterTitle
 @onready var roster_list: ItemList = $VBoxContainer/MainArea/LeftPanel/RosterList
+@onready var extend_contract_button: Button = $VBoxContainer/MainArea/LeftPanel/ExtendContractButton
 @onready var panel_separator: VSeparator = $VBoxContainer/MainArea/PanelSeparator
 @onready var right_panel: VBoxContainer = $VBoxContainer/MainArea/RightPanel
 @onready var staff_title: Label = $VBoxContainer/MainArea/RightPanel/StaffTitle
@@ -44,16 +48,26 @@ const MAX_LEVEL: int = 5
 @onready var bottom_separator: HSeparator = $VBoxContainer/BottomSeparator
 @onready var advance_to_draft_button: Button = $VBoxContainer/AdvanceToDraftButton
 
+var selected_player: Player = null
+
 
 func _ready() -> void:
 	find_coach_button.pressed.connect(_on_find_coach)
 	find_scout_button.pressed.connect(_on_find_scout)
 	find_medical_button.pressed.connect(_on_find_medical)
 	upgrade_facilities_button.pressed.connect(_on_upgrade_facilities)
+	trade_center_button.pressed.connect(_on_trade_center)
+	history_button.pressed.connect(_on_history)
+	extend_contract_button.pressed.connect(_on_extend_contract)
 	advance_to_draft_button.pressed.connect(_on_advance)
+	roster_list.item_selected.connect(_on_roster_player_selected)
 	roster_list.item_activated.connect(_on_roster_player_activated)
 	if not StaffBrowser.staff_hired.is_connected(_on_staff_hired):
 		StaffBrowser.staff_hired.connect(_on_staff_hired)
+	if not ExtensionBrowser.extension_signed.is_connected(_on_extension_signed):
+		ExtensionBrowser.extension_signed.connect(_on_extension_signed)
+	if not TradeBrowser.trade_completed.is_connected(_on_trade_completed):
+		TradeBrowser.trade_completed.connect(_on_trade_completed)
 	_refresh_ui()
 
 
@@ -77,6 +91,11 @@ func _refresh_ui() -> void:
 			_format_money(player.salary),
 			player.contract_years
 		]
+		# Contract markers make extension-eligible and expiring deals visible from the hub roster.
+		if player.contract_years <= 2:
+			roster_line += " 🔔"
+		if player.contract_years == 1:
+			roster_line += " ⚠"
 		if player.is_injured:
 			roster_line += " ⚠ [%s]" % player.injury_type
 		roster_list.add_item(roster_line)
@@ -91,6 +110,7 @@ func _refresh_ui() -> void:
 	payroll_label.text = "Payroll: %s" % _format_money(cap_summary["payroll"])
 
 	advance_to_draft_button.text = "Advance to Draft"
+	_refresh_extension_button(team)
 
 
 # Staff candidates are shown in a shared autoload overlay so hiring can compare named options.
@@ -114,6 +134,14 @@ func _on_upgrade_facilities() -> void:
 		_refresh_ui()
 
 
+func _on_trade_center() -> void:
+	TradeBrowser.show_browser()
+
+
+func _on_history() -> void:
+	HistoryViewer.show_history()
+
+
 func _show_staff_browser(role: String) -> void:
 	var team: Team = GameState.get_player_team()
 	if team == null:
@@ -130,9 +158,36 @@ func _on_staff_hired(_role: String, _member_dict: Dictionary) -> void:
 	_refresh_ui()
 
 
+func _on_extension_signed(_player: Player) -> void:
+	_refresh_ui()
+
+
+func _on_trade_completed() -> void:
+	_refresh_ui()
+
+
 func _on_advance() -> void:
 	GameState.set_phase(GameState.Phase.DRAFT)
 	get_tree().change_scene_to_file("res://scenes/Draft.tscn")
+
+
+func _on_roster_player_selected(index: int) -> void:
+	var team: Team = GameState.get_player_team()
+	if team == null or index < 0 or index >= team.roster.size():
+		selected_player = null
+		_refresh_extension_button(team)
+		return
+
+	selected_player = team.roster[index]
+	_refresh_extension_button(team)
+
+
+func _on_extend_contract() -> void:
+	var team: Team = GameState.get_player_team()
+	if team == null or selected_player == null or not ContractExtensionScript.can_extend(selected_player):
+		return
+
+	ExtensionBrowser.show_extension(selected_player, team)
 
 
 # Double-click opens the shared detail overlay for the matching roster entry.
@@ -142,6 +197,16 @@ func _on_roster_player_activated(index: int) -> void:
 		return
 
 	PlayerDetail.show_player(team.roster[index])
+
+
+func _refresh_extension_button(team: Team) -> void:
+	if team == null or selected_player == null or team.roster.find(selected_player) == -1:
+		extend_contract_button.disabled = true
+		extend_contract_button.text = "Extend Contract"
+		return
+
+	extend_contract_button.disabled = not ContractExtensionScript.can_extend(selected_player)
+	extend_contract_button.text = "Extend Contract" if ContractExtensionScript.can_extend(selected_player) else "Not Extension Eligible"
 
 
 func _refresh_staff_row(role: String, tier: int, member: Dictionary, name_label: Label, effect_label: Label, cost_label: Label, button: Button) -> void:

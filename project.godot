@@ -26,6 +26,10 @@ PlayerDetail="*res://scenes/PlayerDetail.tscn"
 RosterViewer="*res://scenes/RosterViewer.tscn"
 BoxScoreViewer="*res://scenes/BoxScoreViewer.tscn"
 StaffBrowser="*res://scenes/StaffBrowser.tscn"
+ExtensionBrowser="*res://scenes/ExtensionBrowser.tscn"
+TradeBrowser="*res://scenes/TradeBrowser.tscn"
+SeasonStatsViewer="*res://scenes/SeasonStatsViewer.tscn"
+HistoryViewer="*res://scenes/HistoryViewer.tscn"
 
 [physics]
 

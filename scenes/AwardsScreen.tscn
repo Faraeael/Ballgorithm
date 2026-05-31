@@ -1,0 +1,90 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/AwardsScreen.gd" id="1_awardsscreen"]
+
+[node name="AwardsScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_awardsscreen")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+
+[node name="TitleLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Season Awards"
+
+[node name="YearLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "Year 1"
+
+[node name="HSeparator" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="MainArea" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 16
+
+[node name="AwardsPanel" type="VBoxContainer" parent="VBoxContainer/MainArea"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="AwardsTitle" type="Label" parent="VBoxContainer/MainArea/AwardsPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "INDIVIDUAL AWARDS"
+
+[node name="AwardsList" type="ItemList" parent="VBoxContainer/MainArea/AwardsPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="VSeparator" type="VSeparator" parent="VBoxContainer/MainArea"]
+layout_mode = 2
+
+[node name="AllLeaguePanel" type="VBoxContainer" parent="VBoxContainer/MainArea"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="AllLeagueTitle" type="Label" parent="VBoxContainer/MainArea/AllLeaguePanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "ALL-LEAGUE TEAMS"
+
+[node name="AllLeagueList" type="ItemList" parent="VBoxContainer/MainArea/AllLeaguePanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="HSeparator2" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="Actions" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="StatsButton" type="Button" parent="VBoxContainer/Actions"]
+custom_minimum_size = Vector2(180, 52)
+layout_mode = 2
+text = "View Season Stats"
+
+[node name="AdvanceButton" type="Button" parent="VBoxContainer/Actions"]
+custom_minimum_size = Vector2(240, 52)
+layout_mode = 2
+text = "Advance to Play-In"

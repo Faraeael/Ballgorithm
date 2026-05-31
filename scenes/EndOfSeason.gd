@@ -1,6 +1,7 @@
 extends Control
 
 const StaffGeneratorScript = preload("res://scripts/StaffGenerator.gd")
+const HistoryManagerScript = preload("res://scripts/HistoryManager.gd")
 
 const DRAFT_CLASS_POSITIONS: Array = [
 	"PG", "PG", "PG", "PG", "PG", "PG", "PG", "PG", "PG", "PG",
@@ -15,7 +16,8 @@ const DRAFT_CLASS_POSITIONS: Array = [
 @onready var record_label: Label = $VBoxContainer/RecordLabel
 @onready var result_label: Label = $VBoxContainer/ResultLabel
 @onready var roster_changes_list: ItemList = $VBoxContainer/RosterChangesList
-@onready var next_season_button: Button = $VBoxContainer/NextSeasonButton
+@onready var history_button: Button = $VBoxContainer/Actions/HistoryButton
+@onready var next_season_button: Button = $VBoxContainer/Actions/NextSeasonButton
 
 var player_wins: int = 0
 var player_losses: int = 0
@@ -23,6 +25,7 @@ var roster_changes: Array = []
 
 
 func _ready() -> void:
+	history_button.pressed.connect(_on_history)
 	next_season_button.pressed.connect(_on_next_season)
 	var season_year: int = _process_end_of_season()
 	_refresh_ui(season_year, roster_changes)
@@ -37,6 +40,7 @@ func _process_end_of_season() -> int:
 		# Records are cleared for the next year, so capture the player's result first.
 		player_wins = player_team.wins
 		player_losses = player_team.losses
+		_record_history_once()
 		_deduct_staff_salaries(player_team)
 
 	_reassign_draft_picks_by_record()
@@ -77,6 +81,27 @@ func _refresh_ui(season_year: int, changes: Array) -> void:
 		roster_changes_list.add_item(change)
 
 
+func _record_history_once() -> void:
+	for season in GameState.history:
+		if int(season.get("year", 0)) == GameState.current_year:
+			return
+
+	var player_record: Dictionary = {
+		"wins": player_wins,
+		"losses": player_losses,
+		"playoff_status": GameState.playoff_status
+	}
+	# Snapshot champion, awards, standings, and player result before offseason resets mutate records.
+	GameState.history.append(HistoryManagerScript.record_season(
+		GameState.current_year,
+		GameState.champion_name,
+		GameState.champion_team_id,
+		GameState.current_awards,
+		LeagueManager.get_standings(),
+		player_record
+	))
+
+
 func _on_next_season() -> void:
 	GameState.playoff_status = ""
 	GameState.champion_team_id = ""
@@ -85,6 +110,10 @@ func _on_next_season() -> void:
 	GameState.schedule = []
 	GameState.set_phase(GameState.Phase.PRE_SEASON_HUB)
 	get_tree().change_scene_to_file("res://scenes/PreSeasonHub.tscn")
+
+
+func _on_history() -> void:
+	HistoryViewer.show_history()
 
 
 # Staff salaries are annual operating costs paid before the next preseason budget decisions.

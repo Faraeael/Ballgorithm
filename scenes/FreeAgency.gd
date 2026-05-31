@@ -1,6 +1,7 @@
 extends Control
 
 const ScoutingSystemScript = preload("res://scripts/ScoutingSystem.gd")
+const AIFreeAgencyScript = preload("res://scripts/AIFreeAgency.gd")
 
 const ROSTER_MAX: int = 15
 const ROSTER_MIN_TO_ADVANCE: int = 10
@@ -167,6 +168,7 @@ func _on_advance() -> void:
 		return
 
 	GameState.schedule = LeagueManager.generate_schedule()
+	AIFreeAgencyScript.run_ai_free_agency(GameState.all_teams, GameState.free_agents)
 	GameState.set_phase(GameState.Phase.SEASON_SIM)
 	get_tree().change_scene_to_file("res://scenes/SeasonSim.tscn")
 

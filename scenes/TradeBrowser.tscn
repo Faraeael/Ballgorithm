@@ -1,0 +1,165 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/TradeBrowser.gd" id="1_tradebrowser"]
+
+[node name="TradeBrowser" type="CanvasLayer"]
+script = ExtResource("1_tradebrowser")
+
+[node name="Control" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="PanelContainer" type="PanelContainer" parent="Control"]
+custom_minimum_size = Vector2(780, 620)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -390.0
+offset_top = -310.0
+offset_right = 390.0
+offset_bottom = 310.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 20
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Control/PanelContainer"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Header" type="HBoxContainer" parent="Control/PanelContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TitleLabel" type="Label" parent="Control/PanelContainer/VBoxContainer/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 22
+text = "Trade Center"
+
+[node name="TeamPicker" type="OptionButton" parent="Control/PanelContainer/VBoxContainer/Header"]
+custom_minimum_size = Vector2(240, 36)
+layout_mode = 2
+
+[node name="HSeparator" type="HSeparator" parent="Control/PanelContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="MainArea" type="HBoxContainer" parent="Control/PanelContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 16
+
+[node name="LeftPanel" type="VBoxContainer" parent="Control/PanelContainer/VBoxContainer/MainArea"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="YourTeamLabel" type="Label" parent="Control/PanelContainer/VBoxContainer/MainArea/LeftPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "YOUR PLAYERS"
+
+[node name="YourRosterList" type="ItemList" parent="Control/PanelContainer/VBoxContainer/MainArea/LeftPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="OfferingLabel" type="Label" parent="Control/PanelContainer/VBoxContainer/MainArea/LeftPanel"]
+layout_mode = 2
+text = "Offering: none"
+
+[node name="CenterPanel" type="VBoxContainer" parent="Control/PanelContainer/VBoxContainer/MainArea"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AddOfferButton" type="Button" parent="Control/PanelContainer/VBoxContainer/MainArea/CenterPanel"]
+custom_minimum_size = Vector2(110, 40)
+layout_mode = 2
+disabled = true
+text = "→ Offer"
+
+[node name="RemoveOfferButton" type="Button" parent="Control/PanelContainer/VBoxContainer/MainArea/CenterPanel"]
+custom_minimum_size = Vector2(110, 40)
+layout_mode = 2
+disabled = true
+text = "← Remove"
+
+[node name="AddRequestButton" type="Button" parent="Control/PanelContainer/VBoxContainer/MainArea/CenterPanel"]
+custom_minimum_size = Vector2(110, 40)
+layout_mode = 2
+disabled = true
+text = "← Request"
+
+[node name="RemoveRequestButton" type="Button" parent="Control/PanelContainer/VBoxContainer/MainArea/CenterPanel"]
+custom_minimum_size = Vector2(110, 40)
+layout_mode = 2
+disabled = true
+text = "→ Remove"
+
+[node name="RightPanel" type="VBoxContainer" parent="Control/PanelContainer/VBoxContainer/MainArea"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="AiTeamLabel" type="Label" parent="Control/PanelContainer/VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "THEIR PLAYERS"
+
+[node name="AiRosterList" type="ItemList" parent="Control/PanelContainer/VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="RequestingLabel" type="Label" parent="Control/PanelContainer/VBoxContainer/MainArea/RightPanel"]
+layout_mode = 2
+text = "Requesting: none"
+
+[node name="HSeparator2" type="HSeparator" parent="Control/PanelContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="StatusRow" type="HBoxContainer" parent="Control/PanelContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TradeValueLabel" type="Label" parent="Control/PanelContainer/VBoxContainer/StatusRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+autowrap_mode = 1
+text = "Trade Value: —"
+
+[node name="ValidationLabel" type="Label" parent="Control/PanelContainer/VBoxContainer/StatusRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+autowrap_mode = 1
+
+[node name="HSeparator3" type="HSeparator" parent="Control/PanelContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="Actions" type="HBoxContainer" parent="Control/PanelContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ProposeTradeButton" type="Button" parent="Control/PanelContainer/VBoxContainer/Actions"]
+custom_minimum_size = Vector2(200, 48)
+layout_mode = 2
+disabled = true
+text = "Propose Trade"
+
+[node name="ClearButton" type="Button" parent="Control/PanelContainer/VBoxContainer/Actions"]
+custom_minimum_size = Vector2(120, 48)
+layout_mode = 2
+text = "Clear"
+
+[node name="CloseButton" type="Button" parent="Control/PanelContainer/VBoxContainer/Actions"]
+custom_minimum_size = Vector2(120, 48)
+layout_mode = 2
+text = "Close"

@@ -43,6 +43,16 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "Budget: $0"
 
+[node name="TradeCenterButton" type="Button" parent="VBoxContainer/Header"]
+custom_minimum_size = Vector2(140, 40)
+layout_mode = 2
+text = "Trade Center"
+
+[node name="HistoryButton" type="Button" parent="VBoxContainer/Header"]
+custom_minimum_size = Vector2(100, 40)
+layout_mode = 2
+text = "History"
+
 [node name="TopSeparator" type="HSeparator" parent="VBoxContainer"]
 layout_mode = 2
 
@@ -64,6 +74,12 @@ text = "ROSTER"
 [node name="RosterList" type="ItemList" parent="VBoxContainer/MainArea/LeftPanel"]
 layout_mode = 2
 size_flags_vertical = 3
+
+[node name="ExtendContractButton" type="Button" parent="VBoxContainer/MainArea/LeftPanel"]
+custom_minimum_size = Vector2(200, 48)
+layout_mode = 2
+disabled = true
+text = "Extend Contract"
 
 [node name="PanelSeparator" type="VSeparator" parent="VBoxContainer/MainArea"]
 layout_mode = 2

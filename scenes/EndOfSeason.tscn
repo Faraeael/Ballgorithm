@@ -64,7 +64,16 @@ size_flags_vertical = 3
 [node name="BottomSeparator" type="HSeparator" parent="VBoxContainer"]
 layout_mode = 2
 
-[node name="NextSeasonButton" type="Button" parent="VBoxContainer"]
+[node name="Actions" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="HistoryButton" type="Button" parent="VBoxContainer/Actions"]
+custom_minimum_size = Vector2(160, 52)
+layout_mode = 2
+text = "View History"
+
+[node name="NextSeasonButton" type="Button" parent="VBoxContainer/Actions"]
 custom_minimum_size = Vector2(240, 52)
 layout_mode = 2
 text = "Start Next Season"
