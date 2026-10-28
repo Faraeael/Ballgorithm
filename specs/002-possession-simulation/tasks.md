@@ -1,8 +1,8 @@
-# Tasks 002 — FROZEN SPECIFICATION, NOT AUTHORIZED TO EXECUTE
+# Tasks 002 — PHASE 1 IMPLEMENTED, PHASE 2 NOT AUTHORIZED
 
 Specification frozen: 2026-10-28 at baseline `a431aeb5a652b134ce40cf442c7d9ffee874fe79`.
-OD-01…OD-14 are adopted; A1 (duration distribution) and A2 (`package:crypto`)
-are owner-approved. Implementation authorization is still outstanding.
+Phase 1 (T004–T007) is implemented on `feat/m002-phase1-simulation-foundation`.
+T008–T019 remain unauthorized and unchecked.
 
 OD-01…OD-14 and A1/A2 are recorded in `design-decisions.md` and
 `review-findings.md`. The specification is frozen; no implementation task may
@@ -10,17 +10,17 @@ start before T003 receives separate authorization.
 
 ## Design/review gate
 
-- [ ] T001 Review M001 source at pinned commit; document unchanged API/versions and risks.
-- [ ] T002 Approve typed event model, clock/foul/bonus rules, lineup limitations and calibration review bands.
-- [ ] T002a Confirm the live-action duration distribution and the `package:crypto` SHA-256 dependency as part of specification approval.
-- [ ] T003 Record owner approval of this specification and **separate authorization to implement M002**. No coding before approval.
+- [x] T001 Review M001 source at pinned commit; document unchanged API/versions and risks. Evidence: M001 source inspected; versions verified unchanged.
+- [x] T002 Approve typed event model, clock/foul/bonus rules, lineup limitations and calibration review bands. Evidence: frozen specification commit dd4234d.
+- [x] T002a Confirm the live-action duration distribution and the `package:crypto` SHA-256 dependency as part of specification approval. Evidence: A1/A2 recorded as owner-approved in design-decisions.md and review-findings.md.
+- [x] T003 Record owner approval of this specification and **separate authorization to implement M002**. Evidence: Phase 1 authorization covers T004–T007 only; T008–T019 remain unauthorized.
 
 ## Pure Dart design and implementation (only after T003)
 
-- [ ] T004 Add versioned `GameRules`, `GameInput`, `ActiveLineup` with typed validation failures and tests.
-- [ ] T005 Implement typed immutable `GameEvent` hierarchy and canonical event serialization.
-- [ ] T006 Implement replayable `GameState`/reducer with legal transitions, possession/period/clock guards and illegal-event fixtures.
-- [ ] T007 Implement derived-only team/player/period box-score accounting; test every equation and event attribution.
+- [x] T004 Add versioned `GameRules`, `GameInput`, `ActiveLineup` with typed validation failures and tests.
+- [x] T005 Implement typed immutable `GameEvent` hierarchy and canonical event serialization.
+- [x] T006 Implement replayable `GameState`/reducer with legal transitions, possession/period/clock guards and illegal-event fixtures.
+- [x] T007 Implement derived-only team/player/period box-score accounting; test every equation and event attribution.
 - [ ] T008 Implement pure ratings-based shooter, shot-type, outcome, turnover, foul, rebound, assist/steal/block models; document coefficients.
 - [ ] T009 Implement game orchestrator: full regulation, transitions, shot clock, simple bonus, and bounded overtime.
 - [ ] T010 Implement shooting-foul/and-one/FT/rebound edge cases and dead-ball period handling.
