@@ -71,7 +71,7 @@ final class _Miss {
 }
 
 final class _FreeThrowGroup {
-  const _FreeThrowGroup({
+  _FreeThrowGroup({
     required this.teamId,
     required this.shooterId,
     required this.total,
@@ -84,6 +84,7 @@ final class _FreeThrowGroup {
   final int total;
   final int gameClock;
   final int? shotClock;
+  String? groupId;
 }
 
 final class _Replay {
@@ -114,6 +115,7 @@ final class _Replay {
   final List<GameEvent> _processed = <GameEvent>[];
   final Map<String, int> _teamFouls = <String, int>{};
   int _periodPossessions = 0;
+  String? _expectedNextOffenseTeamId;
   String? _periodStartingTeamId;
 
   GameState run() {
@@ -372,6 +374,7 @@ final class _Replay {
     _periodEnded = false;
     _periodStartingTeamId = event.startingTeamId;
     _periodPossessions = 0;
+    _expectedNextOffenseTeamId = null;
     _teamFouls[input.homeTeamId.value] = 0;
     _teamFouls[input.awayTeamId.value] = 0;
     _clearPending();
@@ -420,6 +423,7 @@ final class _Replay {
       );
     }
     _periodEnded = true;
+    _expectedNextOffenseTeamId = null;
     _clearPending();
     _state = _state.copyWith(clearPossession: true, clearShotClock: true);
   }
@@ -497,6 +501,15 @@ final class _Replay {
         'period must open with the team that won the opening possession',
       );
     }
+    if (_expectedNextOffenseTeamId != null &&
+        event.offenseTeamId != _expectedNextOffenseTeamId) {
+      _fail(
+        GameValidationCode.wrongTeam,
+        'event ${event.sequence}.offenseTeamId',
+        'next possession must belong to $_expectedNextOffenseTeamId',
+      );
+    }
+    _expectedNextOffenseTeamId = null;
     _periodPossessions++;
     _clearPending();
     _freeThrows = null;
@@ -544,6 +557,17 @@ final class _Replay {
         'event ${event.sequence}.reason',
         'reason ${reason.wire} does not match the preceding outcome',
       );
+    }
+    switch (reason) {
+      case PossessionEndReason.madeFieldGoal:
+      case PossessionEndReason.turnover:
+      case PossessionEndReason.defensiveRebound:
+      case PossessionEndReason.madeFinalFreeThrow:
+        _expectedNextOffenseTeamId = input
+            .opponentOf(_teamId(event.offenseTeamId)!)
+            .value;
+      case PossessionEndReason.periodEnd:
+        _expectedNextOffenseTeamId = null;
     }
     _clearPending();
     _state = _state.copyWith(clearPossession: true, clearShotClock: true);
@@ -785,6 +809,15 @@ final class _Replay {
         GameValidationCode.freeThrowSequenceInvalid,
         'event ${event.sequence}.groupId',
         'free-throw groupId must be non-empty',
+      );
+    }
+    if (group.groupId == null) {
+      group.groupId = event.groupId;
+    } else if (group.groupId != event.groupId) {
+      _fail(
+        GameValidationCode.freeThrowSequenceInvalid,
+        'event ${event.sequence}.groupId',
+        'free-throw groupId changed within the awarded group',
       );
     }
     if (event.teamId != group.teamId ||

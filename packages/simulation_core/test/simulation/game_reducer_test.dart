@@ -1274,4 +1274,405 @@ void main() {
     final state = GameEventReducer.replay(s.input, s.ledger());
     expect(state.hasOpenPossession, isFalse);
   });
+
+  test(
+    'enforces next-possession ownership after all change-of-possession endings',
+    () {
+      GameScript transition(
+        GameInput value,
+        String kind, {
+        required bool sameTeam,
+      }) {
+        final s = GameScript(value)
+          ..startGame()
+          ..startPeriod(1, value.startingTeamId);
+        final a = value.startingTeamId;
+        final b = value.opponentOf(a);
+        final ap = playerAt(value, a, Position.pg);
+        final bp = playerAt(value, b, Position.pg);
+        s.startPossession('p1', a, clock: kind == 'madeFt' ? 20 : 24);
+        switch (kind) {
+          case 'madeFg':
+            s.fga(team: a, shooter: ap, clock: 10, shotClock: 10);
+            s.endPossession(
+              possessionId: 'p1',
+              team: a,
+              reason: PossessionEndReason.madeFieldGoal,
+              clock: 10,
+              shotClock: 10,
+            );
+          case 'turnover':
+            s.turnover(
+              team: a,
+              player: ap,
+              reason: TurnoverReason.steal,
+              stolenBy: bp,
+              clock: 10,
+              shotClock: 10,
+            );
+            s.endPossession(
+              possessionId: 'p1',
+              team: a,
+              reason: PossessionEndReason.turnover,
+              clock: 10,
+              shotClock: 10,
+            );
+          case 'dreb':
+            s.fga(team: a, shooter: ap, made: false, clock: 10, shotClock: 10);
+            s.rebound(
+              team: b,
+              player: bp,
+              offensive: false,
+              missedEventSequence: 4,
+              clock: 10,
+              shotClock: 24,
+            );
+            s.endPossession(
+              possessionId: 'p1',
+              team: a,
+              reason: PossessionEndReason.defensiveRebound,
+              clock: 10,
+              shotClock: 24,
+            );
+          case 'madeFt':
+            s.foul(
+              team: b,
+              player: bp,
+              kind: FoulKind.shooting,
+              freeThrows: 2,
+              drawnBy: ap,
+              clock: 10,
+              shotClock: 14,
+            );
+            s.ft(
+              team: a,
+              shooter: ap,
+              groupId: 'g1',
+              index: 1,
+              total: 2,
+              made: true,
+              clock: 10,
+              shotClock: 14,
+            );
+            s.ft(
+              team: a,
+              shooter: ap,
+              groupId: 'g1',
+              index: 2,
+              total: 2,
+              made: true,
+              clock: 10,
+              shotClock: 14,
+            );
+            s.endPossession(
+              possessionId: 'p1',
+              team: a,
+              reason: PossessionEndReason.madeFinalFreeThrow,
+              clock: 10,
+              shotClock: 14,
+            );
+          default:
+            fail('unknown kind $kind');
+        }
+        s.startPossession('p2', sameTeam ? a : b, clock: 10, shotClock: 24);
+        return s;
+      }
+
+      for (final kind in ['madeFg', 'turnover', 'dreb', 'madeFt']) {
+        final wrong = transition(input, kind, sameTeam: true);
+        expect(
+          () => GameEventReducer.replay(wrong.input, wrong.ledger()),
+          throwsCode(GameValidationCode.wrongTeam),
+          reason: '$kind same-team restart',
+        );
+        final right = transition(input, kind, sameTeam: false);
+        expect(
+          GameEventReducer.replay(
+            right.input,
+            right.ledger(),
+          ).hasOpenPossession,
+          isTrue,
+          reason: '$kind opponent restart',
+        );
+      }
+    },
+  );
+
+  test('allows an offensive rebound to continue the same possession', () {
+    final s = script();
+    final a = s.input.startingTeamId;
+    final ap = playerAt(s.input, a, Position.pg);
+    s.startPossession('p1', a, clock: 24);
+    s.fga(team: a, shooter: ap, made: false, clock: 10, shotClock: 10);
+    s.rebound(
+      team: a,
+      player: ap,
+      offensive: true,
+      missedEventSequence: 4,
+      clock: 10,
+      shotClock: 14,
+    );
+    s.fga(team: a, shooter: ap, clock: 5, shotClock: 9);
+    s.endPossession(
+      possessionId: 'p1',
+      team: a,
+      reason: PossessionEndReason.madeFieldGoal,
+      clock: 5,
+      shotClock: 9,
+    );
+    expect(
+      GameEventReducer.replay(s.input, s.ledger()).hasOpenPossession,
+      isFalse,
+    );
+  });
+
+  test('resets next-possession ownership at a period boundary', () {
+    final s = script();
+    final a = s.input.startingTeamId;
+    final b = s.input.opponentOf(a);
+    final ap = playerAt(s.input, a, Position.pg);
+    final bp = playerAt(s.input, b, Position.pg);
+    s.startPossession('p1', a, clock: 24);
+    s.fga(team: a, shooter: ap, clock: 10, shotClock: 10);
+    s.endPossession(
+      possessionId: 'p1',
+      team: a,
+      reason: PossessionEndReason.madeFieldGoal,
+      clock: 10,
+      shotClock: 10,
+    );
+    // B takes over and scores at the horn, so the leaked expectation would be A.
+    s.startPossession('p2', b, clock: 10);
+    s.fga(team: b, shooter: bp, clock: 0, shotClock: 14);
+    s.endPossession(
+      possessionId: 'p2',
+      team: b,
+      reason: PossessionEndReason.madeFieldGoal,
+      clock: 0,
+      shotClock: 14,
+    );
+    s.endPeriod(1);
+    // Q2 is started by B under OD-01; this must not conflict with a leaked A.
+    s.startPeriod(2, b);
+    s.startPossession('p3', b, clock: 24);
+    expect(GameEventReducer.replay(s.input, s.ledger()).period, 2);
+  });
+
+  test('allows consecutive correct possession transfers', () {
+    final s = script();
+    final a = s.input.startingTeamId;
+    final b = s.input.opponentOf(a);
+    final ap = playerAt(s.input, a, Position.pg);
+    final bp = playerAt(s.input, b, Position.pg);
+    s.startPossession('p1', a, clock: 24);
+    s.fga(team: a, shooter: ap, clock: 10, shotClock: 10);
+    s.endPossession(
+      possessionId: 'p1',
+      team: a,
+      reason: PossessionEndReason.madeFieldGoal,
+      clock: 10,
+      shotClock: 10,
+    );
+    s.startPossession('p2', b, clock: 10);
+    s.turnover(
+      team: b,
+      player: bp,
+      reason: TurnoverReason.steal,
+      stolenBy: ap,
+      clock: 5,
+      shotClock: 19,
+    );
+    s.endPossession(
+      possessionId: 'p2',
+      team: b,
+      reason: PossessionEndReason.turnover,
+      clock: 5,
+      shotClock: 19,
+    );
+    s.startPossession('p3', a, clock: 5);
+    expect(
+      GameEventReducer.replay(s.input, s.ledger()).hasOpenPossession,
+      isTrue,
+    );
+  });
+
+  test('enforces free-throw group identity', () {
+    GameScript awardTwo(List<String> ids, {int total = 2}) {
+      final s = script();
+      final a = s.input.startingTeamId;
+      final b = s.input.opponentOf(a);
+      final ap = playerAt(s.input, a, Position.pg);
+      final bp = playerAt(s.input, b, Position.pg);
+      s.startPossession('p1', a, clock: 20);
+      s.foul(
+        team: b,
+        player: bp,
+        kind: FoulKind.shooting,
+        freeThrows: total,
+        drawnBy: ap,
+        clock: 10,
+        shotClock: 14,
+      );
+      for (var i = 0; i < total; i++) {
+        s.ft(
+          team: a,
+          shooter: ap,
+          groupId: ids[i],
+          index: i + 1,
+          total: total,
+          made: true,
+          clock: 10,
+          shotClock: 14,
+        );
+      }
+      if (ids.length == total) {
+        s.endPossession(
+          possessionId: 'p1',
+          team: a,
+          reason: PossessionEndReason.madeFinalFreeThrow,
+          clock: 10,
+          shotClock: 14,
+        );
+      }
+      return s;
+    }
+
+    final mismatch = awardTwo(['group-A', 'group-B']);
+    expect(
+      () => GameEventReducer.replay(mismatch.input, mismatch.ledger()),
+      throwsCode(GameValidationCode.freeThrowSequenceInvalid),
+    );
+
+    final consistent = awardTwo(['group-A', 'group-A']);
+    expect(
+      GameEventReducer.replay(
+        consistent.input,
+        consistent.ledger(),
+      ).hasOpenPossession,
+      isFalse,
+    );
+
+    final three = awardTwo(['group-A', 'group-A', 'group-B'], total: 3);
+    expect(
+      () => GameEventReducer.replay(three.input, three.ledger()),
+      throwsCode(GameValidationCode.freeThrowSequenceInvalid),
+    );
+
+    final empty = awardTwo(['', 'group-A']);
+    expect(
+      () => GameEventReducer.replay(empty.input, empty.ledger()),
+      throwsCode(GameValidationCode.freeThrowSequenceInvalid),
+    );
+
+    final wrongShooter = awardTwo(['group-A', 'group-B']);
+    // Replace the second attempt with a different shooter and matching group ID.
+    final events = wrongShooter.events.toList();
+    final secondIndex = events.indexWhere(
+      (e) => e is FreeThrowAttempt && e.attemptIndex == 2,
+    );
+    final second = events[secondIndex] as FreeThrowAttempt;
+    final a = wrongShooter.input.startingTeamId;
+    final b = wrongShooter.input.opponentOf(a);
+    events[secondIndex] = FreeThrowAttempt(
+      sequence: second.sequence,
+      period: second.period,
+      gameClock: second.gameClock,
+      shotClock: second.shotClock,
+      teamId: a.value,
+      shooterId: playerAt(wrongShooter.input, b, Position.pg),
+      groupId: 'group-A',
+      attemptIndex: 2,
+      attemptsInGroup: 2,
+      made: true,
+      lastOfGroup: true,
+    );
+    expect(
+      () => GameEventReducer.replayEvents(wrongShooter.input, events),
+      throwsCode(GameValidationCode.freeThrowSequenceInvalid),
+    );
+
+    final s = script();
+    final a2 = s.input.startingTeamId;
+    final b2 = s.input.opponentOf(a2);
+    final ap2 = playerAt(s.input, a2, Position.pg);
+    final bp2 = playerAt(s.input, b2, Position.pg);
+    s.startPossession('p1', a2, clock: 20);
+    s.foul(
+      team: b2,
+      player: bp2,
+      kind: FoulKind.shooting,
+      freeThrows: 2,
+      drawnBy: ap2,
+      clock: 10,
+      shotClock: 14,
+    );
+    s.ft(
+      team: a2,
+      shooter: ap2,
+      groupId: 'first',
+      index: 1,
+      total: 2,
+      made: true,
+      clock: 10,
+      shotClock: 14,
+    );
+    s.ft(
+      team: a2,
+      shooter: ap2,
+      groupId: 'first',
+      index: 2,
+      total: 2,
+      made: true,
+      clock: 10,
+      shotClock: 14,
+    );
+    s.endPossession(
+      possessionId: 'p1',
+      team: a2,
+      reason: PossessionEndReason.madeFinalFreeThrow,
+      clock: 10,
+      shotClock: 14,
+    );
+    s.startPossession('p2', b2, clock: 10);
+    s.foul(
+      team: a2,
+      player: ap2,
+      kind: FoulKind.shooting,
+      freeThrows: 2,
+      drawnBy: bp2,
+      clock: 5,
+      shotClock: 19,
+    );
+    s.ft(
+      team: b2,
+      shooter: bp2,
+      groupId: 'second',
+      index: 1,
+      total: 2,
+      made: true,
+      clock: 5,
+      shotClock: 19,
+    );
+    s.ft(
+      team: b2,
+      shooter: bp2,
+      groupId: 'second',
+      index: 2,
+      total: 2,
+      made: true,
+      clock: 5,
+      shotClock: 19,
+    );
+    s.endPossession(
+      possessionId: 'p2',
+      team: b2,
+      reason: PossessionEndReason.madeFinalFreeThrow,
+      clock: 5,
+      shotClock: 19,
+    );
+    expect(
+      GameEventReducer.replay(s.input, s.ledger()).hasOpenPossession,
+      isFalse,
+    );
+  });
 }
