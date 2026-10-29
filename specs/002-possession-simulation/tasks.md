@@ -23,6 +23,7 @@ start before T003 receives separate authorization.
 - [x] T006 Implement replayable `GameState`/reducer with legal transitions, possession/period/clock guards and illegal-event fixtures.
 - [x] T007 Implement derived-only team/player/period box-score accounting; test every equation and event attribution.
 - [x] T008 Implement pure ratings-based shooter, shot-type, outcome, turnover, foul, rebound, assist/steal/block models; document coefficients. Evidence: `probability_model.dart` + `action_intent.dart` on `feat/m002-phase2a-probability-model`; coefficients and draw order in `probability-model.md`; 37 model tests + 11 paired-seed probes pass; uncalibrated, T014/T015 still open.
+  Amendment 001 (`TurnoverReason.nonSteal`, event schema v2) is implemented on `feat/m002-nonsteal-turnover-contract`; see `amendment-001-nonsteal-turnover.md`. T009–T019 remain unauthorized.
 - [ ] T009 Implement game orchestrator: full regulation, transitions, shot clock, simple bonus, and bounded overtime.
 - [ ] T010 Implement shooting-foul/and-one/FT/rebound edge cases and dead-ball period handling.
 - [ ] T011 Validate complete games on deterministic seeds; prevent endless loops and invalid transitions.

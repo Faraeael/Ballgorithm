@@ -137,10 +137,9 @@ Not AC09: no bootstrap CI, no Holm correction, no realism claim.
   single-player security changes are diluted. A +20 `ballHandling` on the
   primary handler alone is not expected to be statistically detectable in a
   small game sample.
-- Live non-steal turnovers have no existing `TurnoverReason` value in the frozen
-  event schema. `TurnoverAction.kind` distinguishes them, but T009/T010 must
-  decide how a live non-steal giveaway is represented without changing the
-  established event format.
+- `TurnoverAction.kind == TurnoverKind.nonSteal` maps to
+  `TurnoverReason.nonSteal` (event schema v2) under
+  `amendment-001-nonsteal-turnover.md`.
 - Defender assignment is strictly positional; no switching, help defence or
   double teams.
 - Rebound weighting and block weighting produce deliberately modest per-player

@@ -10,7 +10,7 @@ void main() {
     expect(prngImplementationId, 'xorshift32-v1');
     expect(gameSimulationVersion, 1);
     expect(gameRulesVersion, 1);
-    expect(gameEventSchemaVersion, 1);
+    expect(gameEventSchemaVersion, 2);
     final rules = GameRules.standard;
     expect(rules.periods, 4);
     expect(rules.periodSeconds, 720);

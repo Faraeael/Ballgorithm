@@ -1058,6 +1058,28 @@ final class _Replay {
         }
         _pendingOffensiveFoul = false;
         _offensiveFoulPlayerId = null;
+      case TurnoverReason.nonSteal:
+        if (event.gameClock == 0) {
+          _fail(
+            GameValidationCode.periodHornPrecedence,
+            'event ${event.sequence}.gameClock',
+            'period horn takes precedence over a non-steal turnover',
+          );
+        }
+        if (event.shotClock == 0) {
+          _fail(
+            GameValidationCode.turnoverInvalid,
+            'event ${event.sequence}.shotClock',
+            'zero shot clock must use the shotClock reason',
+          );
+        }
+        if (event.stolenById != null || _pendingOffensiveFoul) {
+          _fail(
+            GameValidationCode.turnoverInvalid,
+            'event ${event.sequence}',
+            'non-steal turnover requires no steal and no pending offensive foul',
+          );
+        }
     }
     _pendingTurnover = true;
     _noShotClockIncrease(event);

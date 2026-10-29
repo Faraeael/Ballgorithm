@@ -38,7 +38,11 @@ enum FoulKind {
 enum TurnoverReason {
   steal('steal'),
   shotClock('shotClock'),
-  offensiveFoul('offensiveFoul');
+  offensiveFoul('offensiveFoul'),
+
+  /// Offensive giveaway with no credited defensive steal: simplified bad
+  /// pass, travel, lost ball or out-of-bounds. Amendment 001.
+  nonSteal('nonSteal');
 
   const TurnoverReason(this.wire);
   final String wire;

@@ -189,7 +189,7 @@ void main() {
       expect(GameFingerprint.of(input), matches(RegExp(r'^[0-9a-f]{64}$')));
       expect(
         GameFingerprint.of(input),
-        '82618eb22dc59379c64736cc802262eb0643a2b1ede68f1bb2db8606bed2f850',
+        'bcb1a58f09500c0d4132b48709962bd44409a25b6e23ee91d27d3c9f30cb97a8',
       );
 
       final otherSeed = buildInput(seed: 43);
