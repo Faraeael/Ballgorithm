@@ -52,15 +52,102 @@ import 'probability_model.dart';
 ///   action, turnover or rebound.
 ///
 /// Planned durations are never clamped to the clock.
+///
+/// ## A1 configuration ownership
+///
+/// `GameInput.rules` is authoritative for A1 sampling. Without an injected
+/// model, each [simulate] call creates a `BasketballProbabilityModel` from
+/// `input.rules`, so one simulator can run sequential games with different
+/// valid rule configurations. An injected model is never replaced or mutated;
+/// its A1 configuration must agree with `input.rules` or the simulation is
+/// rejected before any PRNG draw with
+/// `GameValidationCode.invalidRules`.
 final class GameSimulator {
   GameSimulator({BasketballProbabilityModel? probabilityModel})
-    : _model = probabilityModel ?? BasketballProbabilityModel();
+    : _injectedModel = probabilityModel;
 
-  final BasketballProbabilityModel _model;
+  final BasketballProbabilityModel? _injectedModel;
 
   /// Simulates and validates one game. Throws [GameValidationException] on any
-  /// illegal state or bound; never returns a partial result.
-  GameResult simulate(GameInput input) => _GameRun(input, _model).run();
+  /// illegal state, incompatible injected model or bound; never returns a
+  /// partial result.
+  GameResult simulate(GameInput input) {
+    final injected = _injectedModel;
+    if (injected == null) {
+      return _GameRun(
+        input,
+        BasketballProbabilityModel(rules: input.rules),
+      ).run();
+    }
+    _requireCompatibleA1(injected.rules, input.rules);
+    return _GameRun(input, injected).run();
+  }
+
+  /// Rejects an injected model whose A1 configuration differs from the input.
+  ///
+  /// Only rules fields actually consumed by the probability model, or tied to
+  /// its sampling contract, are compared; unrelated rules such as period length
+  /// may differ.
+  static void _requireCompatibleA1(GameRules modelRules, GameRules inputRules) {
+    final issues = <GameValidationIssue>[];
+    if (modelRules.actionDurationModelVersion !=
+        inputRules.actionDurationModelVersion) {
+      issues.add(
+        GameValidationIssue(
+          code: GameValidationCode.invalidRules,
+          path: 'rules.actionDurationModelVersion',
+          message:
+              'injected model uses duration model version '
+              '${modelRules.actionDurationModelVersion}, input uses '
+              '${inputRules.actionDurationModelVersion}',
+        ),
+      );
+    }
+    if (!_sameInts(modelRules.phaseWeights, inputRules.phaseWeights)) {
+      issues.add(
+        GameValidationIssue(
+          code: GameValidationCode.invalidRules,
+          path: 'rules.phaseWeights',
+          message:
+              'injected model phase weights '
+              '${modelRules.phaseWeights.join(',')} do not match input '
+              '${inputRules.phaseWeights.join(',')}',
+        ),
+      );
+    }
+    if (!_sameBrackets(modelRules.phaseDurations, inputRules.phaseDurations)) {
+      issues.add(
+        GameValidationIssue(
+          code: GameValidationCode.invalidRules,
+          path: 'rules.phaseDurations',
+          message:
+              'injected model phase durations '
+              '${_formatBrackets(modelRules.phaseDurations)} do not match '
+              'input ${_formatBrackets(inputRules.phaseDurations)}',
+        ),
+      );
+    }
+    if (issues.isNotEmpty) throw GameValidationException(issues);
+  }
+
+  static bool _sameInts(List<int> left, List<int> right) {
+    if (left.length != right.length) return false;
+    for (var i = 0; i < left.length; i++) {
+      if (left[i] != right[i]) return false;
+    }
+    return true;
+  }
+
+  static bool _sameBrackets(List<List<int>> left, List<List<int>> right) {
+    if (left.length != right.length) return false;
+    for (var i = 0; i < left.length; i++) {
+      if (!_sameInts(left[i], right[i])) return false;
+    }
+    return true;
+  }
+
+  static String _formatBrackets(List<List<int>> brackets) =>
+      brackets.map((bracket) => '[${bracket.join(',')}]').join(',');
 }
 
 final class _GameRun {

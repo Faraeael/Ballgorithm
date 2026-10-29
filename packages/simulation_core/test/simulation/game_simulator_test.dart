@@ -1,9 +1,49 @@
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:simulation_core/simulation_core.dart';
 import 'package:test/test.dart';
 
 import 'support.dart';
+
+GameRules customA1A() => GameRules(
+  periodSeconds: 30,
+  overtimeSeconds: 15,
+  phaseWeights: const [5000, 2500, 2500],
+  phaseDurations: const [
+    [2, 2],
+    [3, 3],
+    [4, 4],
+  ],
+);
+
+GameRules customA1B() => GameRules(
+  periodSeconds: 30,
+  overtimeSeconds: 15,
+  phaseWeights: const [2500, 2500, 5000],
+  phaseDurations: const [
+    [2, 3],
+    [4, 6],
+    [7, 10],
+  ],
+);
+
+/// A1 phase durations inferred from terminal-attempt clock deltas. The explicit
+/// `gameClock == 1` final-tick path produces a delta of one and is excluded.
+List<int> sampledA1Durations(GameResult result) {
+  final durations = <int>[];
+  for (var i = 1; i < result.events.length; i++) {
+    final event = result.events[i];
+    if (event is! FieldGoalAttempt) continue;
+    final delta = result.events[i - 1].gameClock - event.gameClock;
+    if (delta <= 1) continue;
+    durations.add(delta);
+  }
+  return durations;
+}
+
+String ledgerDigest(GameResult result) =>
+    sha256.convert(utf8.encode(jsonEncode(result.ledger.toJson()))).toString();
 
 GameRules tinyRules({
   int maxOvertimes = 10,
@@ -171,6 +211,181 @@ void main() {
         );
       }
     });
+  });
+
+  group('A1 configuration integrity', () {
+    test('default simulator samples the custom A1 brackets from GameInput', () {
+      final rules = customA1A();
+      final seen = <int>{};
+      for (var seed = 1; seed <= 5; seed++) {
+        final result = simulateSeed(seed, rules: rules);
+        final durations = sampledA1Durations(result);
+        expect(durations, isNotEmpty);
+        for (final duration in durations) {
+          expect(
+            duration,
+            inInclusiveRange(2, 4),
+            reason: 'seed $seed sampled duration $duration',
+          );
+          seen.add(duration);
+        }
+      }
+      expect(seen, containsAll(<int>[2, 3, 4]));
+    });
+
+    test('matching injected model produces the same ledger as the default', () {
+      final input = buildInput(seed: 3, rules: customA1A());
+      final defaulted = GameSimulator().simulate(input);
+      final injected = GameSimulator(
+        probabilityModel: BasketballProbabilityModel(rules: customA1A()),
+      ).simulate(input);
+      expect(
+        jsonEncode(injected.ledger.toJson()),
+        jsonEncode(defaulted.ledger.toJson()),
+      );
+      expect(injected.homeScore, defaulted.homeScore);
+      expect(injected.awayScore, defaulted.awayScore);
+    });
+
+    test('mismatched injected model is rejected with invalidRules', () {
+      final input = buildInput(seed: 4, rules: customA1A());
+      final simulator = GameSimulator(
+        probabilityModel: BasketballProbabilityModel(),
+      );
+      expect(
+        () => simulator.simulate(input),
+        throwsA(
+          isA<GameValidationException>()
+              .having(
+                (e) => e.codes,
+                'codes',
+                contains(GameValidationCode.invalidRules),
+              )
+              .having((e) => e.issues.first.path, 'path', 'rules.phaseWeights'),
+        ),
+      );
+      // The rejected simulator is still usable with a compatible input.
+      final standardInput = buildInput(seed: 4);
+      final result = simulator.simulate(standardInput);
+      expect(result.events, isNotEmpty);
+    });
+
+    test(
+      'one simulator reuses different valid A1 configurations in sequence',
+      () {
+        final simulator = GameSimulator();
+        for (final entry in <(int, GameRules)>[
+          (5, customA1A()),
+          (6, customA1B()),
+          (7, customA1A()),
+        ]) {
+          final input = buildInput(seed: entry.$1, rules: entry.$2);
+          final sequential = simulator.simulate(input);
+          final fresh = GameSimulator().simulate(input);
+          expect(
+            jsonEncode(sequential.ledger.toJson()),
+            jsonEncode(fresh.ledger.toJson()),
+            reason: 'seed ${entry.$1}',
+          );
+          final durations = sampledA1Durations(sequential);
+          expect(durations, isNotEmpty);
+          final min = entry.$2.phaseDurations.first.first;
+          final max = entry.$2.phaseDurations.last.last;
+          for (final duration in durations) {
+            expect(duration, inInclusiveRange(min, max));
+          }
+        }
+      },
+    );
+
+    test('phase-weights-only mismatch is rejected', () {
+      final input = buildInput(
+        seed: 8,
+        rules: GameRules(phaseWeights: const [2500, 2500, 5000]),
+      );
+      final simulator = GameSimulator(
+        probabilityModel: BasketballProbabilityModel(
+          rules: GameRules(phaseWeights: const [5000, 2500, 2500]),
+        ),
+      );
+      expect(
+        () => simulator.simulate(input),
+        throwsA(
+          isA<GameValidationException>().having(
+            (e) => e.issues.first.path,
+            'path',
+            'rules.phaseWeights',
+          ),
+        ),
+      );
+    });
+
+    test('duration-bracket-only mismatch is rejected', () {
+      final input = buildInput(
+        seed: 9,
+        rules: GameRules(
+          phaseDurations: const [
+            [3, 3],
+            [4, 4],
+            [5, 5],
+          ],
+        ),
+      );
+      final simulator = GameSimulator(
+        probabilityModel: BasketballProbabilityModel(
+          rules: GameRules(
+            phaseDurations: const [
+              [2, 2],
+              [3, 3],
+              [4, 4],
+            ],
+          ),
+        ),
+      );
+      expect(
+        () => simulator.simulate(input),
+        throwsA(
+          isA<GameValidationException>().having(
+            (e) => e.issues.first.path,
+            'path',
+            'rules.phaseDurations',
+          ),
+        ),
+      );
+    });
+
+    test('duration-model version mismatch cannot be constructed validly', () {
+      expect(
+        () => GameRules(actionDurationModelVersion: 2).validate(),
+        throwsCode(GameValidationCode.unsupportedRulesVersion),
+      );
+    });
+
+    test(
+      'standard A1 ledgers remain byte-identical to the published checkpoint',
+      () {
+        const expected = {
+          1: '610dea0941d463da7960b912ea2004f91562a0567bbecba9e7aabba23c6a1e61',
+          42: 'f8cfc12e01d8ba187c602021eaaabbac13b8438cf7e34ec5af3ff03b3d97387f',
+          99: 'b325c79d846d4401443878616682437120ee9db1fc8f59ae995a4f9bb184dc17',
+          20261029:
+              'c996cd4a4d0dc03a647bef578ee2cf1cfe9efd4dc84392778f9bfec312b96493',
+        };
+        for (final entry in expected.entries) {
+          final result = simulateSeed(entry.key);
+          expect(
+            ledgerDigest(result),
+            entry.value,
+            reason: 'seed ${entry.key}',
+          );
+          expect(
+            result.events.whereType<GameEnded>().length,
+            1,
+            reason: 'seed ${entry.key}',
+          );
+        }
+      },
+    );
   });
 
   group('clocks, possessions and event legality', () {

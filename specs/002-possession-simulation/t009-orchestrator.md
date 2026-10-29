@@ -22,6 +22,17 @@ final result = GameSimulator().simulate(input); // GameInput -> GameResult
 - throws `GameValidationException` on any illegal transition or bound, and never
   returns a partial result.
 
+### A1 configuration ownership
+
+`GameInput.rules` is authoritative for A1 sampling. When no model is injected,
+`simulate` constructs `BasketballProbabilityModel(rules: input.rules)` for that
+call, so one default simulator safely runs sequential games with different valid
+rule configurations. An injected model is never replaced or mutated: its
+`phaseWeights`, `phaseDurations` and `actionDurationModelVersion` must match
+`input.rules`, otherwise the call fails with
+`GameValidationCode.invalidRules` before any PRNG draw. Unrelated fields such as
+period length may differ. Standard A1 behaviour is unchanged by this rule.
+
 `GameResult`
 - `input` (canonical source reference, not a duplicated league),
 - `inputFingerprint`, `ledger`, validated `state`, `boxScore`,
@@ -101,6 +112,11 @@ verified over 20 repeated runs.
 `gameEventSchemaVersion = 2`, `gameFingerprintVersion = 1`,
 `gameActionDurationModelVersion = 1`; M001 `coreEngineVersion` and
 `snapshotSchemaVersion` unchanged. No new dependency.
+
+Runtime configuration within `gameRulesVersion = 1` may vary values accepted by
+`GameRules.validate` (for example custom A1 weights and brackets). Changing the
+standard defaults themselves is a rules-version change, not a runtime option.
+A1 values remain provisional and uncalibrated.
 
 ## Completed T009 scope
 
@@ -211,7 +227,9 @@ calibration results.
 
 ## Verification
 
-- Dart VM: 182 tests; Chrome-compatible: 181; Flutter: 8.
+- Dart VM: 190 tests; Chrome-compatible: 189; Flutter: 8.
+- Standard-rules ledger digests for seeds 1, 42, 99 and 20261029 match the
+  published T009 checkpoint byte-for-byte after the configured-A1 repair.
 - 200/200 standard seeded games and 300/300 one-second-rule stress games
   completed with zero reducer or bound failures during development probes.
 - All generated ledgers replayed; box scores and period totals derive from
