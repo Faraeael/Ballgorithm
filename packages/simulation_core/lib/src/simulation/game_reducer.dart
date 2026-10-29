@@ -680,6 +680,8 @@ final class _Replay {
           'and-one requires a defensive shooting foul worth one FT',
         );
       }
+      _requireSameTimestamp(event, GameValidationCode.andOneInvalid);
+      _requireSameShotClock(event);
       _incrementTeamFoul(event.committingTeamId);
       _pendingAndOne = false;
       _startFreeThrows(
@@ -890,19 +892,19 @@ final class _Replay {
   }
 
   void _rebound(Rebound event) {
+    if (_resolvedMisses.contains(event.missedEventSequence)) {
+      _fail(
+        GameValidationCode.reboundDuplicate,
+        'event ${event.sequence}',
+        'miss already resolved',
+      );
+    }
     final miss = _pendingMiss;
     if (miss == null || miss.sequence != event.missedEventSequence) {
       _fail(
         GameValidationCode.reboundInvalid,
         'event ${event.sequence}',
         'rebound must link to the pending miss',
-      );
-    }
-    if (_resolvedMisses.contains(event.missedEventSequence)) {
-      _fail(
-        GameValidationCode.reboundDuplicate,
-        'event ${event.sequence}',
-        'miss already resolved',
       );
     }
     if (event.gameClock == 0) {
@@ -958,6 +960,13 @@ final class _Replay {
   void _deadBall(DeadBallMiss event) {
     _requireSameTimestamp(event, GameValidationCode.deadBallClockAdvanced);
     _requireSameShotClock(event);
+    if (_resolvedMisses.contains(event.missedEventSequence)) {
+      _fail(
+        GameValidationCode.reboundDuplicate,
+        'event ${event.sequence}',
+        'miss already resolved',
+      );
+    }
     final miss = _pendingMiss;
     if (miss == null ||
         miss.sequence != event.missedEventSequence ||
@@ -967,13 +976,6 @@ final class _Replay {
         GameValidationCode.deadBallInvalid,
         'event ${event.sequence}',
         'DeadBallMiss must close a zero-clock miss by the shooting team',
-      );
-    }
-    if (_resolvedMisses.contains(event.missedEventSequence)) {
-      _fail(
-        GameValidationCode.reboundDuplicate,
-        'event ${event.sequence}',
-        'miss already resolved',
       );
     }
     _resolvedMisses.add(event.missedEventSequence);
@@ -1047,6 +1049,8 @@ final class _Replay {
           );
         }
       case TurnoverReason.offensiveFoul:
+        _requireSameTimestamp(event, GameValidationCode.turnoverInvalid);
+        _requireSameShotClock(event);
         if (!_pendingOffensiveFoul ||
             event.playerId != _offensiveFoulPlayerId ||
             event.stolenById != null) {
