@@ -1,8 +1,9 @@
-# Tasks 002 — PHASE 1 IMPLEMENTED, PHASE 2 NOT AUTHORIZED
+# Tasks 002 — PHASE 1 AND T008 IMPLEMENTED; T009–T019 NOT AUTHORIZED
 
 Specification frozen: 2026-10-28 at baseline `a431aeb5a652b134ce40cf442c7d9ffee874fe79`.
 Phase 1 (T004–T007) is implemented on `feat/m002-phase1-simulation-foundation`.
-T008–T019 remain unauthorized and unchecked.
+T008 is implemented on `feat/m002-phase2a-probability-model`.
+T009–T019 remain unauthorized and unchecked.
 
 OD-01…OD-14 and A1/A2 are recorded in `design-decisions.md` and
 `review-findings.md`. The specification is frozen; no implementation task may
@@ -21,7 +22,7 @@ start before T003 receives separate authorization.
 - [x] T005 Implement typed immutable `GameEvent` hierarchy and canonical event serialization.
 - [x] T006 Implement replayable `GameState`/reducer with legal transitions, possession/period/clock guards and illegal-event fixtures.
 - [x] T007 Implement derived-only team/player/period box-score accounting; test every equation and event attribution.
-- [ ] T008 Implement pure ratings-based shooter, shot-type, outcome, turnover, foul, rebound, assist/steal/block models; document coefficients.
+- [x] T008 Implement pure ratings-based shooter, shot-type, outcome, turnover, foul, rebound, assist/steal/block models; document coefficients. Evidence: `probability_model.dart` + `action_intent.dart` on `feat/m002-phase2a-probability-model`; coefficients and draw order in `probability-model.md`; 37 model tests + 11 paired-seed probes pass; uncalibrated, T014/T015 still open.
 - [ ] T009 Implement game orchestrator: full regulation, transitions, shot clock, simple bonus, and bounded overtime.
 - [ ] T010 Implement shooting-foul/and-one/FT/rebound edge cases and dead-ball period handling.
 - [ ] T011 Validate complete games on deterministic seeds; prevent endless loops and invalid transitions.
