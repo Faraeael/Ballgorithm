@@ -1,4 +1,4 @@
-# Tasks 002 — PHASE 1, T008, AMENDMENT 001, T009, T010, T011, T012 AND T013 IMPLEMENTED; T014–T019 NOT AUTHORIZED
+# Tasks 002 — PHASE 1, T008, AMENDMENT 001, T009–T014 IMPLEMENTED; T015–T019 NOT AUTHORIZED
 
 Specification frozen: 2026-10-28 at baseline `a431aeb5a652b134ce40cf442c7d9ffee874fe79`.
 Phase 1 (T004–T007) is implemented on `feat/m002-phase1-simulation-foundation`.
@@ -8,7 +8,9 @@ T010 is implemented on `feat/m002-phase2c-event-hardening`; see `t010-event-hard
 T011 is implemented on `feat/m002-t011-game-reliability`; see `t011-game-reliability.md`.
 T012 is implemented on `develop/m002`; see `t012-canonical-ledger.md`.
 T013 is implemented on `develop/m002`; see `t013-adversarial-validation.md`.
-T014–T019 remain unauthorized and unchecked.
+T014 execution is complete on `develop/m002`; see `t014-sensitivity-report.md`.
+The AC09 statistical gate is NOT passed (E4 inconclusive); T015–T019 remain
+unauthorized and unchecked.
 
 Current workflow: all further authorized M002 tasks land as one reviewed commit
 per task on `develop/m002` in the `E:/ballgorithm-dev` worktree. The older
@@ -39,7 +41,7 @@ start before T003 receives separate authorization.
 - [x] T011 Validate complete games on deterministic seeds; prevent endless loops and invalid transitions. Evidence: `t011-game-reliability.md`; 40 standard seeds plus an 18-game configured matrix, exact event/zero-time/overtime bounds, reuse/determinism/input-immutability checks; no defects found; 244 Dart / 243 Chrome / 8 Flutter tests; T012–T019 remain unauthorized.
 - [x] T012 Pin canonical ledger fixture, verify VM/Chrome compatibility, preserve M001 vectors/output. Evidence: `t012-canonical-ledger.md`; `t012_canonical_ledger_fixture.dart` stores the complete seed-42 ledger (800 events, 94–77, fingerprint `bcb1a58f…`, digest `f8cfc12e…`); VM and Chrome both recompute identical bytes and digests (12 T012 tests each); seeds 1/99/20261029 digest-pinned; decode/re-encode/replay/accounting round trip exact; fingerprint identity and raw-seed alias proven; M001 baseline unchanged; 256 Dart / 255 Chrome / 8 Flutter tests; T013–T019 remain unauthorized.
 - [x] T013 Run adversarial/property tests across >=100 seeds and all acceptance matrix cases. Evidence: `t013-adversarial-validation.md` + `t013-coverage-matrix.md`; 200-seed corpus (200/200 complete, 3 overtime, 734–900 events) with lifecycle, accounting and causality audits; 24 one-defect ledger mutations rejected with typed codes; 9-configuration rules matrix with every configuration/seed outcome pinned (22 complete, 5 typed `overtimeLimitExceeded`: four from one/two-second period ties at the two-OT cap, one tied regulation game at `maxOvertimes: 0`); A1 type-draw boundaries 0/1499/1500/4499/4500/9999; seed policy incl. 0, negative, >32-bit and alias seeds; no product defect found; 298 Dart / 297 Chrome / 8 Flutter tests; T014–T019 remain unauthorized.
-- [ ] T014 Run paired-seed skill-sensitivity experiments and document effects/uncertainty.
+- [x] T014 Run paired-seed skill-sensitivity experiments and document effects/uncertainty. Evidence: `t014-analysis-protocol.md` (frozen pre-registration), `t014-sensitivity-report.md`, `t014-paired-results.csv` (1,200 rows), `t014-statistical-summary.json`; 200 paired seeds × 6 experiments (1,400 games incl. reused baselines), 10,000-resample percentile bootstrap, 10,000-permutation paired sign-flip test, Holm across six; E1/E2/E3/E5/E6 PASSED, E4 (`ballHandling`) INCONCLUSIVE (wrong sign, Holm p = 0.150) so AC09 overall is INCONCLUSIVE — preserved for owner review, no coefficients changed; E5 secondary opponent-TOV diagnostic +0.44/100 (unadjusted p = 0.044, exploratory); CSV/summary metrics share one scaled unit and every valid row reconciles, zero-opportunity counts are per-arm inclusive; 317 Dart / 316 Chrome / 8 Flutter tests. T014 execution complete; AC09 acceptance not passed.
 - [ ] T015 Run >=1,000-game calibration sample; publish summary, diagnostic cases and limitations.
 - [ ] T016 Measure bounded runtime/memory under named environments; document Android suitability constraints without fabricated measurements.
 - [ ] T017 Run full Dart/Flutter regressions, format/analyze and independence/scope audit.
