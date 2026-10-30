@@ -272,3 +272,19 @@ Modified:
 
 - `specs/002-possession-simulation/tasks.md` (T012 checked, T013–T019 unchecked,
   current workflow note)
+
+
+## Appendix — simulation v2 golden (Amendment 002)
+
+The v1 fixture and every digest above remain the v1 evidence record. Amendment
+002 changes canonical gameplay, so a separate v2 fixture exists:
+
+- File: `packages/simulation_core/test/simulation/t012_canonical_ledger_fixture_v2.dart`
+- Input fingerprint: `da9e08f4e36fdfc3f26257e58bcc4a9ac3e3810e1060c902053a3cf2fc84939b`
+- Ledger SHA-256: `e3e6962420388d6f16b5900cfed83d7106b4daedde869a21415319b069666b4b`
+- Events: 833; score 96–78; four regulation periods.
+- Pinned v2 digests: seed 1 `908334617b00ac91960b0d6475a1a75f86bd82bc2e8807b63d2406e5e947936a`,
+  seed 99 `af0d7b71d19107b8ed1960ccf63832c07ed09fffeca49f7b7f9079c0de7c9bde`,
+  seed 20261029 `bd2e5801228d8966882c9aa9eb580feb026c3dd056fe86a8aa61615a01c90e3a`.
+- v1 ledgers are not replayable under v2 because the header pins the simulation
+  version; they stay archived as historical artefacts.

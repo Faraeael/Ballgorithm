@@ -1,0 +1,564 @@
+{
+  "protocol": "t014-analysis-protocol.md (unchanged v1 preregistration)",
+  "simulationVersion": 2,
+  "amendment": "002 (player-exposure turnover hazard)",
+  "historicalV1Commit": "fb9636814dc9c187ac5007352b1a3a159c41e201",
+  "parentCommit": "82c66d3425fc091cffc66bab6ece22e3670ae68b",
+  "workingTreeStatus": [
+    "M packages/simulation_core/lib/src/simulation/game_versions.dart",
+    " M packages/simulation_core/lib/src/simulation/probability_model.dart",
+    " M packages/simulation_core/test/simulation/game_input_test.dart",
+    " M packages/simulation_core/test/simulation/game_simulator_test.dart",
+    " M packages/simulation_core/test/simulation/m001_regression_test.dart",
+    " M packages/simulation_core/test/simulation/t011_game_reliability_test.dart",
+    " M packages/simulation_core/test/simulation/t012_canonical_ledger_test.dart",
+    " M packages/simulation_core/test/simulation/t013_adversarial_game_test.dart",
+    " M packages/simulation_core/test/simulation/turnover_nonsteal_test.dart",
+    " M packages/simulation_core/tool/t014_sensitivity.dart",
+    " M specs/002-possession-simulation/probability-model.md",
+    " M specs/002-possession-simulation/t012-canonical-ledger.md",
+    "?? packages/simulation_core/test/simulation/amendment_002_turnover_model_test.dart",
+    "?? packages/simulation_core/test/simulation/t012_canonical_ledger_fixture_v2.dart",
+    "?? specs/002-possession-simulation/amendment-002-ballhandling-security-proposal.md",
+    "?? specs/002-possession-simulation/t014-paired-results-v2.csv",
+    "?? specs/002-possession-simulation/t014-statistical-summary-v2.json"
+  ],
+  "modelSourcesAreUncommitted": true,
+  "sourceSha256": {
+    "lib/src/simulation/probability_model.dart": "97e238fcd5fd9c51efb2859371562869b99194d793571bcfe4bd63b246a42f0f",
+    "lib/src/simulation/game_versions.dart": "e683d666fc356935ad43e00f986b9a5d25761c82588725f7f26a795f73e2558f",
+    "lib/src/simulation/game_simulator.dart": "0a1d422c068852af22d4c5755bf1bb7fe493493937c8153a8c3a9455ec293b6e",
+    "tool/t014_sensitivity.dart": "64dc5965a238c8f1fd98a8181b62dae2ac8bc618959e54b6e1fcdaee91b21310",
+    "tool/t014_stats.dart": "f9aa5663ef33350be37e0d53f6bc737b419c66ee9d465d0fc19df482a19e9ac0",
+    "test/simulation/support.dart": "984890dfbf38f3f012c304d95e74f61b73f0f12b986616a165f7602003117f27"
+  },
+  "baselineCommit": "fb9636814dc9c187ac5007352b1a3a159c41e201",
+  "baselineCommitMeaning": "historical v1 T013 baseline; this v2 run used uncommitted working-tree changes on parentCommit",
+  "leagueFixtureSeed": 20261028,
+  "matchup": {
+    "homeTeamId": "team-1",
+    "awayTeamId": "team-2"
+  },
+  "subjects": {
+    "E1": {
+      "playerId": "player-1-1",
+      "position": "SG",
+      "baselineRatings": {
+        "insideScoring": 56,
+        "midrange": 74,
+        "threePoint": 69,
+        "freeThrow": 52,
+        "passing": 64,
+        "ballHandling": 48,
+        "perimeterDefense": 58,
+        "interiorDefense": 46,
+        "rebounding": 28,
+        "athleticism": 67,
+        "stamina": 52,
+        "basketballIQ": 44
+      }
+    },
+    "E2": {
+      "playerId": "player-1-3",
+      "position": "PG",
+      "baselineRatings": {
+        "insideScoring": 38,
+        "midrange": 51,
+        "threePoint": 68,
+        "freeThrow": 74,
+        "passing": 53,
+        "ballHandling": 72,
+        "perimeterDefense": 48,
+        "interiorDefense": 49,
+        "rebounding": 37,
+        "athleticism": 58,
+        "stamina": 47,
+        "basketballIQ": 62
+      }
+    },
+    "E3": {
+      "playerId": "player-1-8",
+      "position": "C",
+      "baselineRatings": {
+        "insideScoring": 63,
+        "midrange": 58,
+        "threePoint": 37,
+        "freeThrow": 40,
+        "passing": 58,
+        "ballHandling": 29,
+        "perimeterDefense": 39,
+        "interiorDefense": 74,
+        "rebounding": 55,
+        "athleticism": 52,
+        "stamina": 66,
+        "basketballIQ": 52
+      }
+    },
+    "E4": {
+      "playerId": "player-1-3",
+      "position": "PG",
+      "baselineRatings": {
+        "insideScoring": 38,
+        "midrange": 51,
+        "threePoint": 68,
+        "freeThrow": 74,
+        "passing": 53,
+        "ballHandling": 72,
+        "perimeterDefense": 48,
+        "interiorDefense": 49,
+        "rebounding": 37,
+        "athleticism": 58,
+        "stamina": 47,
+        "basketballIQ": 62
+      }
+    },
+    "E5": {
+      "playerId": "player-1-1",
+      "position": "SG",
+      "baselineRatings": {
+        "insideScoring": 56,
+        "midrange": 74,
+        "threePoint": 69,
+        "freeThrow": 52,
+        "passing": 64,
+        "ballHandling": 48,
+        "perimeterDefense": 58,
+        "interiorDefense": 46,
+        "rebounding": 28,
+        "athleticism": 67,
+        "stamina": 52,
+        "basketballIQ": 44
+      }
+    }
+  },
+  "seeds": {
+    "first": 1,
+    "last": 200,
+    "plannedPairs": 200
+  },
+  "games": {
+    "baselineGames": 200,
+    "interventionGames": 1200,
+    "totalGames": 1400,
+    "baselineReusedAcrossExperiments": true
+  },
+  "statistics": {
+    "bootstrap": {
+      "method": "paired percentile",
+      "resamples": 10000,
+      "seed": 20261029,
+      "quantile": "type-7",
+      "confidence": 0.95
+    },
+    "permutation": {
+      "test": "two-sided paired sign-flip",
+      "permutations": 10000,
+      "seed": 424242
+    },
+    "correction": "Holm-Bonferroni across six confirmatory experiments",
+    "minimumValidPairs": 100,
+    "rng": "xorshift32-v1 (analysis copy, independent of game PRNG)"
+  },
+  "experiments": [
+    {
+      "id": "E1",
+      "title": "threePoint +20 on the highest-rated three-point shooter",
+      "metric": "player 3PT%",
+      "expectedDirection": "increase",
+      "subject": "player-1-1",
+      "attributes": {
+        "player-1-1": [
+          "threePoint"
+        ]
+      },
+      "plannedPairs": 200,
+      "validPairs": 200,
+      "zeroBaseline": 0,
+      "zeroIntervention": 0,
+      "zeroBoth": 0,
+      "zeroBaselineInclusive": 0,
+      "zeroInterventionInclusive": 0,
+      "zeroBaselineExclusive": 0,
+      "zeroInterventionExclusive": 0,
+      "zeroCountingNote": "zeroBaseline/zeroIntervention are inclusive: they count every seed with zero opportunities in that arm, including seeds that are zero in both arms. Exclusive counts subtract zeroBoth.",
+      "pooled": {
+        "baselineNumerator": 723,
+        "baselineDenominator": 1617,
+        "interventionNumerator": 959,
+        "interventionDenominator": 1879
+      },
+      "pooledBaselineRate": 0.44712430426716143,
+      "pooledInterventionRate": 0.5103778605641298,
+      "descriptiveBaseline": {
+        "fga": 3699,
+        "threePa": 1617,
+        "threePm": 723,
+        "teamThreePa": 7016
+      },
+      "descriptiveIntervention": {
+        "fga": 4113,
+        "threePa": 1879,
+        "threePm": 959,
+        "teamThreePa": 7085
+      },
+      "meanBaseline": 0.44452109695859704,
+      "meanIntervention": 0.5124727926871888,
+      "meanDifference": 0.067951695728592,
+      "medianDifference": 0.05330086580086582,
+      "standardDeviation": 0.1266024054021647,
+      "standardizedEffect": 0.5367330542633603,
+      "ciLow": 0.050564562672771846,
+      "ciHigh": 0.08528113865193969,
+      "pValue": 0.00009999000099990002,
+      "expectedSign": 1,
+      "verdict": "PASSED",
+      "holmAdjustedP": 0.0005999400059994001
+    },
+    {
+      "id": "E2",
+      "title": "freeThrow +20 on the highest-rated free-throw shooter",
+      "metric": "player FT%",
+      "expectedDirection": "increase",
+      "subject": "player-1-3",
+      "attributes": {
+        "player-1-3": [
+          "freeThrow"
+        ]
+      },
+      "plannedPairs": 200,
+      "validPairs": 171,
+      "zeroBaseline": 29,
+      "zeroIntervention": 29,
+      "zeroBoth": 29,
+      "zeroBaselineInclusive": 29,
+      "zeroInterventionInclusive": 29,
+      "zeroBaselineExclusive": 0,
+      "zeroInterventionExclusive": 0,
+      "zeroCountingNote": "zeroBaseline/zeroIntervention are inclusive: they count every seed with zero opportunities in that arm, including seeds that are zero in both arms. Exclusive counts subtract zeroBoth.",
+      "pooled": {
+        "baselineNumerator": 722,
+        "baselineDenominator": 922,
+        "interventionNumerator": 836,
+        "interventionDenominator": 927
+      },
+      "pooledBaselineRate": 0.7830802603036876,
+      "pooledInterventionRate": 0.9018338727076591,
+      "descriptiveBaseline": {
+        "fta": 922,
+        "ftm": 722
+      },
+      "descriptiveIntervention": {
+        "fta": 927,
+        "ftm": 836
+      },
+      "meanBaseline": 0.7794628535856605,
+      "meanIntervention": 0.9045292264590511,
+      "meanDifference": 0.12506637287339037,
+      "medianDifference": 0.0,
+      "standardDeviation": 0.16132087398362305,
+      "standardizedEffect": 0.7752646621917436,
+      "ciLow": 0.10168226672612636,
+      "ciHigh": 0.14998304367821907,
+      "pValue": 0.00009999000099990002,
+      "expectedSign": 1,
+      "verdict": "PASSED",
+      "holmAdjustedP": 0.0005999400059994001
+    },
+    {
+      "id": "E3",
+      "title": "rebounding +20 on the starting center",
+      "metric": "player share of live rebound opportunities",
+      "expectedDirection": "increase",
+      "subject": "player-1-8",
+      "attributes": {
+        "player-1-8": [
+          "rebounding"
+        ]
+      },
+      "plannedPairs": 200,
+      "validPairs": 200,
+      "zeroBaseline": 0,
+      "zeroIntervention": 0,
+      "zeroBoth": 0,
+      "zeroBaselineInclusive": 0,
+      "zeroInterventionInclusive": 0,
+      "zeroBaselineExclusive": 0,
+      "zeroInterventionExclusive": 0,
+      "zeroCountingNote": "zeroBaseline/zeroIntervention are inclusive: they count every seed with zero opportunities in that arm, including seeds that are zero in both arms. Exclusive counts subtract zeroBoth.",
+      "pooled": {
+        "baselineNumerator": 2959,
+        "baselineDenominator": 18766,
+        "interventionNumerator": 3255,
+        "interventionDenominator": 18871
+      },
+      "pooledBaselineRate": 0.15767878077373973,
+      "pooledInterventionRate": 0.17248688463780404,
+      "descriptiveBaseline": {
+        "rebounds": 2959,
+        "oreb": 782,
+        "dreb": 2177,
+        "liveOpportunities": 18766,
+        "teamRebounds": 9290
+      },
+      "descriptiveIntervention": {
+        "rebounds": 3255,
+        "oreb": 880,
+        "dreb": 2375,
+        "liveOpportunities": 18871,
+        "teamRebounds": 9546
+      },
+      "meanBaseline": 0.15762991359559325,
+      "meanIntervention": 0.17257459202541575,
+      "meanDifference": 0.014944678429822526,
+      "medianDifference": 0.011764705882352927,
+      "standardDeviation": 0.023849254077650647,
+      "standardizedEffect": 0.6266308531564231,
+      "ciLow": 0.011687395592647467,
+      "ciHigh": 0.018119290717303015,
+      "pValue": 0.00009999000099990002,
+      "expectedSign": 1,
+      "verdict": "PASSED",
+      "holmAdjustedP": 0.0005999400059994001
+    },
+    {
+      "id": "E4",
+      "title": "ballHandling +20 on the starting point guard",
+      "metric": "player turnovers per 100 started possessions",
+      "expectedDirection": "decrease",
+      "subject": "player-1-3",
+      "attributes": {
+        "player-1-3": [
+          "ballHandling"
+        ]
+      },
+      "plannedPairs": 200,
+      "validPairs": 200,
+      "zeroBaseline": 0,
+      "zeroIntervention": 0,
+      "zeroBoth": 0,
+      "zeroBaselineInclusive": 0,
+      "zeroInterventionInclusive": 0,
+      "zeroBaselineExclusive": 0,
+      "zeroInterventionExclusive": 0,
+      "zeroCountingNote": "zeroBaseline/zeroIntervention are inclusive: they count every seed with zero opportunities in that arm, including seeds that are zero in both arms. Exclusive counts subtract zeroBoth.",
+      "pooled": {
+        "baselineNumerator": 2242,
+        "baselineDenominator": 20510,
+        "interventionNumerator": 2149,
+        "interventionDenominator": 20488
+      },
+      "pooledBaselineRate": 10.931253047294003,
+      "pooledInterventionRate": 10.48906677079266,
+      "descriptiveBaseline": {
+        "playerTurnovers": 2242,
+        "teamTurnovers": 5034,
+        "startedPossessions": 20510,
+        "completedPossessions": 20141,
+        "stealLinked": 284,
+        "nonSteal": 310,
+        "shotClock": 1377
+      },
+      "descriptiveIntervention": {
+        "playerTurnovers": 2149,
+        "teamTurnovers": 4974,
+        "startedPossessions": 20488,
+        "completedPossessions": 20139,
+        "stealLinked": 228,
+        "nonSteal": 241,
+        "shotClock": 1380
+      },
+      "meanBaseline": 10.947407506647023,
+      "meanIntervention": 10.512410114585096,
+      "meanDifference": -0.43499739206192223,
+      "medianDifference": -0.5800619145472495,
+      "standardDeviation": 2.4428681301162216,
+      "standardizedEffect": -0.1780683069622865,
+      "ciLow": -0.7656886053438517,
+      "ciHigh": -0.08823032907028912,
+      "pValue": 0.012398760123987601,
+      "expectedSign": -1,
+      "verdict": "PASSED",
+      "holmAdjustedP": 0.012398760123987601
+    },
+    {
+      "id": "E5",
+      "title": "perimeterDefense +20 on the highest-rated perimeter defender",
+      "metric": "opponent eFG% on the defender positional matchup",
+      "expectedDirection": "decrease",
+      "subject": "player-1-1",
+      "attributes": {
+        "player-1-1": [
+          "perimeterDefense"
+        ]
+      },
+      "plannedPairs": 200,
+      "validPairs": 200,
+      "zeroBaseline": 0,
+      "zeroIntervention": 0,
+      "zeroBoth": 0,
+      "zeroBaselineInclusive": 0,
+      "zeroInterventionInclusive": 0,
+      "zeroBaselineExclusive": 0,
+      "zeroInterventionExclusive": 0,
+      "zeroCountingNote": "zeroBaseline/zeroIntervention are inclusive: they count every seed with zero opportunities in that arm, including seeds that are zero in both arms. Exclusive counts subtract zeroBoth.",
+      "pooled": {
+        "baselineNumerator": 4364,
+        "baselineDenominator": 7772,
+        "interventionNumerator": 3776,
+        "interventionDenominator": 7736
+      },
+      "pooledBaselineRate": 0.5615028306742151,
+      "pooledInterventionRate": 0.48810754912099275,
+      "descriptiveBaseline": {
+        "oppFga": 3886,
+        "oppFgm": 1789,
+        "oppThreePm": 786,
+        "oppTurnovers": 4959,
+        "oppStartedPossessions": 20512
+      },
+      "descriptiveIntervention": {
+        "oppFga": 3868,
+        "oppFgm": 1566,
+        "oppThreePm": 644,
+        "oppTurnovers": 5013,
+        "oppStartedPossessions": 20504
+      },
+      "meanBaseline": 0.5636363895242134,
+      "meanIntervention": 0.4929380907149287,
+      "meanDifference": -0.07069829880928426,
+      "medianDifference": -0.05245215311004783,
+      "standardDeviation": 0.1292915898155491,
+      "standardizedEffect": -0.546812819845006,
+      "ciLow": -0.08892850668858446,
+      "ciHigh": -0.0528331082611473,
+      "pValue": 0.00009999000099990002,
+      "expectedSign": -1,
+      "verdict": "PASSED",
+      "secondaryDiagnostic": {
+        "metric": "opponent turnovers per 100 opponent started possessions",
+        "expectedDirection": "increase",
+        "validPairs": 200,
+        "meanDifference": 0.2882546766827102,
+        "ciLow": -0.15104001392568722,
+        "ciHigh": 0.7232086619379856,
+        "unadjustedP": 0.1967803219678032,
+        "directionMatches": true,
+        "note": "exploratory; outside the six-hypothesis family"
+      },
+      "holmAdjustedP": 0.0005999400059994001
+    },
+    {
+      "id": "E6",
+      "title": "seven offensive skills +20 on all five starting players",
+      "metric": "home points per 100 completed possessions",
+      "expectedDirection": "increase",
+      "subject": "player-1-3+player-1-1+player-1-2+player-1-4+player-1-8",
+      "attributes": {
+        "player-1-3": [
+          "insideScoring",
+          "midrange",
+          "threePoint",
+          "freeThrow",
+          "passing",
+          "ballHandling",
+          "basketballIQ"
+        ],
+        "player-1-1": [
+          "insideScoring",
+          "midrange",
+          "threePoint",
+          "freeThrow",
+          "passing",
+          "ballHandling",
+          "basketballIQ"
+        ],
+        "player-1-2": [
+          "insideScoring",
+          "midrange",
+          "threePoint",
+          "freeThrow",
+          "passing",
+          "ballHandling",
+          "basketballIQ"
+        ],
+        "player-1-4": [
+          "insideScoring",
+          "midrange",
+          "threePoint",
+          "freeThrow",
+          "passing",
+          "ballHandling",
+          "basketballIQ"
+        ],
+        "player-1-8": [
+          "insideScoring",
+          "midrange",
+          "threePoint",
+          "freeThrow",
+          "passing",
+          "ballHandling",
+          "basketballIQ"
+        ]
+      },
+      "plannedPairs": 200,
+      "validPairs": 200,
+      "zeroBaseline": 0,
+      "zeroIntervention": 0,
+      "zeroBoth": 0,
+      "zeroBaselineInclusive": 0,
+      "zeroInterventionInclusive": 0,
+      "zeroBaselineExclusive": 0,
+      "zeroInterventionExclusive": 0,
+      "zeroCountingNote": "zeroBaseline/zeroIntervention are inclusive: they count every seed with zero opportunities in that arm, including seeds that are zero in both arms. Exclusive counts subtract zeroBoth.",
+      "pooled": {
+        "baselineNumerator": 20081,
+        "baselineDenominator": 20141,
+        "interventionNumerator": 25731,
+        "interventionDenominator": 20343
+      },
+      "pooledBaselineRate": 99.70210019363488,
+      "pooledInterventionRate": 126.48576906061054,
+      "descriptiveBaseline": {
+        "points": 20081,
+        "completedPossessions": 20141,
+        "startedPossessions": 20510,
+        "fga": 16384,
+        "fgm": 7642,
+        "threePa": 7016,
+        "fta": 2973,
+        "ftm": 1986,
+        "turnovers": 5034,
+        "shotClockViolations": 1377,
+        "oreb": 2473,
+        "oppDreb": 6697
+      },
+      "descriptiveIntervention": {
+        "points": 25731,
+        "completedPossessions": 20343,
+        "startedPossessions": 20696,
+        "fga": 17278,
+        "fgm": 9898,
+        "threePa": 6994,
+        "fta": 3137,
+        "ftm": 2402,
+        "turnovers": 3968,
+        "shotClockViolations": 1300,
+        "oreb": 2128,
+        "oppDreb": 5580
+      },
+      "meanBaseline": 99.69204167331927,
+      "meanIntervention": 126.4150346361984,
+      "meanDifference": 26.722992962879093,
+      "medianDifference": 26.64265706282513,
+      "standardDeviation": 15.950714296526707,
+      "standardizedEffect": 1.6753477283896978,
+      "ciLow": 24.529186871940087,
+      "ciHigh": 29.042163425327338,
+      "pValue": 0.00009999000099990002,
+      "expectedSign": 1,
+      "verdict": "PASSED",
+      "holmAdjustedP": 0.0005999400059994001
+    }
+  ],
+  "ac09": "PASSED"
+}

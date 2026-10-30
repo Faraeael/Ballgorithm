@@ -5,7 +5,7 @@ import 'package:simulation_core/simulation_core.dart';
 import 'package:test/test.dart';
 
 import 'support.dart';
-import 't012_canonical_ledger_fixture.dart';
+import 't012_canonical_ledger_fixture_v2.dart';
 import 't013_support.dart';
 import 't011_game_reliability_test.dart' as t011;
 
@@ -142,18 +142,18 @@ void main() {
       }
       expect(
         sha256.convert(utf8.encode(expected)).toString(),
-        sha256.convert(utf8.encode(t012CanonicalLedgerJson)).toString(),
+        sha256.convert(utf8.encode(t012CanonicalLedgerV2Json)).toString(),
         reason: 'T012 golden must remain the canonical seed-42 ledger',
       );
     });
 
     test('pinned T012 seeds still reproduce their published digests', () {
       const published = {
-        1: '610dea0941d463da7960b912ea2004f91562a0567bbecba9e7aabba23c6a1e61',
-        42: 'f8cfc12e01d8ba187c602021eaaabbac13b8438cf7e34ec5af3ff03b3d97387f',
-        99: 'b325c79d846d4401443878616682437120ee9db1fc8f59ae995a4f9bb184dc17',
+        1: '908334617b00ac91960b0d6475a1a75f86bd82bc2e8807b63d2406e5e947936a',
+        42: 'e3e6962420388d6f16b5900cfed83d7106b4daedde869a21415319b069666b4b',
+        99: 'af0d7b71d19107b8ed1960ccf63832c07ed09fffeca49f7b7f9079c0de7c9bde',
         20261029:
-            'c996cd4a4d0dc03a647bef578ee2cf1cfe9efd4dc84392778f9bfec312b96493',
+            'bd2e5801228d8966882c9aa9eb580feb026c3dd056fe86a8aa61615a01c90e3a',
       };
       for (final entry in published.entries) {
         final input = standardInput(entry.key);
@@ -292,7 +292,7 @@ void main() {
 
       expect(
         () => GameEventLedger.fromJson(
-          corrupt((json) => json['gameSimulationVersion'] = 2),
+          corrupt((json) => json['gameSimulationVersion'] = 1),
         ),
         throwsA(
           isA<GameValidationException>().having(
@@ -462,6 +462,8 @@ void main() {
     // bound. Sub-three-second periods tie at one-second granularity, so the
     // two-overtime configurations legitimately exhaust their limit; the
     // zero-overtime configuration fails only on the tied seed.
+    // Pinned for simulation v2 (Amendment 002). v1 had a fifth overtime bound
+    // at zero-overtime seed 3; the v2 hazard mix no longer ties that game.
     final expected = <String, List<String>>{
       'one-second clocks': ['overtimeLimitExceeded', 'ok', 'ok'],
       'two-second clocks': [
@@ -474,7 +476,7 @@ void main() {
       'aggressive bonus': ['ok', 'ok', 'ok'],
       'custom A1 durations': ['ok', 'ok', 'ok'],
       'one-second phase brackets': ['ok', 'ok', 'ok'],
-      'zero overtimes': ['ok', 'ok', 'overtimeLimitExceeded'],
+      'zero overtimes': ['ok', 'ok', 'ok'],
       'ten-overtime cap': ['ok', 'ok', 'ok'],
     };
 
@@ -532,8 +534,8 @@ void main() {
         }
       }
 
-      expect(successes, 22);
-      expect(bounds, 5);
+      expect(successes, 23);
+      expect(bounds, 4);
       expect(successes + bounds, configs.length * 3);
       print('T013 rules matrix:\n  ${observed.join('\n  ')}');
     });

@@ -7,8 +7,10 @@
 /// dart run tool/t014_sensitivity.dart
 /// ```
 ///
-/// Writes `specs/002-possession-simulation/t014-paired-results.csv` and
-/// `t014-statistical-summary.json`. The protocol in
+/// Writes the v2 experiment artifacts
+/// `specs/002-possession-simulation/t014-paired-results-v2.csv` and
+/// `t014-statistical-summary-v2.json`; the v1 artifacts are historical and must
+/// never be overwritten. The protocol in
 /// `specs/002-possession-simulation/t014-analysis-protocol.md` is frozen before
 /// execution and must not be modified by this tool.
 library;
@@ -17,6 +19,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:crypto/crypto.dart';
 import 'package:simulation_core/simulation_core.dart';
 
 import 't014_stats.dart';
@@ -30,7 +33,9 @@ const int permutationSeed = 424242;
 const int resamples = 10000;
 const int permutations = 10000;
 const int minimumValidPairs = 100;
-const String baselineCommitSha = 'fb9636814dc9c187ac5007352b1a3a159c41e201';
+
+/// Historical v1 baseline (T013). The v2 run records its real parent below.
+const String historicalV1Commit = 'fb9636814dc9c187ac5007352b1a3a159c41e201';
 
 const List<String> offensiveSkills = [
   'insideScoring',
@@ -281,11 +286,27 @@ void main() {
     '${Directory.current.path}/../../specs/002-possession-simulation',
   );
   File(
-    '${outDir.path}/t014-paired-results.csv',
+    '${outDir.path}/t014-paired-results-v2.csv',
   ).writeAsStringSync(buildCsv(rows));
   final summary = <String, Object?>{
-    'protocol': 't014-analysis-protocol.md',
-    'baselineCommit': baselineCommitSha,
+    'protocol': 't014-analysis-protocol.md (unchanged v1 preregistration)',
+    'simulationVersion': gameSimulationVersion,
+    'amendment': '002 (player-exposure turnover hazard)',
+    'historicalV1Commit': historicalV1Commit,
+    'parentCommit': _git(['rev-parse', 'HEAD']),
+    'workingTreeStatus': _git([
+      'status',
+      '--porcelain',
+    ]).split('\n').where((line) => line.trim().isNotEmpty).toList(),
+    'modelSourcesAreUncommitted': true,
+    'sourceSha256': {
+      for (final path in _sourcePaths)
+        path: sha256.convert(File(path).readAsBytesSync()).toString(),
+    },
+    'baselineCommit': historicalV1Commit,
+    'baselineCommitMeaning':
+        'historical v1 T013 baseline; this v2 run used uncommitted working-tree '
+        'changes on parentCommit',
     'leagueFixtureSeed': leagueFixtureSeed,
     'matchup': {
       'homeTeamId': homeTeam.id.value,
@@ -331,7 +352,7 @@ void main() {
     'ac09': ac09Verdict(summaries),
   };
   File(
-    '${outDir.path}/t014-statistical-summary.json',
+    '${outDir.path}/t014-statistical-summary-v2.json',
   ).writeAsStringSync(const JsonEncoder.withIndent('  ').convert(summary));
 
   stdout.writeln('');
@@ -375,6 +396,25 @@ void verifyCsvReconciliation(
         '$difference != $intervention - $baseline',
       );
     }
+  }
+}
+
+const List<String> _sourcePaths = [
+  'lib/src/simulation/probability_model.dart',
+  'lib/src/simulation/game_versions.dart',
+  'lib/src/simulation/game_simulator.dart',
+  'tool/t014_sensitivity.dart',
+  'tool/t014_stats.dart',
+  'test/simulation/support.dart',
+];
+
+String _git(List<String> arguments) {
+  try {
+    final result = Process.runSync('git', arguments);
+    if (result.exitCode != 0) return '';
+    return (result.stdout as String).trim();
+  } on ProcessException {
+    return '';
   }
 }
 

@@ -148,3 +148,31 @@ Not AC09: no bootstrap CI, no Holm correction, no realism claim.
   scope).
 - One-second clock granularity and A1 overshoot classification remain owned by
   the later orchestrator; this model never clamps a planned duration.
+
+
+## Amendment 002 — player-exposure turnover hazard (simulation v2)
+
+Implemented under owner authorization; calibrated status unchanged.
+
+- **Exposure** `e_i = max(1, posBase_i + 2·(passing_i − 50) + 1·(IQ_i − 50))`
+  with `posBase` PG 420, SG 320, SF 280, PF 220, C 180; `ballHandling` is not an
+  exposure input. Weights are normalised to exactly 10,000 with a positive
+  min-one largest-remainder allocation (ties by canonical PG→C index).
+- **Individual hazard**
+  `h_i = clamp(1093 − 10·(ballHandling_i − 50) − 4·(passing_i − 50) − 4·(IQ_i − 50)
+  + 7·(oppPerimeterDefense − 50) + 3·(oppAthleticism − 50) + phaseBonus, 150, 2500)`
+  with phase bonuses `[250, 100, 0]`.
+- **Team hazard** `H = clamp(floor(Σ e_i·h_i / 10000), 150, 2500)`. Since every
+  `h_i` is already inside that interval, the category clamp cannot bind.
+- **Actor posterior** weights `e_i·h_i`, normalised with the same positive
+  allocation; a secure handler loses attribution share at fixed exposure.
+- Offensive fouls still use the legacy `_ballHandlerScore`; steals keep
+  `stealShareBasisPoints`; shot-clock violations remain credited to the lineup
+  PG; event schema stays v2.
+
+Draw schedule per live possession is unchanged: category, actor, steal-share,
+and defender only when the steal branch is taken (3 draws for `nonSteal`,
+4 for `steal`).
+
+Version: `gameSimulationVersion` 2 (was 1). Input fingerprints and canonical
+ledgers change; v1 fixtures and T014 v1 artifacts remain historical records.

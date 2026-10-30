@@ -8,7 +8,7 @@ void main() {
     expect(coreEngineVersion, '1.0.0');
     expect(snapshotSchemaVersion, 1);
     expect(prngImplementationId, 'xorshift32-v1');
-    expect(gameSimulationVersion, 1);
+    expect(gameSimulationVersion, 2);
     expect(gameRulesVersion, 1);
     expect(gameEventSchemaVersion, 2);
     final rules = GameRules.standard;

@@ -131,6 +131,23 @@ final class BasketballProbabilityModel {
   static const List<int> _turnoverPhaseBonus = [250, 100, 0];
   static const List<int> _reboundZoneBonus = [100, 0, 150];
 
+  // --- Amendment 002 (simulation v2): exposure/security contract ----------
+
+  /// Position role bases for turnover exposure (PG..C).
+  static const List<int> _exposurePositionBase = [420, 320, 280, 220, 180];
+  static const int _exposurePassingWeight = 2;
+  static const int _exposureIqWeight = 1;
+
+  /// Base individual live-turnover hazard and per-point security slopes.
+  static const int _turnoverBaseBasisPoints = 1093;
+  static const int _hazardBallHandlingSlope = -10;
+  static const int _hazardPassingSlope = -4;
+  static const int _hazardIqSlope = -4;
+  static const int _hazardPerimeterDefenseSlope = 7;
+  static const int _hazardAthleticismSlope = 3;
+  static const int _hazardMinBasisPoints = 150;
+  static const int _hazardMaxBasisPoints = 2500;
+
   // --- A1 duration --------------------------------------------------------
 
   /// Draws the owner-approved A1 phase type and planned duration.
@@ -192,7 +209,19 @@ final class BasketballProbabilityModel {
     );
     final categoryDraw = rng.nextInt(_maxBasisPoints);
     if (categoryDraw < turnover) {
-      return _selectTurnover(offense, defense, rng);
+      return _selectTurnover(
+        offense,
+        defense,
+        rng,
+        _actorWeights(
+          exposureWeights(offense.lineup),
+          playerTurnoverHazards(
+            offense: offense,
+            defense: defense,
+            phase: phase,
+          ),
+        ),
+      );
     }
     if (categoryDraw < turnover + offensiveFoul) {
       final offender = _pickWeighted(rng, offense.lineup, _ballHandlerScore);
@@ -231,8 +260,10 @@ final class BasketballProbabilityModel {
     TeamOnCourt offense,
     TeamOnCourt defense,
     DeterministicRandom rng,
+    List<int> actorWeights,
   ) {
-    final handler = _pickWeighted(rng, offense.lineup, _ballHandlerScore);
+    final handler =
+        offense.lineup.players[_pickWeightedIndex(rng, actorWeights)];
     final share = stealShareBasisPoints(ballhandler: handler, defense: defense);
     if (rng.nextInt(_maxBasisPoints) < share) {
       final thief = _pickWeighted(rng, defense.lineup, _stealScore);
@@ -516,26 +547,88 @@ final class BasketballProbabilityModel {
     );
   }
 
-  /// Team live-turnover probability for the current phase.
-  int turnoverBasisPoints({
+  /// Normalized turnover exposure weights (PG..C), summing to 10000.
+  ///
+  /// Amendment 002: involvement is a role statement. `ballHandling` is
+  /// deliberately excluded; passing and basketballIQ express playmaking and
+  /// decision responsibility. Positive min-one largest-remainder allocation.
+  List<int> exposureWeights(ActiveLineup lineup) {
+    final raw = <int>[
+      for (final player in lineup.players)
+        max(
+          1,
+          _exposurePositionBase[player.position.index] +
+              _exposurePassingWeight * (player.attributes.passing - 50) +
+              _exposureIqWeight * (player.attributes.basketballIQ - 50),
+        ),
+    ];
+    return allocatePositiveWeights(raw, _maxBasisPoints);
+  }
+
+  /// Individual live-turnover hazards in basis points (PG..C order).
+  List<int> playerTurnoverHazards({
     required TeamOnCourt offense,
     required TeamOnCourt defense,
     required PhaseKind phase,
   }) {
-    final off = _lineupAverages(offense.lineup);
     final def = _lineupAverages(defense.lineup);
+    final defenseTerm =
+        _hazardPerimeterDefenseSlope * (def.perimeterDefense - 50) +
+        _hazardAthleticismSlope * (def.athleticism - 50);
+    return [
+      for (final player in offense.lineup.players)
+        clampBasisPoints(
+          _turnoverBaseBasisPoints +
+              _hazardBallHandlingSlope * (player.attributes.ballHandling - 50) +
+              _hazardPassingSlope * (player.attributes.passing - 50) +
+              _hazardIqSlope * (player.attributes.basketballIQ - 50) +
+              defenseTerm +
+              _turnoverPhaseBonus[phase.index],
+          min: _hazardMinBasisPoints,
+          max: _hazardMaxBasisPoints,
+        ),
+    ];
+  }
+
+  /// Team live-turnover probability for the current phase.
+  ///
+  /// `H = clamp(floor(sum(E_i * h_i) / 10000), 150, 2500)`. Because every `h_i`
+  /// is clamped into the same interval, this category clamp cannot bind.
+  int turnoverBasisPoints({
+    required TeamOnCourt offense,
+    required TeamOnCourt defense,
+    required PhaseKind phase,
+  }) => _teamTurnoverBasisPoints(
+    exposureWeights(offense.lineup),
+    playerTurnoverHazards(offense: offense, defense: defense, phase: phase),
+  );
+
+  /// Normalized actor weights for a live turnover, summing to 10000.
+  List<int> turnoverActorWeights({
+    required TeamOnCourt offense,
+    required TeamOnCourt defense,
+    required PhaseKind phase,
+  }) => _actorWeights(
+    exposureWeights(offense.lineup),
+    playerTurnoverHazards(offense: offense, defense: defense, phase: phase),
+  );
+
+  int _teamTurnoverBasisPoints(List<int> exposure, List<int> hazards) {
+    var total = 0;
+    for (var i = 0; i < exposure.length; i++) {
+      total += exposure[i] * hazards[i];
+    }
     return clampBasisPoints(
-      1050 -
-          (off.ballHandling - 50) * 7 -
-          (off.passing - 50) * 3 -
-          (off.basketballIQ - 50) * 3 +
-          (def.perimeterDefense - 50) * 5 +
-          (def.athleticism - 50) * 2 +
-          _turnoverPhaseBonus[phase.index],
-      min: 150,
-      max: 2500,
+      total ~/ _maxBasisPoints,
+      min: _hazardMinBasisPoints,
+      max: _hazardMaxBasisPoints,
     );
   }
+
+  static List<int> _actorWeights(List<int> exposure, List<int> hazards) =>
+      allocatePositiveWeights([
+        for (var i = 0; i < exposure.length; i++) exposure[i] * hazards[i],
+      ], _maxBasisPoints);
 
   /// Share of live turnovers attributed to a steal.
   int stealShareBasisPoints({
@@ -773,6 +866,47 @@ final class BasketballProbabilityModel {
       }
     }
     return normalized;
+  }
+
+  /// Positive min-one largest-remainder allocation to exactly [budget].
+  ///
+  /// Used for exposure and turnover-actor weights so a positive raw weight can
+  /// never be rounded to zero. Ties are broken by canonical index. Public so the
+  /// contract (positivity, exact sum, error window) is directly testable.
+  static List<int> allocatePositiveWeights(List<int> raw, int budget) {
+    if (raw.isEmpty) {
+      throw ArgumentError.value(raw, 'weights', 'need at least one weight');
+    }
+    if (budget < raw.length) {
+      throw ArgumentError.value(budget, 'budget', 'budget below player count');
+    }
+    var total = 0;
+    for (final value in raw) {
+      if (value < 1) {
+        throw ArgumentError.value(raw, 'weights', 'weights must be positive');
+      }
+      total += value;
+    }
+    final remBudget = budget - raw.length;
+    final extra = <int>[for (final value in raw) value * remBudget ~/ total];
+    var assigned = 0;
+    for (final value in extra) {
+      assigned += value;
+    }
+    final leftover = remBudget - assigned;
+    final remainders = <int>[
+      for (var i = 0; i < raw.length; i++)
+        raw[i] * remBudget - extra[i] * total,
+    ];
+    final order = List<int>.generate(raw.length, (index) => index)
+      ..sort((a, b) {
+        final byRemainder = remainders[b].compareTo(remainders[a]);
+        return byRemainder != 0 ? byRemainder : a.compareTo(b);
+      });
+    for (var i = 0; i < leftover; i++) {
+      extra[order[i]] += 1;
+    }
+    return [for (final value in extra) value + 1];
   }
 
   static _LineupAverages _lineupAverages(ActiveLineup lineup) {
