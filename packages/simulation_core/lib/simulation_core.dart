@@ -29,4 +29,5 @@ export 'src/simulation/game_simulator.dart';
 export 'src/simulation/game_state.dart';
 export 'src/simulation/game_validation.dart';
 export 'src/simulation/game_versions.dart';
+export 'src/simulation/phase_trace.dart';
 export 'src/simulation/probability_model.dart';

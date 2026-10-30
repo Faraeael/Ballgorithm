@@ -10,6 +10,7 @@ import 'game_reducer.dart';
 import 'game_result.dart';
 import 'game_rules.dart';
 import 'game_validation.dart';
+import 'phase_trace.dart';
 import 'game_versions.dart';
 import 'probability_model.dart';
 
@@ -63,10 +64,16 @@ import 'probability_model.dart';
 /// rejected before any PRNG draw with
 /// `GameValidationCode.invalidRules`.
 final class GameSimulator {
-  GameSimulator({BasketballProbabilityModel? probabilityModel})
-    : _injectedModel = probabilityModel;
+  GameSimulator({
+    BasketballProbabilityModel? probabilityModel,
+    this.onPhaseTrace,
+  }) : _injectedModel = probabilityModel;
 
   final BasketballProbabilityModel? _injectedModel;
+
+  /// Optional passive A1 phase observer (default disabled). It cannot draw
+  /// randomness, mutate state or change the ledger.
+  final void Function(PhaseTraceRecord record)? onPhaseTrace;
 
   /// Simulates and validates one game. Throws [GameValidationException] on any
   /// illegal state, incompatible injected model or bound; never returns a
@@ -77,10 +84,11 @@ final class GameSimulator {
       return _GameRun(
         input,
         BasketballProbabilityModel(rules: input.rules),
+        onPhaseTrace,
       ).run();
     }
     _requireCompatibleA1(injected.rules, input.rules);
-    return _GameRun(input, injected).run();
+    return _GameRun(input, injected, onPhaseTrace).run();
   }
 
   /// Rejects an injected model whose A1 configuration differs from the input.
@@ -151,7 +159,7 @@ final class GameSimulator {
 }
 
 final class _GameRun {
-  _GameRun(this.input, this._model)
+  _GameRun(this.input, this._model, [this._trace])
     : rules = input.rules,
       rng = DeterministicRandom(input.normalizedSeed),
       fingerprint = GameFingerprint.of(input) {
@@ -161,7 +169,33 @@ final class _GameRun {
 
   final GameInput input;
   final BasketballProbabilityModel _model;
+  final void Function(PhaseTraceRecord record)? _trace;
   final GameRules rules;
+
+  int _traceSequence = 0;
+
+  void _tracePhase(
+    PhaseKind kind,
+    int plannedSeconds,
+    int gameClockBefore,
+    int shotClockBefore,
+    PhaseResolution resolution,
+  ) {
+    final observer = _trace;
+    if (observer == null) return;
+    observer(
+      PhaseTraceRecord(
+        sequence: ++_traceSequence,
+        period: _period,
+        kind: kind.name,
+        plannedSeconds: plannedSeconds,
+        gameClockBefore: gameClockBefore,
+        shotClockBefore: shotClockBefore,
+        resolution: resolution,
+      ),
+    );
+  }
+
   final DeterministicRandom rng;
   final String fingerprint;
 
@@ -359,6 +393,8 @@ final class _GameRun {
         return _possessionOpen;
       }
 
+      final clockBefore = _clock;
+      final shotClockBefore = shotClock;
       final phase = _model.drawPhaseDuration(rng);
       final duration = phase.seconds;
 
@@ -373,6 +409,13 @@ final class _GameRun {
         _shotClock = shotClock - duration;
 
         if (action is ShotAttemptAction) {
+          _tracePhase(
+            phase.kind,
+            duration,
+            clockBefore,
+            shotClockBefore,
+            PhaseResolution.legalShot,
+          );
           _applyAction(action);
           if (!_possessionOpen) return false;
           if (_clock == 0) return true;
@@ -385,6 +428,13 @@ final class _GameRun {
             // initiated before expiry resolves at zero; bonus free throws
             // complete before PeriodEnded. A non-bonus foul keeps the
             // possession open only until the caller ends the period.
+            _tracePhase(
+              phase.kind,
+              duration,
+              clockBefore,
+              shotClockBefore,
+              PhaseResolution.legalFoul,
+            );
             _applyAction(action);
             return _possessionOpen;
           }
@@ -392,6 +442,13 @@ final class _GameRun {
             // No released attempt and no qualifying award: fall through to
             // the shot-clock violation.
           } else {
+            _tracePhase(
+              phase.kind,
+              duration,
+              clockBefore,
+              shotClockBefore,
+              PhaseResolution.legalFoul,
+            );
             _applyAction(action);
             if (!_possessionOpen) return false;
             if (_clock == 0) return true;
@@ -400,14 +457,35 @@ final class _GameRun {
         } else if (_clock == 0) {
           // A live turnover or offensive foul at the horn has no legal event;
           // the action is discarded and the period expires.
+          _tracePhase(
+            phase.kind,
+            duration,
+            clockBefore,
+            shotClockBefore,
+            PhaseResolution.actionDiscardedAtHorn,
+          );
           return true;
         } else if (_shotClock! > 0) {
           // Live turnover or offensive foul with time remaining.
+          _tracePhase(
+            phase.kind,
+            duration,
+            clockBefore,
+            shotClockBefore,
+            PhaseResolution.legalTurnover,
+          );
           _applyAction(action);
           return false;
         }
 
         // Shot-clock expiry with no released attempt or qualifying award.
+        _tracePhase(
+          phase.kind,
+          duration,
+          clockBefore,
+          shotClockBefore,
+          PhaseResolution.shotClockExpiryNoAttempt,
+        );
         final handler = _onCourt(_offense).lineup.players.first;
         _emit(
           Turnover(
@@ -425,6 +503,13 @@ final class _GameRun {
       }
 
       if (duration > shotClock && shotClock < _clock) {
+        _tracePhase(
+          phase.kind,
+          duration,
+          clockBefore,
+          shotClockBefore,
+          PhaseResolution.shotClockOvershoot,
+        );
         _clock -= shotClock;
         _shotClock = 0;
         final handler = _onCourt(_offense).lineup.players.first;
@@ -444,6 +529,15 @@ final class _GameRun {
       }
 
       // Game clock expires first (D > Rg, Rg <= Rs): no terminal action.
+      _tracePhase(
+        phase.kind,
+        duration,
+        clockBefore,
+        shotClockBefore,
+        clockBefore == shotClockBefore
+            ? PhaseResolution.simultaneousExpiry
+            : PhaseResolution.gameClockFirst,
+      );
       _clock = 0;
       return true;
     }
