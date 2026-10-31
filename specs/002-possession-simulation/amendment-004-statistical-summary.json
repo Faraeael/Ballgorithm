@@ -1,0 +1,180 @@
+{
+  "experiment": "Amendment 004 Single-Parameter Offensive Foul Base Calibration",
+  "status": "PILOT COMPLETE",
+  "baselineVersion": {
+    "simulation": 3,
+    "rules": 2,
+    "commit": "9f8458ab345ea7c075f3b910b60d7ee964f1c5fe"
+  },
+  "candidateVersion": {
+    "simulation": 4,
+    "rules": 2,
+    "commit": "83edd5288d8db9bc5397f259fe7b79bebc04a9e5"
+  },
+  "pilotDesign": {
+    "matchups": 56,
+    "slotsPerMatchup": 5,
+    "pairedGames": 280,
+    "seedFormula": "seed(m, s) = 1 + ((97*m + 17*s) mod 200)",
+    "inference": "Cameron-Gelbach-Miller two-way crossed clustering across seed (200) and matchup (56)"
+  },
+  "metrics": {
+    "offensiveFoulsPerTeamGame": {
+      "v3": 5.542857142857143,
+      "v4": 2.3125,
+      "delta": -3.2303571428571427,
+      "ci95": [
+        -3.4411300781574092,
+        -3.019584207556876
+      ],
+      "guardrail": [
+        1.8,
+        2.6
+      ],
+      "verdict": "PASS"
+    },
+    "offensiveFoulShareOfTurnovers": {
+      "v3": 0.2624059514751881,
+      "v4": 0.129035472299721,
+      "delta": -0.13337047917546707,
+      "guardrail": [
+        0.1,
+        0.16
+      ],
+      "verdict": "PASS"
+    },
+    "offensiveFoulsPer100CompletedPoss": {
+      "v3": 5.3813214056621765,
+      "v4": 2.253467207266779,
+      "delta": -3.1278541983953976,
+      "nbaBenchmark": [
+        2.0,
+        2.4
+      ]
+    },
+    "totalTurnoversPer100CompletedPoss": {
+      "v3": 20.507619493420712,
+      "v4": 17.463935824038142,
+      "delta": -3.0436836693825704,
+      "guardrail": [
+        15.0,
+        19.5
+      ],
+      "verdict": "PASS"
+    },
+    "totalTurnoversPerTeamGame": {
+      "v3": 21.123214285714287,
+      "v4": 17.92142857142857,
+      "delta": -3.2017857142857142,
+      "ci95": [
+        -3.510467174756362,
+        -2.8931042538150664
+      ]
+    },
+    "shotClockTurnoversPerGame": {
+      "v3": 4.164285714285715,
+      "v4": 4.242857142857143,
+      "delta": 0.07857142857142857,
+      "guardrail": [
+        3.0,
+        5.5
+      ],
+      "verdict": "PASS"
+    },
+    "liveStealsPerGame": {
+      "v3": 13.153571428571428,
+      "v4": 13.060714285714285
+    },
+    "liveNonStealsPerGame": {
+      "v3": 13.842857142857143,
+      "v4": 13.914285714285715
+    },
+    "defensiveNonShootingFoulsPerGame": {
+      "v3": 25.553571428571427,
+      "v4": 25.460714285714285,
+      "delta": -0.09285714285714286,
+      "ci95": [
+        -0.7499805095042814,
+        0.5642662237899957
+      ]
+    },
+    "totalPersonalFoulsPerGame": {
+      "v3": 46.83571428571429,
+      "v4": 40.57857142857143
+    },
+    "freeThrowAttemptsPerGame": {
+      "v3": 35.285714285714285,
+      "v4": 35.72857142857143
+    },
+    "completedPossessionsPerTeamGame": {
+      "v3": 103.00178571428572,
+      "v4": 102.61964285714286,
+      "delta": -0.3821428571428571,
+      "pctDelta": -0.3710060505192351,
+      "ci95": [
+        -0.8845069464257895,
+        0.1202212321400753
+      ],
+      "guardrail": [
+        100.0,
+        106.0
+      ],
+      "verdict": "PASS"
+    },
+    "combinedPoints": {
+      "v3": 208.91785714285714,
+      "v4": 216.95714285714286,
+      "delta": 8.039285714285715,
+      "ci95": [
+        5.535213762665407,
+        10.543357665906022
+      ]
+    },
+    "teamMedianPoints": {
+      "v3": 104.5,
+      "v4": 108.0
+    },
+    "teamMedianFGA": {
+      "v3": 88.0,
+      "v4": 92.0,
+      "delta": 3.15,
+      "ci95": [
+        2.5927649720555923,
+        3.7072350279444075
+      ],
+      "guardrail": [
+        88.0,
+        95.0
+      ],
+      "verdict": "PASS"
+    },
+    "threePointAttemptRate": {
+      "v3": 0.4159364951768489,
+      "v4": 0.41520456486297647,
+      "guardrail": [
+        0.38,
+        0.45
+      ],
+      "verdict": "PASS"
+    },
+    "effectiveFieldGoalPercentage": {
+      "v3": 0.5265474276527331,
+      "v4": 0.5285983231115596,
+      "guardrail": [
+        0.51,
+        0.54
+      ],
+      "verdict": "PASS"
+    },
+    "contextOREBViolationRate": {
+      "v3": 0.07879475542107918,
+      "v4": 0.0769980506822612,
+      "invariant": "retained"
+    },
+    "contextRetainedFoulViolationRate": {
+      "v3": 0.136892177589852,
+      "v4": 0.14217506631299734,
+      "invariant": "retained"
+    }
+  }
+}
