@@ -429,7 +429,7 @@ These tables put the drawn ratings beside what the game actually produced. **A s
 
 ## 8. Game-specific anomaly explanations (evidence-based)
 
-### P2 — 70–75, 55 turnovers, 44 steal turnovers (arm TOV mean 35.66, p95 45)
+### P2 — 70–75, 55 turnovers, 22 steal turnovers (arm TOV mean 35.66, p95 45)
 
 | Question | Answer from the ledger |
 |---|---|
@@ -474,7 +474,7 @@ These tables put the drawn ratings beside what the game actually produced. **A s
 | Valid termination | `overtimes = 2 ≤ maxOvertimes 10`; `periodsPlayed = 6 ≤ 4 + 10`; 988 ≤ `maxEvents` 50000; reducer replay and accounting reconciliation both pass |
 | Are the OT statistics plausible? | **Yes, with a caveat.** 224 FGA across 6 periods (37.3/period) matches the regulation rate (184 / 4 = 46/period is not directly comparable because overtime pacing differs, but no discontinuity appears). The caveat is that the model has no fatigue, substitutions or foul-out rule, so a 6-period game costs players nothing — a **realism limitation**, explicitly outside frozen M002 scope. |
 
-### Classification of the four investigated games
+### Classification of the five investigated games
 
 | Game | True simulation defect | Plausible statistical outlier | Realism limitation |
 |---|---|---|---|
