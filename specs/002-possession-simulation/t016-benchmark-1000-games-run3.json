@@ -1,0 +1,50 @@
+{
+  "harness": "t016_performance.dart",
+  "leagueSeed": 20261028,
+  "runtimeSeedBase": 50001,
+  "seedPolicy": "seed = 50001 + i for i in [0, games); outside every statistical seed corpus",
+  "matchupPolicy": "directed matchup i % 56 (28 lexicographic pairs x 2 orientations)",
+  "rules": {
+    "rulesVersion": 2,
+    "periods": 4,
+    "periodSeconds": 720,
+    "overtimeSeconds": 300,
+    "maxOvertimes": 10,
+    "shotClockSeconds": 24,
+    "maxEvents": 50000
+  },
+  "versions": {
+    "gameSimulationVersion": 4,
+    "gameRulesVersion": 2,
+    "gameEventSchemaVersion": 2,
+    "gameActionDurationModelVersion": 2,
+    "gameFingerprintVersion": 2
+  },
+  "gamesRequested": 1000,
+  "warmupGames": 60,
+  "gamesCompleted": 1000,
+  "typedFailures": 0,
+  "accountingFailures": 0,
+  "boundViolations": 0,
+  "failureSamples": [],
+  "timing": {
+    "loopWallMs": 5651,
+    "perGameTotalMs": 5650.389,
+    "perGameMeanMs": 5.6503890000000006,
+    "perGameP50Ms": 5.339,
+    "perGameP95Ms": 7.252,
+    "perGameP99Ms": 10.441,
+    "perGameMaxMs": 17.64,
+    "simulateTotalMs": 3918.583,
+    "simulateP50Ms": 3.685,
+    "simulateP95Ms": 5.401,
+    "simulateMaxMs": 14.469
+  },
+  "memory": {
+    "baselineRssMiB": 20,
+    "endRssMiB": 38,
+    "processMaxRssMiB": 38,
+    "incrementalEndMinusBaselineMiB": 18,
+    "incrementalPeakMinusBaselineMiB": 18
+  }
+}
