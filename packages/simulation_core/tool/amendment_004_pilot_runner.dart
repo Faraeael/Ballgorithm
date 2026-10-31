@@ -37,18 +37,35 @@ const int pilotSlots = 5;
 int developmentSeed(int matchupIndex, int slot) =>
     1 + ((97 * matchupIndex + 17 * slot) % 200);
 
+/// Slots per matchup in the fresh held-out cohort (s in 0..19).
+const int heldoutSlots = 20;
+
+/// Amendment 004 fresh held-out seed schedule: i = 20*m + s.
+int heldoutSeed(int matchupIndex, int slot) =>
+    10001 + ((137 * (20 * matchupIndex + slot) + 23) % 600);
+
 void main(List<String> args) {
-  if (args.length != 1) {
-    stderr.writeln('usage: dart run tool/amendment_004_pilot_runner.dart <out.json>');
+  final positional = args.where((a) => !a.startsWith('--')).toList();
+  final cohorts = args.where((a) => a.startsWith('--cohort='));
+  final cohort = cohorts.isEmpty ? 'pilot' : cohorts.single.split('=').last;
+  if (positional.length != 1 ||
+      cohorts.length > 1 ||
+      (cohort != 'pilot' && cohort != 'heldout')) {
+    stderr.writeln(
+      'usage: dart run tool/amendment_004_pilot_runner.dart <out.json> [--cohort=pilot|heldout]',
+    );
     exitCode = 64;
     return;
   }
-  final outPath = args.single;
+  final outPath = positional.single;
+  final isHeldout = cohort == 'heldout';
+  final slots = isHeldout ? heldoutSlots : pilotSlots;
 
   final league = const LeagueGenerator().generate(
     const GenerationConfig(seed: leagueSeed),
   );
-  final teams = [...league.teams]..sort((a, b) => a.id.value.compareTo(b.id.value));
+  final teams = [...league.teams]
+    ..sort((a, b) => a.id.value.compareTo(b.id.value));
   if (teams.length < 8) {
     stderr.writeln('expected at least 8 teams, found ${teams.length}');
     exitCode = 2;
@@ -65,10 +82,13 @@ void main(List<String> args) {
         final away = orientation == 0 ? teams[j] : teams[i];
         final matchupIndex = pairIndex * 2 + orientation;
 
-        for (var slot = 0; slot < pilotSlots; slot++) {
+        for (var slot = 0; slot < slots; slot++) {
           final globalSlot = 20 * matchupIndex + slot;
-          final seed = developmentSeed(matchupIndex, slot);
-          final gameId = 'am4-$globalSlot-$matchupIndex-$seed';
+          final seed = isHeldout
+              ? heldoutSeed(matchupIndex, slot)
+              : developmentSeed(matchupIndex, slot);
+          final gameId =
+              '${isHeldout ? 'am4h' : 'am4'}-$globalSlot-$matchupIndex-$seed';
 
           final input = GameInput.create(
             gameId: gameId,
@@ -89,7 +109,8 @@ void main(List<String> args) {
           final accounted = EventAccounting.aggregate(validated);
           final accountedHome = accounted.teams[home.id.value]!.points;
           final accountedAway = accounted.teams[away.id.value]!.points;
-          if (accountedHome != result.homeScore || accountedAway != result.awayScore) {
+          if (accountedHome != result.homeScore ||
+              accountedAway != result.awayScore) {
             throw StateError('accounting mismatch in $gameId');
           }
 
@@ -134,9 +155,11 @@ void main(List<String> args) {
           var orebPhases = 0;
           var orebViolations = 0;
           var retFoulPhases = 0;
+          var retFoulViolations = 0;
           var retFoul14Phases = 0;
           var retFoul14Violations = 0;
           var freshPhases = 0;
+          var freshViolations = 0;
 
           for (final record in trace) {
             sampledPhases++;
@@ -163,12 +186,14 @@ void main(List<String> args) {
                 if (violation) orebViolations++;
               case 'retainedFoul':
                 retFoulPhases++;
+                if (violation) retFoulViolations++;
                 if (record.shotClockBefore == 14) {
                   retFoul14Phases++;
                   if (violation) retFoul14Violations++;
                 }
               case 'fresh':
                 freshPhases++;
+                if (violation) freshViolations++;
               default:
                 break;
             }
@@ -250,9 +275,11 @@ void main(List<String> args) {
             'sampledPhases': sampledPhases,
             'actionPhases': actionPhases,
             'freshPhases': freshPhases,
+            'freshViolations': freshViolations,
             'orebPhases': orebPhases,
             'orebViolations': orebViolations,
             'retFoulPhases': retFoulPhases,
+            'retFoulViolations': retFoulViolations,
             'retFoul14Phases': retFoul14Phases,
             'retFoul14Violations': retFoul14Violations,
           });
@@ -263,9 +290,9 @@ void main(List<String> args) {
     }
   }
 
-  if (rows.length != directedMatchups * pilotSlots) {
+  if (rows.length != directedMatchups * slots) {
     stderr.writeln(
-      'expected ${directedMatchups * pilotSlots} rows, produced ${rows.length}',
+      'expected ${directedMatchups * slots} rows, produced ${rows.length}',
     );
     exitCode = 3;
     return;
@@ -274,25 +301,58 @@ void main(List<String> args) {
   final payload = <String, Object?>{
     'runner': 'amendment_004_pilot_runner.dart',
     'leagueSeed': leagueSeed,
-    'seedSchedule': '1 + ((97*m + 17*s) mod 200)',
+    'cohort': cohort,
+    'seedSchedule': isHeldout
+        ? '10001 + ((137*(20*m + s) + 23) mod 600)'
+        : '1 + ((97*m + 17*s) mod 200)',
     'directedMatchups': directedMatchups,
-    'slotsPerMatchup': pilotSlots,
+    'slotsPerMatchup': slots,
     'rows': rows,
     'totals': {
-      'sampledPhases': rows.fold<int>(0, (a, r) => a + (r['sampledPhases']! as int)),
-      'actionPhases': rows.fold<int>(0, (a, r) => a + (r['actionPhases']! as int)),
-      'freshPhases': rows.fold<int>(0, (a, r) => a + (r['freshPhases']! as int)),
+      'sampledPhases': rows.fold<int>(
+        0,
+        (a, r) => a + (r['sampledPhases']! as int),
+      ),
+      'actionPhases': rows.fold<int>(
+        0,
+        (a, r) => a + (r['actionPhases']! as int),
+      ),
+      'freshPhases': rows.fold<int>(
+        0,
+        (a, r) => a + (r['freshPhases']! as int),
+      ),
       'orebPhases': rows.fold<int>(0, (a, r) => a + (r['orebPhases']! as int)),
-      'orebViolations': rows.fold<int>(0, (a, r) => a + (r['orebViolations']! as int)),
-      'retFoulPhases': rows.fold<int>(0, (a, r) => a + (r['retFoulPhases']! as int)),
-      'retFoul14Phases': rows.fold<int>(0, (a, r) => a + (r['retFoul14Phases']! as int)),
-      'retFoul14Violations': rows.fold<int>(0, (a, r) => a + (r['retFoul14Violations']! as int)),
+      'orebViolations': rows.fold<int>(
+        0,
+        (a, r) => a + (r['orebViolations']! as int),
+      ),
+      'retFoulPhases': rows.fold<int>(
+        0,
+        (a, r) => a + (r['retFoulPhases']! as int),
+      ),
+      'retFoul14Phases': rows.fold<int>(
+        0,
+        (a, r) => a + (r['retFoul14Phases']! as int),
+      ),
+      'retFoul14Violations': rows.fold<int>(
+        0,
+        (a, r) => a + (r['retFoul14Violations']! as int),
+      ),
       'completed': rows.fold<int>(0, (a, r) => a + (r['completed']! as int)),
       'tov': rows.fold<int>(0, (a, r) => a + (r['tov']! as int)),
-      'offensiveFoulTov': rows.fold<int>(0, (a, r) => a + (r['offensiveFoulTov']! as int)),
+      'offensiveFoulTov': rows.fold<int>(
+        0,
+        (a, r) => a + (r['offensiveFoulTov']! as int),
+      ),
       'stealTov': rows.fold<int>(0, (a, r) => a + (r['stealTov']! as int)),
-      'nonStealTov': rows.fold<int>(0, (a, r) => a + (r['nonStealTov']! as int)),
-      'shotClockTov': rows.fold<int>(0, (a, r) => a + (r['shotClockTov']! as int)),
+      'nonStealTov': rows.fold<int>(
+        0,
+        (a, r) => a + (r['nonStealTov']! as int),
+      ),
+      'shotClockTov': rows.fold<int>(
+        0,
+        (a, r) => a + (r['shotClockTov']! as int),
+      ),
       'fga': rows.fold<int>(0, (a, r) => a + (r['fga']! as int)),
       'fgm': rows.fold<int>(0, (a, r) => a + (r['fgm']! as int)),
       'threePa': rows.fold<int>(0, (a, r) => a + (r['threePa']! as int)),

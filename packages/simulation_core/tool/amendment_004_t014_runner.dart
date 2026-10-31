@@ -23,12 +23,22 @@ import 'package:simulation_core/simulation_core.dart';
 import 't014_sensitivity.dart' as t014;
 
 void main(List<String> args) {
-  if (args.length != 1) {
-    stderr.writeln('usage: dart run tool/amendment_004_t014_runner.dart <out.json>');
+  // Optional `--seed-offset=N` shifts the frozen seeds 1..200 to N+1..N+200
+  // (Amendment 004 fresh held-out G9 evidence). Default 0 = frozen protocol.
+  final positional = args.where((a) => !a.startsWith('--')).toList();
+  final offsets = args.where((a) => a.startsWith('--seed-offset='));
+  if (positional.length != 1 || offsets.length > 1) {
+    stderr.writeln(
+      'usage: dart run tool/amendment_004_t014_runner.dart <out.json> [--seed-offset=N]',
+    );
     exitCode = 64;
     return;
   }
-  final outPath = args.single;
+  final outPath = positional.single;
+  final seedOffset = offsets.isEmpty
+      ? 0
+      : int.parse(offsets.single.split('=').last);
+  final seeds = [for (final s in t014.seeds) s + seedOffset];
 
   final league = const LeagueGenerator().generate(
     const GenerationConfig(seed: t014.leagueFixtureSeed),
@@ -40,7 +50,7 @@ void main(List<String> args) {
 
   // Baseline arm is shared by every experiment and simulated once.
   final baseline = <int, t014.Arm>{};
-  for (final seed in t014.seeds) {
+  for (final seed in seeds) {
     final input = t014.buildInput(league, seed);
     baseline[seed] = t014.Arm(input, GameSimulator().simulate(input));
   }
@@ -62,7 +72,7 @@ void main(List<String> args) {
     var zeroIntervention = 0;
     var zeroBoth = 0;
 
-    for (final seed in t014.seeds) {
+    for (final seed in seeds) {
       final baseArm = baseline[seed]!;
       final interventionInput = t014.buildInput(modified, seed);
       final interventionResult = GameSimulator().simulate(interventionInput);
@@ -76,8 +86,10 @@ void main(List<String> args) {
           descriptiveBaseline[entry.key] =
               (descriptiveBaseline[entry.key] ?? 0) + entry.value;
         }
-        for (final entry
-            in describe(interventionResult, interventionInput).entries) {
+        for (final entry in describe(
+          interventionResult,
+          interventionInput,
+        ).entries) {
           descriptiveIntervention[entry.key] =
               (descriptiveIntervention[entry.key] ?? 0) + entry.value;
         }
@@ -85,17 +97,29 @@ void main(List<String> args) {
 
       if (baseObs.denominator == 0 && intObs.denominator == 0) {
         zeroBoth++;
-        perSeed.add({'experiment': experiment.id, 'seed': seed, 'status': 'zeroBoth'});
+        perSeed.add({
+          'experiment': experiment.id,
+          'seed': seed,
+          'status': 'zeroBoth',
+        });
         continue;
       }
       if (baseObs.denominator == 0) {
         zeroBaseline++;
-        perSeed.add({'experiment': experiment.id, 'seed': seed, 'status': 'zeroBaseline'});
+        perSeed.add({
+          'experiment': experiment.id,
+          'seed': seed,
+          'status': 'zeroBaseline',
+        });
         continue;
       }
       if (intObs.denominator == 0) {
         zeroIntervention++;
-        perSeed.add({'experiment': experiment.id, 'seed': seed, 'status': 'zeroIntervention'});
+        perSeed.add({
+          'experiment': experiment.id,
+          'seed': seed,
+          'status': 'zeroIntervention',
+        });
         continue;
       }
 
@@ -109,7 +133,8 @@ void main(List<String> args) {
       pooled['interventionDenominator'] =
           (pooled['interventionDenominator'] ?? 0) + intObs.denominator;
 
-      final baseRate = baseObs.numerator / baseObs.denominator * experiment.scale;
+      final baseRate =
+          baseObs.numerator / baseObs.denominator * experiment.scale;
       final intRate = intObs.numerator / intObs.denominator * experiment.scale;
       baselineRates.add(baseRate);
       interventionRates.add(intRate);
@@ -131,8 +156,10 @@ void main(List<String> args) {
       final secondary = experiment.secondary;
       if (secondary != null) {
         final baseSecondary = secondary(baseArm.result, baseArm.input).rate;
-        final intSecondary =
-            secondary(interventionResult, interventionInput).rate;
+        final intSecondary = secondary(
+          interventionResult,
+          interventionInput,
+        ).rate;
         if (baseSecondary != null && intSecondary != null) {
           secondaryDeltas.add((intSecondary - baseSecondary) * 100);
         }
@@ -163,8 +190,9 @@ void main(List<String> args) {
     'runner': 'amendment_004_t014_runner.dart',
     'protocol': 't014-analysis-protocol.md (frozen, unmodified)',
     'leagueFixtureSeed': t014.leagueFixtureSeed,
-    'firstSeed': t014.firstSeed,
-    'lastSeed': t014.lastSeed,
+    'seedOffset': seedOffset,
+    'firstSeed': t014.firstSeed + seedOffset,
+    'lastSeed': t014.lastSeed + seedOffset,
     'ratingDelta': t014.ratingDelta,
     'bootstrapSeed': t014.bootstrapSeed,
     'permutationSeed': t014.permutationSeed,
@@ -176,8 +204,7 @@ void main(List<String> args) {
     'eventSchemaVersion': gameEventSchemaVersion,
     'actionDurationModelVersion': gameActionDurationModelVersion,
     'subjects': {
-      for (final entry in subjects.entries)
-        entry.key: entry.value.id.value,
+      for (final entry in subjects.entries) entry.key: entry.value.id.value,
     },
     'summaries': summaries,
     'ac09': t014.ac09Verdict(summaries),
