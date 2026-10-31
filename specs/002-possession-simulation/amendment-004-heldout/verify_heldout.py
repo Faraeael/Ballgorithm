@@ -4,7 +4,10 @@
 Exit status is non-zero when a required artifact is missing, a recorded
 LF-normalized SHA-256 does not match, the seed/pairing/version provenance is wrong,
 a per-game identity fails, or a frozen gate recomputed from the RAW rows disagrees
-with `heldout-summary.json`. It does not trust the summary's numbers.
+with `heldout-summary.json`. G1-G8 are recomputed from raw game rows. G9 is
+corroborated from the 1,200 raw `perSeed` T014 records (counts, seeds, mean
+differences, expected sign, independent paired t-test with Holm); the frozen
+permutation p-values and Holm values are runner-reported and are NOT reproduced here.
 
 Run from the repository root:
     python specs/002-possession-simulation/amendment-004-heldout/verify_heldout.py
@@ -13,6 +16,7 @@ instead of working-tree files.
 """
 import csv
 import hashlib
+import math
 import io
 import json
 import os
@@ -148,6 +152,37 @@ def main():
           and t14.get("lastSeed") == 10200 and t14.get("simulationVersion") == 4
           and sorted(exps) == ["E1", "E2", "E3", "E4", "E5", "E6"]
           and all(v == "PASSED" for v in exps.values()))
+    per = t14["perSeed"]
+    if len(per) != 1200:
+        fail(f"T014 perSeed records {len(per)} != 1200")
+    pvals = {}
+    for summ in t14["summaries"]:
+        e = summ["id"]
+        valid = [p for p in per if p["experiment"] == e and p["status"] == "valid"]
+        seeds14 = [p["seed"] for p in valid]
+        if len(seeds14) != len(set(seeds14)) or any(not 10001 <= x <= 10200 for x in seeds14):
+            fail(f"{e}: perSeed seeds duplicated or outside 10001-10200")
+        if len(valid) != summ["validPairs"] or len(valid) < t14["minimumValidPairs"]:
+            fail(f"{e}: valid pairs {len(valid)} vs summary {summ['validPairs']}")
+            continue
+        d = [p["pairedDifference"] for p in valid]
+        if any(abs(p["interventionMetric"] - p["baselineMetric"] - p["pairedDifference"]) > 1e-12 for p in valid):
+            fail(f"{e}: pairedDifference != interventionMetric - baselineMetric")
+        mean = sum(d) / len(d)
+        if abs(mean - summ["meanDifference"]) > 1e-9:
+            fail(f"{e}: mean difference {mean} != summary {summ['meanDifference']}")
+        sign = {"increase": 1, "decrease": -1}[summ["expectedDirection"]]
+        if mean * sign <= 0:
+            fail(f"{e}: observed sign contradicts expected direction")
+        sd = statistics.stdev(d)
+        t = mean / (sd / len(d) ** 0.5) if sd > 0 else float("inf")
+        pvals[e] = math.erfc(abs(t) / math.sqrt(2))  # normal approx, n >= 100
+    ordered = sorted(pvals.items(), key=lambda kv: kv[1])
+    running = 0.0
+    for rank, (e, p) in enumerate(ordered):
+        running = max(running, min(1.0, p * (len(ordered) - rank)))
+        if running >= 0.05:
+            fail(f"{e}: independent Holm-adjusted t-test p {running:.3g} >= 0.05")
     if summary["frozenGates"]["G9"]["verdict"] != ("PASS" if g9 else "FAIL"):
         fail("G9 verdict disagrees with the raw fresh T014 run")
 
@@ -164,4 +199,6 @@ if __name__ == "__main__":
             print(" -", e)
         sys.exit(1)
     print("EVIDENCE VERIFICATION PASSED")
-    print("  source:", ref or "working tree", "| artifacts:", len(REQUIRED), "| games: 2240 | seeds: 600")
+    print("  source:", ref or "working tree", "| artifacts:", len(REQUIRED),
+          "| primary cohort: 2240 games (1120 v3 + 1120 v4), 600 seeds"
+          " | fresh T014: 1400 sims | total simulator executions: 3640")

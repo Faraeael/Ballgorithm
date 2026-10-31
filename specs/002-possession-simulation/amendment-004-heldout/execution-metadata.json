@@ -15,9 +15,19 @@
     "python": "3.13.1"
   },
   "gamesExecuted": {
-    "total": 2240,
-    "v3": 1120,
-    "v4": 1120
+    "primaryCohort": {
+      "note": "prescribed primary slot count; unchanged",
+      "total": 2240,
+      "v3": 1120,
+      "v4": 1120
+    },
+    "t014FreshG9": {
+      "baselineGames": 200,
+      "interventionGames": 1200,
+      "note": "200 baseline + 6 experiments x 200 seeds; seeds 10001-10200, inside the fresh seed set; no seeds added",
+      "total": 1400
+    },
+    "totalSimulatorExecutions": 3640
   },
   "leagueSeed": 20261028,
   "protocolCommit": "0c7d552e7eaa915a003b31d6e1352f5b50d806ac",
