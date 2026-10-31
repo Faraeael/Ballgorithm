@@ -5,9 +5,11 @@ Exit status is non-zero when a required artifact is missing, a recorded
 LF-normalized SHA-256 does not match, the seed/pairing/version provenance is wrong,
 a per-game identity fails, or a frozen gate recomputed from the RAW rows disagrees
 with `heldout-summary.json`. G1-G8 are recomputed from raw game rows. G9 is
-corroborated from the 1,200 raw `perSeed` T014 records (counts, seeds, mean
-differences, expected sign, independent paired t-test with Holm); the frozen
-permutation p-values and Holm values are runner-reported and are NOT reproduced here.
+recomputed from the 1,200 raw `perSeed` T014 records with a Python port of the
+frozen algorithm in `t014_stats.dart` (xorshift32 `AnalysisRandom`, 10,000
+sign-flip permutations seed 424242, 10,000 percentile-bootstrap resamples seed
+20261029, Holm, `pairedVerdict`); runner pValue/ciLow/ciHigh/holmAdjustedP/verdict
+must agree to 1e-12. The T014 runner's own simulation is not re-executed.
 
 Run from the repository root:
     python specs/002-possession-simulation/amendment-004-heldout/verify_heldout.py
@@ -51,6 +53,76 @@ def read(name):
 
 def fail(msg):
     errors.append(msg)
+
+
+class AnalysisRandom:
+    """Port of `AnalysisRandom` in packages/simulation_core/tool/t014_stats.dart."""
+
+    def __init__(self, seed):
+        s = seed & 0xFFFFFFFF
+        self.state = s if s else 0x9E3779B9
+
+    def next_uint32(self):
+        x = self.state
+        x ^= (x << 13) & 0xFFFFFFFF
+        x ^= x >> 17
+        x ^= (x << 5) & 0xFFFFFFFF
+        self.state = x & 0xFFFFFFFF
+        return self.state
+
+
+def seq_mean(values):
+    total = 0.0  # explicit loop: Python's sum() uses compensated summation on 3.12+
+    for v in values:
+        total += v
+    return total / len(values)
+
+
+def quantile(values, q):
+    lst = sorted(values)
+    pos = q * (len(lst) - 1)
+    lo, hi = math.floor(pos), math.ceil(pos)
+    if lo == hi:
+        return lst[lo]
+    w = pos - lo
+    return lst[lo] * (1 - w) + lst[hi] * w
+
+
+def permutation_p(deltas, permutations, seed):
+    observed = abs(seq_mean(deltas))
+    rng = AnalysisRandom(seed)
+    hits = 0
+    for _ in range(permutations):
+        total = 0.0
+        for d in deltas:
+            total += d if rng.next_uint32() & 1 else -d
+        if abs(total / len(deltas)) >= observed - 1e-12:
+            hits += 1
+    return (1 + hits) / (permutations + 1)
+
+
+def bootstrap_interval(deltas, resamples, seed, confidence=0.95):
+    rng = AnalysisRandom(seed)
+    n = len(deltas)
+    means = []
+    for _ in range(resamples):
+        total = 0.0
+        for _ in range(n):
+            total += deltas[rng.next_uint32() % n]
+        means.append(total / n)
+    tail = (1 - confidence) / 2
+    return quantile(means, tail), quantile(means, 1 - tail)
+
+
+def holm_adjust(pvals):
+    order = sorted(range(len(pvals)), key=lambda i: pvals[i])
+    adjusted = [1.0] * len(pvals)
+    running = 0.0
+    for rank, idx in enumerate(order):
+        scaled = min(1.0, max(0.0, pvals[idx] * (len(order) - rank)))
+        running = scaled if scaled > running else running
+        adjusted[idx] = running
+    return adjusted
 
 
 def main():
@@ -155,7 +227,7 @@ def main():
     per = t14["perSeed"]
     if len(per) != 1200:
         fail(f"T014 perSeed records {len(per)} != 1200")
-    pvals = {}
+    recomputed = {}
     for summ in t14["summaries"]:
         e = summ["id"]
         valid = [p for p in per if p["experiment"] == e and p["status"] == "valid"]
@@ -168,21 +240,35 @@ def main():
         d = [p["pairedDifference"] for p in valid]
         if any(abs(p["interventionMetric"] - p["baselineMetric"] - p["pairedDifference"]) > 1e-12 for p in valid):
             fail(f"{e}: pairedDifference != interventionMetric - baselineMetric")
-        mean = sum(d) / len(d)
+        mean = seq_mean(d)
         if abs(mean - summ["meanDifference"]) > 1e-9:
             fail(f"{e}: mean difference {mean} != summary {summ['meanDifference']}")
         sign = {"increase": 1, "decrease": -1}[summ["expectedDirection"]]
         if mean * sign <= 0:
             fail(f"{e}: observed sign contradicts expected direction")
-        sd = statistics.stdev(d)
-        t = mean / (sd / len(d) ** 0.5) if sd > 0 else float("inf")
-        pvals[e] = math.erfc(abs(t) / math.sqrt(2))  # normal approx, n >= 100
-    ordered = sorted(pvals.items(), key=lambda kv: kv[1])
-    running = 0.0
-    for rank, (e, p) in enumerate(ordered):
-        running = max(running, min(1.0, p * (len(ordered) - rank)))
-        if running >= 0.05:
-            fail(f"{e}: independent Holm-adjusted t-test p {running:.3g} >= 0.05")
+        p = permutation_p(d, t14["permutations"], t14["permutationSeed"])
+        lo, hi = bootstrap_interval(d, t14["resamples"], t14["bootstrapSeed"])
+        for name, mine, theirs in (("pValue", p, summ["pValue"]),
+                                   ("ciLow", lo, summ["ciLow"]), ("ciHigh", hi, summ["ciHigh"])):
+            if abs(mine - theirs) > 1e-12:
+                fail(f"{e}: recomputed {name} {mine!r} != runner {theirs!r}")
+        recomputed[e] = {"p": p, "lo": lo, "hi": hi, "mean": mean, "sign": sign, "n": len(d)}
+    order = [s["id"] for s in t14["summaries"]]
+    holm = holm_adjust([recomputed[e]["p"] for e in order]) if len(recomputed) == 6 else []
+    for e, h in zip(order, holm):
+        r = recomputed[e]
+        runner = next(s for s in t14["summaries"] if s["id"] == e)
+        if abs(h - runner["holmAdjustedP"]) > 1e-12:
+            fail(f"{e}: recomputed Holm {h!r} != runner {runner['holmAdjustedP']!r}")
+        interval_sign = 1 if r["lo"] > 0 else (-1 if r["hi"] < 0 else 0)
+        mean_sign = 1 if r["mean"] > 0 else (-1 if r["mean"] < 0 else 0)
+        verdict = ("INCONCLUSIVE" if r["n"] < t14["minimumValidPairs"] or h >= 0.05
+                   or r["p"] >= 0.05 or interval_sign == 0 or mean_sign != interval_sign
+                   else ("PASSED" if interval_sign == r["sign"] else "FAILED"))
+        if verdict != runner["verdict"]:
+            fail(f"{e}: recomputed verdict {verdict} != runner {runner['verdict']}")
+        if verdict != "PASSED":
+            fail(f"{e}: independently recomputed verdict is {verdict}")
     if summary["frozenGates"]["G9"]["verdict"] != ("PASS" if g9 else "FAIL"):
         fail("G9 verdict disagrees with the raw fresh T014 run")
 
