@@ -1,0 +1,165 @@
+{
+  "allGatesPass": true,
+  "baselineCommit": "9f8458ab345ea7c075f3b910b60d7ee964f1c5fe",
+  "candidateCommit": "c359c3577f14d7e903c9e8836912f7045dba0b52",
+  "cohort": {
+    "directedMatchups": 56,
+    "leagueSeed": 20261028,
+    "matchupIndex": "m = 2*pairIndex + orientation",
+    "pairedGames": 280,
+    "seedSchedule": "1 + ((97*m + 17*s) mod 200)",
+    "slotsPerMatchup": 5
+  },
+  "frozenGateCount": 9,
+  "gates": [
+    {
+      "id": "G1",
+      "method": "sum(offensiveFoulTov)/280/2",
+      "metric": "offensive fouls per team-game",
+      "source": "pilot-v4-raw.json",
+      "threshold": "[1.80, 2.60]",
+      "value": 2.3125,
+      "verdict": "PASS"
+    },
+    {
+      "id": "G2",
+      "method": "sum(offensiveFoulTov)/sum(tov)",
+      "metric": "offensive-foul share of total turnovers",
+      "source": "pilot-v4-raw.json",
+      "threshold": "[0.100, 0.160]",
+      "value": 0.129035,
+      "verdict": "PASS"
+    },
+    {
+      "id": "G3",
+      "method": "sum(tov)/sum(completed)*100",
+      "metric": "turnovers per 100 completed possessions",
+      "source": "pilot-v4-raw.json",
+      "threshold": "[15.0, 19.5]",
+      "value": 17.463936,
+      "verdict": "PASS"
+    },
+    {
+      "id": "G4",
+      "method": "mean(shotClockTov)",
+      "metric": "shot-clock violations per game",
+      "source": "pilot-v4-raw.json",
+      "threshold": "[3.0, 5.5]",
+      "value": 4.242857,
+      "verdict": "PASS"
+    },
+    {
+      "id": "G5",
+      "method": "mean(completed)/2",
+      "metric": "completed possessions per team-game",
+      "source": "pilot-v4-raw.json",
+      "threshold": "[100.0, 106.0]",
+      "value": 102.619643,
+      "verdict": "PASS"
+    },
+    {
+      "id": "G6",
+      "method": "median(homeFga \u222a awayFga)",
+      "metric": "team median field-goal attempts",
+      "source": "pilot-v4-raw.json",
+      "threshold": "[88.0, 95.0]",
+      "value": 92.0,
+      "verdict": "PASS"
+    },
+    {
+      "id": "G7",
+      "method": "sum(threePa)/sum(fga)",
+      "metric": "three-point attempt rate (3PA/FGA)",
+      "source": "pilot-v4-raw.json",
+      "threshold": "[0.380, 0.450]",
+      "value": 0.415205,
+      "verdict": "PASS"
+    },
+    {
+      "id": "G8",
+      "method": "(sum(fgm)+0.5*sum(threePm))/sum(fga)",
+      "metric": "effective field-goal percentage",
+      "source": "pilot-v4-raw.json",
+      "threshold": "[0.510, 0.540]",
+      "value": 0.528598,
+      "verdict": "PASS"
+    },
+    {
+      "id": "G9",
+      "method": "frozen t014-analysis-protocol.md via amendment_004_t014_runner.dart",
+      "metric": "T014 E1-E6 attribute sensitivity",
+      "source": "t014-v4-raw.json",
+      "threshold": "all E1-E6 expected sign, p<0.05 (Holm-corrected)",
+      "value": {
+        "E1": {
+          "expected": "increase",
+          "holmAdjustedP": 0.0005999400059994001,
+          "meanDifference": 0.088505,
+          "pValue": 9.999000099990002e-05,
+          "signMatches": true,
+          "verdict": "PASSED"
+        },
+        "E2": {
+          "expected": "increase",
+          "holmAdjustedP": 0.0005999400059994001,
+          "meanDifference": 0.125257,
+          "pValue": 9.999000099990002e-05,
+          "signMatches": true,
+          "verdict": "PASSED"
+        },
+        "E3": {
+          "expected": "increase",
+          "holmAdjustedP": 0.0005999400059994001,
+          "meanDifference": 0.012464,
+          "pValue": 9.999000099990002e-05,
+          "signMatches": true,
+          "verdict": "PASSED"
+        },
+        "E4": {
+          "expected": "decrease",
+          "holmAdjustedP": 0.0005999400059994001,
+          "meanDifference": -0.830135,
+          "pValue": 9.999000099990002e-05,
+          "signMatches": true,
+          "verdict": "PASSED"
+        },
+        "E5": {
+          "expected": "decrease",
+          "holmAdjustedP": 0.0005999400059994001,
+          "meanDifference": -0.068626,
+          "pValue": 9.999000099990002e-05,
+          "signMatches": true,
+          "verdict": "PASSED"
+        },
+        "E6": {
+          "expected": "increase",
+          "holmAdjustedP": 0.0005999400059994001,
+          "meanDifference": 29.208988,
+          "pValue": 9.999000099990002e-05,
+          "signMatches": true,
+          "verdict": "PASSED"
+        }
+      },
+      "verdict": "PASS"
+    }
+  ],
+  "kind": "read-only recomputation from recovered artifacts",
+  "nonGates": {
+    "inheritedAmendment003PerPhaseStealBand": {
+      "applicableToAmendment004": false,
+      "inheritBandNonSteal": "[0.048, 0.058]",
+      "inheritBandSteal": "[0.045, 0.055]",
+      "nonStealPerPhase": 0.055571,
+      "note": "Amendment 003 manifest \u00a75.3 per-phase bands; Amendment 004 frozen gate set omits them. Reported as diagnostic only.",
+      "stealPerPhase": 0.052162
+    },
+    "liveSteals": {
+      "deltaPerGame": -0.092857,
+      "rationale": "The frozen Amendment 004 gate table (specification \u00a73.2) contains nine metrics and does not include live-steal volume. No committed document contains a 'no decline' steal criterion. The earlier PASS/FAIL label was unsupported narration and is withdrawn; no verdict is assigned.",
+      "status": "NOT A GATE",
+      "v3PerGame": 13.153571,
+      "v4PerGame": 13.060714
+    }
+  },
+  "task": "Amendment 004 evidence recovery \u2014 gate audit"
+}

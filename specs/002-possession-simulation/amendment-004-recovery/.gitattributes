@@ -1,0 +1,9 @@
+# Keep Amendment 004 recovery artifacts byte-exact.
+#
+# Git's core.autocrlf normalization rewrote committed evidence in the original
+# Amendment 004 commit, so the recorded SHA-256 values did not reproduce from the
+# repository blob. Marking these files `-text` disables newline conversion, which
+# makes the committed blob byte-identical to the working-tree artifact and lets a
+# single canonical SHA-256 describe both.
+*
+-text
