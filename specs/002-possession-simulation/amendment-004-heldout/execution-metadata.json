@@ -1,0 +1,32 @@
+{
+  "baselineCommit": "9f8458ab345ea7c075f3b910b60d7ee964f1c5fe",
+  "candidateLibraryCommit": "28a1e0b5e5d90a794225e2f382ef7d3a44603573",
+  "candidateRunCommit": "0c7d552e7eaa915a003b31d6e1352f5b50d806ac",
+  "commands": [
+    "git archive 9f8458ab345ea7c075f3b910b60d7ee964f1c5fe packages/simulation_core | tar -x -C packages/simulation_core_v3_heldout --strip-components=2",
+    "cp packages/simulation_core/tool/amendment_004_pilot_runner.dart packages/simulation_core_v3_heldout/tool/",
+    "(cd packages/simulation_core_v3_heldout && dart pub get && dart run tool/amendment_004_pilot_runner.dart <out>/v3-heldout-raw.json --cohort=heldout)",
+    "(cd packages/simulation_core && dart run tool/amendment_004_pilot_runner.dart <out>/v4-heldout-raw.json --cohort=heldout)",
+    "(cd packages/simulation_core && dart run tool/amendment_004_t014_runner.dart <out>/t014-v4-fresh-raw.json --seed-offset=10000)"
+  ],
+  "environment": {
+    "dart": "Dart SDK version: 3.12.2 (stable) (Tue Jun 9 01:11:39 2026 -0700) on \"windows_x64\"",
+    "os": "Windows-11-10.0.26100-SP0",
+    "python": "3.13.1"
+  },
+  "gamesExecuted": {
+    "total": 2240,
+    "v3": 1120,
+    "v4": 1120
+  },
+  "leagueSeed": 20261028,
+  "protocolCommit": "0c7d552e7eaa915a003b31d6e1352f5b50d806ac",
+  "runCount": "each simulation command executed exactly once; no re-runs; results not inspected before the raw files were committed",
+  "seedSchedule": "10001 + ((137*(20*m + s) + 23) mod 600)",
+  "t014FreshRun": {
+    "seedOffset": 10000,
+    "seeds": "10001-10200",
+    "simulationVersion": 4
+  },
+  "task": "Amendment 004 fresh held-out execution"
+}

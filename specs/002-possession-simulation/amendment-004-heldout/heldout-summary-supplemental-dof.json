@@ -1,0 +1,693 @@
+{
+  "armMetrics": {
+    "v3": {
+      "3PA_per_FGA": {
+        "ci95": [
+          0.4101602917341282,
+          0.41657421613338114
+        ],
+        "se": 0.0016362052038910446,
+        "value": 0.4133672539337547
+      },
+      "FGA_per_team_game": {
+        "ci95": [
+          88.82475883971738,
+          89.46274116028262
+        ],
+        "se": 0.16275059198092787,
+        "value": 89.14375
+      },
+      "FTA_per_team_game": {
+        "ci95": [
+          17.13840635497261,
+          17.82141507359882
+        ],
+        "se": 0.174236918016891,
+        "value": 17.479910714285715
+      },
+      "OF_per_100_completed": {
+        "ci95": [
+          5.049844590243381,
+          5.2423751937964225
+        ],
+        "se": 0.04911494988597988,
+        "value": 5.1461098920199015
+      },
+      "OF_per_action_phase": {
+        "ci95": [
+          0.04143046461834569,
+          0.0430326812647624
+        ],
+        "se": 0.00040872873633079605,
+        "value": 0.042231572941554045
+      },
+      "OF_per_team_game": {
+        "ci95": [
+          5.185588027677347,
+          5.388519115179796
+        ],
+        "se": 0.05176813456695142,
+        "value": 5.287053571428571
+      },
+      "OF_share_of_tov": {
+        "ci95": [
+          0.24797679636453515,
+          0.2562703243218165
+        ],
+        "se": 0.0021156959074697407,
+        "value": 0.25212356034317585
+      },
+      "OREB_violation_rate_per_oreb_phase": {
+        "ci95": [
+          0.07199396549647188,
+          0.07865682375858213
+        ],
+        "se": 0.0016997087403342462,
+        "value": 0.075325394627527
+      },
+      "SC_fresh_per_game": {
+        "ci95": null,
+        "note": "combined variance <= 0; undefined",
+        "se": null,
+        "value": 0.0
+      },
+      "SC_oreb_per_game": {
+        "ci95": [
+          2.0906196289034904,
+          2.2808089425250806
+        ],
+        "se": 0.04851768204632401,
+        "value": 2.1857142857142855
+      },
+      "SC_per_game": {
+        "ci95": [
+          3.941885048409805,
+          4.242043523018767
+        ],
+        "se": 0.07657103944106156,
+        "value": 4.091964285714286
+      },
+      "SC_retainedFoul_per_game": {
+        "ci95": [
+          1.8068418377372966,
+          2.005658162262703
+        ],
+        "se": 0.05071845013403235,
+        "value": 1.90625
+      },
+      "TOV_per_100_completed": {
+        "ci95": [
+          20.1822097019669,
+          20.639916441383743
+        ],
+        "se": 0.1167619233206238,
+        "value": 20.411063071675322
+      },
+      "TOV_per_team_game": {
+        "ci95": [
+          20.722914878441774,
+          21.217263692986794
+        ],
+        "se": 0.12610939146556646,
+        "value": 20.970089285714284
+      },
+      "eFG": {
+        "ci95": [
+          0.5168919193859414,
+          0.5261765594954801
+        ],
+        "se": 0.0023685306401884654,
+        "value": 0.5215342394407108
+      },
+      "nonshooting_fouls_per_game": {
+        "ci95": [
+          24.68958912180866,
+          25.338982306762773
+        ],
+        "se": 0.1656615267740083,
+        "value": 25.014285714285716
+      },
+      "nonsteal_TOV_per_game": {
+        "ci95": [
+          13.80006890988448,
+          14.362431090115521
+        ],
+        "se": 0.143459739854857,
+        "value": 14.08125
+      },
+      "personal_fouls_per_game": {
+        "ci95": [
+          45.528956934190354,
+          46.369257351523935
+        ],
+        "se": 0.21436235136060597,
+        "value": 45.949107142857144
+      },
+      "points_per_team_game": {
+        "ci95": [
+          103.044030784324,
+          104.87025492996172
+        ],
+        "se": 0.4658735065402385,
+        "value": 103.95714285714286
+      },
+      "poss_per_team_game": {
+        "ci95": [
+          102.4628017733751,
+          103.01487679805348
+        ],
+        "se": 0.1408354654791759,
+        "value": 102.73883928571429
+      },
+      "retFoul14_violation_rate": {
+        "ci95": [
+          0.13107447729172203,
+          0.1450385080889752
+        ],
+        "se": 0.003562252754401323,
+        "value": 0.13805649269034861
+      },
+      "steal_TOV_per_game": {
+        "ci95": [
+          12.872264072895256,
+          13.51345021281903
+        ],
+        "se": 0.1635678928376981,
+        "value": 13.192857142857143
+      }
+    },
+    "v4": {
+      "3PA_per_FGA": {
+        "ci95": [
+          0.4106267063972045,
+          0.4161239340810193
+        ],
+        "se": 0.0014023540009731508,
+        "value": 0.4133753202391119
+      },
+      "FGA_per_team_game": {
+        "ci95": [
+          91.69798849143979,
+          92.31629722284592
+        ],
+        "se": 0.15773181923626095,
+        "value": 92.00714285714285
+      },
+      "FTA_per_team_game": {
+        "ci95": [
+          17.627139061001284,
+          18.437146653284433
+        ],
+        "se": 0.20663458986815056,
+        "value": 18.03214285714286
+      },
+      "OF_per_100_completed": {
+        "ci95": [
+          2.0960051559044888,
+          2.233301456762224
+        ],
+        "se": 0.035024566545340634,
+        "value": 2.1646533063333564
+      },
+      "OF_per_action_phase": {
+        "ci95": [
+          0.017139856862060692,
+          0.018274548804244218
+        ],
+        "se": 0.00028946223014885813,
+        "value": 0.017707202833152455
+      },
+      "OF_per_team_game": {
+        "ci95": [
+          2.1430272536951556,
+          2.2855441748762733
+        ],
+        "se": 0.03635635744416271,
+        "value": 2.2142857142857144
+      },
+      "OF_share_of_tov": {
+        "ci95": [
+          0.12049315137695943,
+          0.12791050456394454
+        ],
+        "se": 0.0018921819354553882,
+        "value": 0.12420182797045198
+      },
+      "OREB_violation_rate_per_oreb_phase": {
+        "ci95": [
+          0.0708109339727783,
+          0.07729947451464941
+        ],
+        "se": 0.0016552399341507945,
+        "value": 0.07405520424371385
+      },
+      "SC_fresh_per_game": {
+        "ci95": null,
+        "note": "combined variance <= 0; undefined",
+        "se": null,
+        "value": 0.0
+      },
+      "SC_oreb_per_game": {
+        "ci95": [
+          2.11261252062653,
+          2.29988747937347
+        ],
+        "se": 0.047774224170137825,
+        "value": 2.20625
+      },
+      "SC_per_game": {
+        "ci95": [
+          4.038652614442211,
+          4.304204528414933
+        ],
+        "se": 0.06774283519712306,
+        "value": 4.171428571428572
+      },
+      "SC_retainedFoul_per_game": {
+        "ci95": [
+          1.8781650343181286,
+          2.052192108539014
+        ],
+        "se": 0.044394661791042234,
+        "value": 1.9651785714285714
+      },
+      "TOV_per_100_completed": {
+        "ci95": [
+          17.22175890325138,
+          17.635269237241605
+        ],
+        "se": 0.10548733009954653,
+        "value": 17.428514070246493
+      },
+      "TOV_per_team_game": {
+        "ci95": [
+          17.599088409990742,
+          18.057161590009258
+        ],
+        "se": 0.11685540306594856,
+        "value": 17.828125
+      },
+      "eFG": {
+        "ci95": [
+          0.5186555378060431,
+          0.5274006690101978
+        ],
+        "se": 0.0022309008173864065,
+        "value": 0.5230281034081204
+      },
+      "nonshooting_fouls_per_game": {
+        "ci95": [
+          24.79716940915349,
+          25.426044876560795
+        ],
+        "se": 0.16042741515492537,
+        "value": 25.111607142857142
+      },
+      "nonsteal_TOV_per_game": {
+        "ci95": [
+          13.556909637921407,
+          14.123447504935736
+        ],
+        "se": 0.14452496607508386,
+        "value": 13.840178571428572
+      },
+      "personal_fouls_per_game": {
+        "ci95": [
+          39.85233725323342,
+          40.69944846105229
+        ],
+        "se": 0.21609979791297565,
+        "value": 40.27589285714286
+      },
+      "points_per_team_game": {
+        "ci95": [
+          106.62740903904839,
+          108.32794810380875
+        ],
+        "se": 0.4338109859082538,
+        "value": 107.47767857142857
+      },
+      "poss_per_team_game": {
+        "ci95": [
+          101.98801213203022,
+          102.59770215368407
+        ],
+        "se": 0.1555331687892433,
+        "value": 102.29285714285714
+      },
+      "retFoul14_violation_rate": {
+        "ci95": [
+          0.1359162838039129,
+          0.14845333040793912
+        ],
+        "se": 0.003198226174496484,
+        "value": 0.14218480710592601
+      },
+      "steal_TOV_per_game": {
+        "ci95": [
+          12.928752518537555,
+          13.503390338605302
+        ],
+        "se": 0.14659128062952748,
+        "value": 13.216071428571428
+      }
+    }
+  },
+  "clusters": {
+    "cell": 1120,
+    "matchup": 56,
+    "seed": 600
+  },
+  "formula": "V = sum over {seed, matchup, cell} of sign * G/(G-1) * (N-1)/(N-K) * sum_g (sum_{i in g} u_i)^2; sign +,+,-; K=1; normal 95% CI",
+  "frozenVsCorrected": {
+    "3PA_per_FGA": {
+      "corrected_se": 0.0010234684764120763,
+      "delta_ci_excludes_zero_corrected": false,
+      "delta_ci_excludes_zero_frozen": false,
+      "frozen_se": 0.0010145767204948117,
+      "se_ratio": 1.0087640054592697
+    },
+    "FGA_per_team_game": {
+      "corrected_se": 0.1607487129169796,
+      "delta_ci_excludes_zero_corrected": true,
+      "delta_ci_excludes_zero_frozen": true,
+      "frozen_se": 0.15936282709599414,
+      "se_ratio": 1.0086964183946778
+    },
+    "FTA_per_team_game": {
+      "corrected_se": 0.1826292769485079,
+      "delta_ci_excludes_zero_corrected": true,
+      "delta_ci_excludes_zero_frozen": true,
+      "frozen_se": 0.18111868995390756,
+      "se_ratio": 1.00834031537543
+    },
+    "OF_per_100_completed": {
+      "corrected_se": 0.047360120585308564,
+      "delta_ci_excludes_zero_corrected": true,
+      "delta_ci_excludes_zero_frozen": true,
+      "frozen_se": 0.046986927509542684,
+      "se_ratio": 1.007942487316075
+    },
+    "OF_per_action_phase": {
+      "corrected_se": 0.0003946616126421902,
+      "delta_ci_excludes_zero_corrected": true,
+      "delta_ci_excludes_zero_frozen": true,
+      "frozen_se": 0.000391566593913399,
+      "se_ratio": 1.0079041950383432
+    },
+    "OF_per_team_game": {
+      "corrected_se": 0.04913478426186856,
+      "delta_ci_excludes_zero_corrected": true,
+      "delta_ci_excludes_zero_frozen": true,
+      "frozen_se": 0.04874782886546203,
+      "se_ratio": 1.007937900116013
+    },
+    "OF_share_of_tov": {
+      "corrected_se": 0.0018339474421575092,
+      "delta_ci_excludes_zero_corrected": true,
+      "delta_ci_excludes_zero_frozen": true,
+      "frozen_se": 0.0018193904211418982,
+      "se_ratio": 1.0080010430122386
+    },
+    "OREB_violation_rate_per_oreb_phase": {
+      "corrected_se": 0.0014766657824966897,
+      "delta_ci_excludes_zero_corrected": false,
+      "delta_ci_excludes_zero_frozen": false,
+      "frozen_se": 0.0014639709439812976,
+      "se_ratio": 1.0086715098872578
+    },
+    "SC_oreb_per_game": {
+      "corrected_se": 0.04311190438333044,
+      "delta_ci_excludes_zero_corrected": false,
+      "delta_ci_excludes_zero_frozen": false,
+      "frozen_se": 0.04274186983306244,
+      "se_ratio": 1.0086574254171203
+    },
+    "SC_per_game": {
+      "corrected_se": 0.06825426882491525,
+      "delta_ci_excludes_zero_corrected": false,
+      "delta_ci_excludes_zero_frozen": false,
+      "frozen_se": 0.06769965704703654,
+      "se_ratio": 1.0081922391053382
+    },
+    "SC_retainedFoul_per_game": {
+      "corrected_se": 0.04958924919972268,
+      "delta_ci_excludes_zero_corrected": false,
+      "delta_ci_excludes_zero_frozen": false,
+      "frozen_se": 0.04921486949872625,
+      "se_ratio": 1.0076070444727303
+    },
+    "TOV_per_100_completed": {
+      "corrected_se": 0.10030855440618523,
+      "delta_ci_excludes_zero_corrected": true,
+      "delta_ci_excludes_zero_frozen": true,
+      "frozen_se": 0.09944293288778061,
+      "se_ratio": 1.008704706239723
+    },
+    "TOV_per_team_game": {
+      "corrected_se": 0.10088118463062584,
+      "delta_ci_excludes_zero_corrected": true,
+      "delta_ci_excludes_zero_frozen": true,
+      "frozen_se": 0.10001714252056022,
+      "se_ratio": 1.0086389401685616
+    },
+    "eFG": {
+      "corrected_se": 0.0012343852722155697,
+      "delta_ci_excludes_zero_corrected": false,
+      "delta_ci_excludes_zero_frozen": false,
+      "frozen_se": 0.001224781370247469,
+      "se_ratio": 1.0078413194398606
+    },
+    "nonshooting_fouls_per_game": {
+      "corrected_se": 0.1681220235563076,
+      "delta_ci_excludes_zero_corrected": false,
+      "delta_ci_excludes_zero_frozen": false,
+      "frozen_se": 0.16686726920955128,
+      "se_ratio": 1.007519475525069
+    },
+    "nonsteal_TOV_per_game": {
+      "corrected_se": 0.09867882678169237,
+      "delta_ci_excludes_zero_corrected": true,
+      "delta_ci_excludes_zero_frozen": true,
+      "frozen_se": 0.0977917804326729,
+      "se_ratio": 1.0090707659181046
+    },
+    "personal_fouls_per_game": {
+      "corrected_se": 0.17472036034625213,
+      "delta_ci_excludes_zero_corrected": true,
+      "delta_ci_excludes_zero_frozen": true,
+      "frozen_se": 0.17328614094962394,
+      "se_ratio": 1.0082765960899616
+    },
+    "points_per_team_game": {
+      "corrected_se": 0.3211605227918949,
+      "delta_ci_excludes_zero_corrected": true,
+      "delta_ci_excludes_zero_frozen": true,
+      "frozen_se": 0.3184720737552115,
+      "se_ratio": 1.0084417104614007
+    },
+    "poss_per_team_game": {
+      "corrected_se": 0.13787109791280774,
+      "delta_ci_excludes_zero_corrected": true,
+      "delta_ci_excludes_zero_frozen": true,
+      "frozen_se": 0.13667359938441273,
+      "se_ratio": 1.0087617398955513
+    },
+    "retFoul14_violation_rate": {
+      "corrected_se": 0.0034057132977811794,
+      "delta_ci_excludes_zero_corrected": false,
+      "delta_ci_excludes_zero_frozen": false,
+      "frozen_se": 0.0033808830858751897,
+      "se_ratio": 1.007344297710183
+    },
+    "steal_TOV_per_game": {
+      "corrected_se": 0.10163567364106156,
+      "delta_ci_excludes_zero_corrected": false,
+      "delta_ci_excludes_zero_frozen": false,
+      "frozen_se": 0.10076323238792262,
+      "se_ratio": 1.00865832935748
+    }
+  },
+  "pairedDeltas_v4_minus_v3": {
+    "3PA_per_FGA": {
+      "ci95": [
+        -0.0019979319084104568,
+        0.0020140645191248823
+      ],
+      "delta": 8.066305357212755e-06,
+      "se": 0.0010234684764120763
+    },
+    "FGA_per_team_game": {
+      "ci95": [
+        2.5483253798255756,
+        3.1784603344601354
+      ],
+      "delta": 2.8633928571428555,
+      "se": 0.1607487129169796
+    },
+    "FTA_per_team_game": {
+      "ci95": [
+        0.1942787600380676,
+        0.9101855256762186
+      ],
+      "delta": 0.5522321428571431,
+      "se": 0.1826292769485079
+    },
+    "OF_per_100_completed": {
+      "ci95": [
+        -3.07428242203375,
+        -2.8886307493393404
+      ],
+      "delta": -2.981456585686545,
+      "se": 0.047360120585308564
+    },
+    "OF_per_action_phase": {
+      "ci95": [
+        -0.025297906869180282,
+        -0.023750833347622898
+      ],
+      "delta": -0.02452437010840159,
+      "se": 0.0003946616126421902
+    },
+    "OF_per_team_game": {
+      "ci95": [
+        -3.169072034296119,
+        -2.9764636799895947
+      ],
+      "delta": -3.072767857142857,
+      "se": 0.04913478426186856
+    },
+    "OF_share_of_tov": {
+      "ci95": [
+        -0.13151626935935257,
+        -0.12432719538609514
+      ],
+      "delta": -0.12792173237272386,
+      "se": 0.0018339474421575092
+    },
+    "OREB_violation_rate_per_oreb_phase": {
+      "ci95": [
+        -0.004164455317506664,
+        0.0016240745498803592
+      ],
+      "delta": -0.0012701903838131523,
+      "se": 0.0014766657824966897
+    },
+    "SC_fresh_per_game": {
+      "ci95": null,
+      "delta": 0.0,
+      "note": "undefined",
+      "se": null
+    },
+    "SC_oreb_per_game": {
+      "ci95": [
+        -0.06396361830561334,
+        0.10503504687704199
+      ],
+      "delta": 0.020535714285714324,
+      "se": 0.04311190438333044
+    },
+    "SC_per_game": {
+      "ci95": [
+        -0.05431408118254813,
+        0.21324265261111966
+      ],
+      "delta": 0.07946428571428577,
+      "se": 0.06825426882491525
+    },
+    "SC_retainedFoul_per_game": {
+      "ci95": [
+        -0.038266357002885,
+        0.15612349986002788
+      ],
+      "delta": 0.05892857142857144,
+      "se": 0.04958924919972268
+    },
+    "TOV_per_100_completed": {
+      "ci95": [
+        -3.1791537680649524,
+        -2.785944234792706
+      ],
+      "delta": -2.982549001428829,
+      "se": 0.10030855440618523
+    },
+    "TOV_per_team_game": {
+      "ci95": [
+        -3.3396914075903106,
+        -2.9442371638382574
+      ],
+      "delta": -3.141964285714284,
+      "se": 0.10088118463062584
+    },
+    "eFG": {
+      "ci95": [
+        -0.0009255311661328243,
+        0.003913259100952209
+      ],
+      "delta": 0.001493863967409692,
+      "se": 0.0012343852722155697
+    },
+    "nonshooting_fouls_per_game": {
+      "ci95": [
+        -0.23219773759893653,
+        0.4268405947417892
+      ],
+      "delta": 0.09732142857142634,
+      "se": 0.1681220235563076
+    },
+    "nonsteal_TOV_per_game": {
+      "ci95": [
+        -0.4344819290635459,
+        -0.04766092807931177
+      ],
+      "delta": -0.24107142857142883,
+      "se": 0.09867882678169237
+    },
+    "personal_fouls_per_game": {
+      "ci95": [
+        -6.015666191992942,
+        -5.330762379435633
+      ],
+      "delta": -5.6732142857142875,
+      "se": 0.17472036034625213
+    },
+    "points_per_team_game": {
+      "ci95": [
+        2.8910610896135998,
+        4.150010338957828
+      ],
+      "delta": 3.520535714285714,
+      "se": 0.3211605227918949
+    },
+    "poss_per_team_game": {
+      "ci95": [
+        -0.7162094947662505,
+        -0.17575479094804414
+      ],
+      "delta": -0.4459821428571473,
+      "se": 0.13787109791280774
+    },
+    "retFoul14_violation_rate": {
+      "ci95": [
+        -0.0025468836480737117,
+        0.010803512479228512
+      ],
+      "delta": 0.0041283144155774,
+      "se": 0.0034057132977811794
+    },
+    "steal_TOV_per_game": {
+      "ci95": [
+        -0.17599163462219525,
+        0.22242020605076607
+      ],
+      "delta": 0.02321428571428541,
+      "se": 0.10163567364106156
+    }
+  },
+  "purpose": "manifest-conforming DOF-corrected uncertainty; point estimates and verdicts unchanged",
+  "undefinedIntervals": [
+    "v3:SC_fresh_per_game",
+    "v4:SC_fresh_per_game",
+    "delta:SC_fresh_per_game"
+  ]
+}
