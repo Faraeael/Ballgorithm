@@ -663,7 +663,7 @@ final class BasketballProbabilityModel {
     final off = _lineupAverages(offense.lineup);
     final def = _lineupAverages(defense.lineup);
     return clampBasisPoints(
-      420 -
+      170 -
           (off.basketballIQ - 50) * 3 +
           (def.basketballIQ - 50) * 2 +
           (off.athleticism - 50) * 2,

@@ -5,7 +5,7 @@ import 'package:simulation_core/simulation_core.dart';
 import 'package:test/test.dart';
 
 import 'support.dart';
-import 't012_canonical_ledger_fixture_v3.dart';
+import 't012_canonical_ledger_fixture_v4.dart';
 import 't013_support.dart';
 import 't011_game_reliability_test.dart' as t011;
 
@@ -142,18 +142,18 @@ void main() {
       }
       expect(
         sha256.convert(utf8.encode(expected)).toString(),
-        sha256.convert(utf8.encode(t012CanonicalLedgerV3Json)).toString(),
+        sha256.convert(utf8.encode(t012CanonicalLedgerV4Json)).toString(),
         reason: 'T012 golden must remain the canonical seed-42 ledger',
       );
     });
 
     test('pinned T012 seeds still reproduce their published digests', () {
       const published = {
-        1: '074d2116645b899b427101e8aecf5b9cd0c693bad4839160bc19c0b69130ba76',
-        42: '2baefd7d605ec65225c470f938fb45218db50d78a0d9ae75548e2e6646c276ac',
-        99: 'e895fb231ee74ca9abe4321cc8867aae6ab1010baa7e58b3b8817524f3e1e2e8',
+        1: '839d7e50f1664a49cdae0d37e0d464e061d926414250a96968c673b4fd317d92',
+        42: 'dc8c06cedd10d3cff938e023e11e520c09a667ac12edc2b2469953eea0371fab',
+        99: '238c78a8b36d02ba750b28c6e23d74ecd782486b38d8ff01e66da9cb03ea9438',
         20261029:
-            '501c2e0e5e91c8490e8956a1b79f2141842bff9790b2e4bf44aa46b9e6ef80a5',
+            'aabf12782a45d6b1efdfe7d17b62961919012437b94fc712ccf4eac27baf3219',
       };
       for (final entry in published.entries) {
         final input = standardInput(entry.key);
@@ -476,7 +476,7 @@ void main() {
       'aggressive bonus': ['ok', 'ok', 'ok'],
       'custom A1 durations': ['ok', 'ok', 'ok'],
       'one-second phase brackets': ['ok', 'ok', 'ok'],
-      'zero overtimes': ['ok', 'ok', 'ok'],
+      'zero overtimes': ['ok', 'ok', 'overtimeLimitExceeded'],
       'ten-overtime cap': ['ok', 'ok', 'ok'],
     };
 
@@ -534,8 +534,8 @@ void main() {
         }
       }
 
-      expect(successes, 23);
-      expect(bounds, 4);
+      expect(successes, 22);
+      expect(bounds, 5);
       expect(successes + bounds, configs.length * 3);
       print('T013 rules matrix:\n  ${observed.join('\n  ')}');
     });
