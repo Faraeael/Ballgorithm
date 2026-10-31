@@ -230,12 +230,23 @@ def main():
     recomputed = {}
     for summ in t14["summaries"]:
         e = summ["id"]
-        valid = [p for p in per if p["experiment"] == e and p["status"] == "valid"]
-        seeds14 = [p["seed"] for p in valid]
-        if len(seeds14) != len(set(seeds14)) or any(not 10001 <= x <= 10200 for x in seeds14):
-            fail(f"{e}: perSeed seeds duplicated or outside 10001-10200")
-        if len(valid) != summ["validPairs"] or len(valid) < t14["minimumValidPairs"]:
-            fail(f"{e}: valid pairs {len(valid)} vs summary {summ['validPairs']}")
+        exp_rows = [p for p in per if p.get("experiment") == e]
+        if [p.get("seed") for p in exp_rows] != list(range(10001, 10201)):
+            fail(f"{e}: perSeed seeds do not equal exact ordered 10001..10200")
+        allowed = {"valid", "zeroBoth", "zeroBaseline", "zeroIntervention"}
+        if any(p.get("status") not in allowed for p in exp_rows):
+            fail(f"{e}: unknown perSeed status")
+        counts14 = {st: sum(1 for p in exp_rows if p.get("status") == st) for st in allowed}
+        if (summ.get("plannedPairs") != 200
+                or counts14["valid"] != summ.get("validPairs")
+                or counts14["zeroBoth"] != summ.get("zeroBoth")
+                or counts14["zeroBaseline"] != summ.get("zeroBaseline")
+                or counts14["zeroIntervention"] != summ.get("zeroIntervention")):
+            fail(f"{e}: status counts {counts14} disagree with summary")
+            continue
+        valid = [p for p in exp_rows if p["status"] == "valid"]
+        if len(valid) < t14["minimumValidPairs"]:
+            fail(f"{e}: valid pairs {len(valid)} < {t14['minimumValidPairs']}")
             continue
         d = [p["pairedDifference"] for p in valid]
         if any(abs(p["interventionMetric"] - p["baselineMetric"] - p["pairedDifference"]) > 1e-12 for p in valid):
