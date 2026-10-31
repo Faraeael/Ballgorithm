@@ -34,8 +34,8 @@ void main() {
       final result = GameSimulator(onPhaseTrace: records.add).simulate(input);
       final brackets = {
         'transition': [2, 7],
-        'earlyOffense': [5, 11],
-        'halfCourt': [10, 22],
+        'earlyOffense': [4, 11],
+        'halfCourt': [7, 22],
       };
       final resolutions = <PhaseResolution, int>{};
       for (final record in records) {

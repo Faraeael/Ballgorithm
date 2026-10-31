@@ -15,6 +15,16 @@ GameRules customA1A() => GameRules(
     [3, 3],
     [4, 4],
   ],
+  orebPhaseDurations: const [
+    [2, 2],
+    [3, 3],
+    [4, 4],
+  ],
+  retainedFoulPhaseDurations: const [
+    [2, 2],
+    [3, 3],
+    [4, 4],
+  ],
 );
 
 GameRules customA1B() => GameRules(
@@ -22,6 +32,16 @@ GameRules customA1B() => GameRules(
   overtimeSeconds: 15,
   phaseWeights: const [2500, 2500, 5000],
   phaseDurations: const [
+    [2, 3],
+    [4, 6],
+    [7, 10],
+  ],
+  orebPhaseDurations: const [
+    [2, 3],
+    [4, 6],
+    [7, 10],
+  ],
+  retainedFoulPhaseDurations: const [
     [2, 3],
     [4, 6],
     [7, 10],
@@ -134,8 +154,8 @@ void main() {
       );
       expect(result.inputFingerprint, GameFingerprint.of(input));
       expect(result.eventSchemaVersion, 2);
-      expect(result.simulationVersion, 2);
-      expect(result.rulesVersion, 1);
+      expect(result.simulationVersion, gameSimulationVersion);
+      expect(result.rulesVersion, gameRulesVersion);
       expect(result.prngImplementationId, 'xorshift32-v1');
       expect(result.possessions, possessionsOf(result.ledger).length);
     });
@@ -356,7 +376,7 @@ void main() {
 
     test('duration-model version mismatch cannot be constructed validly', () {
       expect(
-        () => GameRules(actionDurationModelVersion: 2).validate(),
+        () => GameRules(actionDurationModelVersion: 3).validate(),
         throwsCode(GameValidationCode.unsupportedRulesVersion),
       );
     });
@@ -365,11 +385,11 @@ void main() {
       'standard A1 ledgers remain byte-identical to the published checkpoint',
       () {
         const expected = {
-          1: '908334617b00ac91960b0d6475a1a75f86bd82bc2e8807b63d2406e5e947936a',
-          42: 'e3e6962420388d6f16b5900cfed83d7106b4daedde869a21415319b069666b4b',
-          99: 'af0d7b71d19107b8ed1960ccf63832c07ed09fffeca49f7b7f9079c0de7c9bde',
+          1: '074d2116645b899b427101e8aecf5b9cd0c693bad4839160bc19c0b69130ba76',
+          42: '2baefd7d605ec65225c470f938fb45218db50d78a0d9ae75548e2e6646c276ac',
+          99: 'e895fb231ee74ca9abe4321cc8867aae6ab1010baa7e58b3b8817524f3e1e2e8',
           20261029:
-              'bd2e5801228d8966882c9aa9eb580feb026c3dd056fe86a8aa61615a01c90e3a',
+              '501c2e0e5e91c8490e8956a1b79f2141842bff9790b2e4bf44aa46b9e6ef80a5',
         };
         for (final entry in expected.entries) {
           final result = simulateSeed(entry.key);

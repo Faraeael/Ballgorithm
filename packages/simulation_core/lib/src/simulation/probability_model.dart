@@ -155,9 +155,16 @@ final class BasketballProbabilityModel {
   /// Exactly two draws: `nextInt(10000)` then `nextInt(bracketSize)`. The
   /// result is a plan only; the orchestrator compares it with the clocks and
   /// never clamps it (OD-02).
-  PhaseDuration drawPhaseDuration(DeterministicRandom rng) {
+  PhaseDuration drawPhaseDuration(
+    DeterministicRandom rng, [
+    PossessionContext context = PossessionContext.fresh,
+  ]) {
     final weights = rules.phaseWeights;
-    final brackets = rules.phaseDurations;
+    final brackets = switch (context) {
+      PossessionContext.fresh => rules.phaseDurations,
+      PossessionContext.oreb => rules.orebPhaseDurations,
+      PossessionContext.retainedFoul => rules.retainedFoulPhaseDurations,
+    };
     if (weights.length != 3 ||
         brackets.length != 3 ||
         weights.reduce((a, b) => a + b) != _maxBasisPoints) {

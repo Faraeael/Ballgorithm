@@ -23,6 +23,17 @@ enum PhaseKind {
   final String wire;
 }
 
+/// Qualifying entry event context for offensive continuation timing (Amendment 003).
+enum PossessionContext {
+  fresh('fresh'),
+  oreb('oreb'),
+  retainedFoul('retainedFoul');
+
+  const PossessionContext(this.wire);
+
+  final String wire;
+}
+
 /// A1 phase type plus its planned integer duration in seconds.
 ///
 /// The orchestrator owns clock precedence; this model never clamps the planned

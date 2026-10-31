@@ -135,6 +135,37 @@ final class GameSimulator {
         ),
       );
     }
+    if (!_sameBrackets(
+      modelRules.orebPhaseDurations,
+      inputRules.orebPhaseDurations,
+    )) {
+      issues.add(
+        GameValidationIssue(
+          code: GameValidationCode.invalidRules,
+          path: 'rules.orebPhaseDurations',
+          message:
+              'injected model oreb phase durations '
+              '${_formatBrackets(modelRules.orebPhaseDurations)} do not match '
+              'input ${_formatBrackets(inputRules.orebPhaseDurations)}',
+        ),
+      );
+    }
+    if (!_sameBrackets(
+      modelRules.retainedFoulPhaseDurations,
+      inputRules.retainedFoulPhaseDurations,
+    )) {
+      issues.add(
+        GameValidationIssue(
+          code: GameValidationCode.invalidRules,
+          path: 'rules.retainedFoulPhaseDurations',
+          message:
+              'injected model retained foul phase durations '
+              '${_formatBrackets(modelRules.retainedFoulPhaseDurations)} do not '
+              'match input '
+              '${_formatBrackets(inputRules.retainedFoulPhaseDurations)}',
+        ),
+      );
+    }
     if (issues.isNotEmpty) throw GameValidationException(issues);
   }
 
@@ -215,6 +246,7 @@ final class _GameRun {
   int _period = 1;
   int _clock = 0;
   int? _shotClock;
+  PossessionContext _context = PossessionContext.fresh;
   String? _possessionId;
   bool _possessionOpen = false;
   late TeamId _offense = input.startingTeamId;
@@ -341,6 +373,7 @@ final class _GameRun {
     _possessionId = 'p$_possessionCounter';
     _possessionOpen = true;
     _shotClock = rules.shotClockSeconds;
+    _context = PossessionContext.fresh;
     _emit(
       PossessionStarted(
         sequence: _nextSequence(),
@@ -368,6 +401,7 @@ final class _GameRun {
     _possessionOpen = false;
     _possessionId = null;
     _shotClock = null;
+    _context = PossessionContext.fresh;
   }
 
   /// Runs phases until the possession ends. Returns true when the period
@@ -395,7 +429,7 @@ final class _GameRun {
 
       final clockBefore = _clock;
       final shotClockBefore = shotClock;
-      final phase = _model.drawPhaseDuration(rng);
+      final phase = _model.drawPhaseDuration(rng, _context);
       final duration = phase.seconds;
 
       if (duration <= _clock && duration <= shotClock) {
@@ -653,6 +687,7 @@ final class _GameRun {
     );
     if (rebound.offensive) {
       _shotClock = rules.offensiveReboundResetSeconds;
+      _context = PossessionContext.oreb;
       _emit(
         Rebound(
           sequence: _nextSequence(),
@@ -754,6 +789,7 @@ final class _GameRun {
     final floor = rules.nonBonusFoulResetFloorSeconds;
     final current = _shotClock!;
     _shotClock = current > floor ? current : floor;
+    _context = PossessionContext.retainedFoul;
     if (_shotClock! > rules.shotClockSeconds) {
       _shotClock = rules.shotClockSeconds;
     }
@@ -818,6 +854,7 @@ final class _GameRun {
     );
     if (rebound.offensive) {
       _shotClock = rules.offensiveReboundResetSeconds;
+      _context = PossessionContext.oreb;
       _emit(
         Rebound(
           sequence: _nextSequence(),

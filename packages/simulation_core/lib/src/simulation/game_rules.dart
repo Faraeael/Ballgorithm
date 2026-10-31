@@ -23,11 +23,28 @@ final class GameRules {
       [5, 11],
       [10, 22],
     ],
+    List<List<int>> orebPhaseDurations = const [
+      [2, 6],
+      [4, 9],
+      [7, 15],
+    ],
+    List<List<int>> retainedFoulPhaseDurations = const [
+      [2, 7],
+      [4, 10],
+      [8, 16],
+    ],
   }) : phaseWeights = List<int>.unmodifiable(phaseWeights),
        phaseDurations = List<List<int>>.unmodifiable([
          for (final bracket in phaseDurations) List<int>.unmodifiable(bracket),
+       ]),
+       orebPhaseDurations = List<List<int>>.unmodifiable([
+         for (final bracket in orebPhaseDurations)
+           List<int>.unmodifiable(bracket),
+       ]),
+       retainedFoulPhaseDurations = List<List<int>>.unmodifiable([
+         for (final bracket in retainedFoulPhaseDurations)
+           List<int>.unmodifiable(bracket),
        ]);
-
   static final GameRules standard = GameRules();
 
   final int rulesVersion;
@@ -45,7 +62,8 @@ final class GameRules {
   final int actionDurationModelVersion;
   final List<int> phaseWeights;
   final List<List<int>> phaseDurations;
-
+  final List<List<int>> orebPhaseDurations;
+  final List<List<int>> retainedFoulPhaseDurations;
   bool isOvertime(int period) => period > periods;
 
   int periodLength(int period) =>
@@ -170,7 +188,30 @@ final class GameRules {
       'rules.phaseDurations',
       'phaseDurations must be three [min, max] integer brackets',
     );
-
+    check(
+      orebPhaseDurations.length == 3 &&
+          orebPhaseDurations.every(
+            (bracket) =>
+                bracket.length == 2 &&
+                bracket[0] > 0 &&
+                bracket[1] >= bracket[0],
+          ),
+      GameValidationCode.invalidRules,
+      'rules.orebPhaseDurations',
+      'orebPhaseDurations must be three [min, max] integer brackets',
+    );
+    check(
+      retainedFoulPhaseDurations.length == 3 &&
+          retainedFoulPhaseDurations.every(
+            (bracket) =>
+                bracket.length == 2 &&
+                bracket[0] > 0 &&
+                bracket[1] >= bracket[0],
+          ),
+      GameValidationCode.invalidRules,
+      'rules.retainedFoulPhaseDurations',
+      'retainedFoulPhaseDurations must be three [min, max] integer brackets',
+    );
     if (issues.isNotEmpty) throw GameValidationException(issues);
     return this;
   }
@@ -192,6 +233,12 @@ final class GameRules {
     'phaseWeights': List<int>.of(phaseWeights),
     'phaseDurations': [
       for (final bracket in phaseDurations) List<int>.of(bracket),
+    ],
+    'orebPhaseDurations': [
+      for (final bracket in orebPhaseDurations) List<int>.of(bracket),
+    ],
+    'retainedFoulPhaseDurations': [
+      for (final bracket in retainedFoulPhaseDurations) List<int>.of(bracket),
     ],
   };
 }

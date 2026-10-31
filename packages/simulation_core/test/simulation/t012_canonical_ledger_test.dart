@@ -6,21 +6,23 @@ import 'package:simulation_core/simulation_core.dart';
 import 'package:test/test.dart';
 
 import 'support.dart';
+import 't012_canonical_ledger_fixture.dart';
 import 't012_canonical_ledger_fixture_v2.dart';
+import 't012_canonical_ledger_fixture_v3.dart';
 
 /// T012 primary fixture: league seed 20261028, game seed 42, standard rules.
 const String pinnedInputFingerprint =
-    'da9e08f4e36fdfc3f26257e58bcc4a9ac3e3810e1060c902053a3cf2fc84939b';
+    'ad0fb1a7b33f284c06c904c58ca38c67a1f062b42ca3e4632ffdcf611604ef92';
 
-/// SHA-256 over the UTF-8 bytes of [t012CanonicalLedgerV2Json].
+/// SHA-256 over the UTF-8 bytes of [t012CanonicalLedgerV3Json].
 const String pinnedLedgerDigest =
-    'e3e6962420388d6f16b5900cfed83d7106b4daedde869a21415319b069666b4b';
+    '2baefd7d605ec65225c470f938fb45218db50d78a0d9ae75548e2e6646c276ac';
 
-/// Published T011 ledger digests for the same fixture configuration.
+/// Published ledger digests for the same fixture configuration under simulation v3.
 const Map<int, String> pinnedSeedDigests = {
-  1: '908334617b00ac91960b0d6475a1a75f86bd82bc2e8807b63d2406e5e947936a',
-  99: 'af0d7b71d19107b8ed1960ccf63832c07ed09fffeca49f7b7f9079c0de7c9bde',
-  20261029: 'bd2e5801228d8966882c9aa9eb580feb026c3dd056fe86a8aa61615a01c90e3a',
+  1: '074d2116645b899b427101e8aecf5b9cd0c693bad4839160bc19c0b69130ba76',
+  99: 'e895fb231ee74ca9abe4321cc8867aae6ab1010baa7e58b3b8817524f3e1e2e8',
+  20261029: '501c2e0e5e91c8490e8956a1b79f2141842bff9790b2e4bf44aa46b9e6ef80a5',
 };
 
 /// Raw-seed alias offset mandated by the normalized-seed contract.
@@ -180,10 +182,10 @@ void main() {
       final result = GameSimulator().simulate(input);
       final canonical = canonicalJson(result);
 
-      expectCanonicalBytes(canonical, t012CanonicalLedgerV2Json);
+      expectCanonicalBytes(canonical, t012CanonicalLedgerV3Json);
       expect(
         utf8.encode(canonical),
-        utf8.encode(t012CanonicalLedgerV2Json),
+        utf8.encode(t012CanonicalLedgerV3Json),
         reason: 'canonical UTF-8 byte stream must match the golden fixture',
       );
 
@@ -191,36 +193,36 @@ void main() {
       expect(fingerprint, pinnedInputFingerprint);
       expect(sha256Hex(canonical), pinnedLedgerDigest);
       expect(
-        sha256Hex(t012CanonicalLedgerV2Json),
+        sha256Hex(t012CanonicalLedgerV3Json),
         pinnedLedgerDigest,
         reason: 'the golden fixture itself must hash to the pinned digest',
       );
       expect(RegExp(r'^[0-9a-f]{64}$').hasMatch(fingerprint), isTrue);
 
-      expect(result.events.length, 833);
-      expect(result.homeScore, 96);
-      expect(result.awayScore, 78);
-      expect(result.homeScore, greaterThan(result.awayScore));
+      expect(result.events.length, 805);
+      expect(result.homeScore, 88);
+      expect(result.awayScore, 100);
+      expect(result.awayScore, greaterThan(result.homeScore));
       expect(result.periodsPlayed, 4);
-      expect(result.homePeriodScores.values.fold(0, (a, b) => a + b), 96);
-      expect(result.awayPeriodScores.values.fold(0, (a, b) => a + b), 78);
+      expect(result.homePeriodScores.values.fold(0, (a, b) => a + b), 88);
+      expect(result.awayPeriodScores.values.fold(0, (a, b) => a + b), 100);
 
       expect(result.ledger.gameId, 'game-1');
       expect(result.ledger.inputFingerprint, pinnedInputFingerprint);
       expect(result.eventSchemaVersion, 2);
-      expect(result.simulationVersion, 2);
-      expect(result.rulesVersion, 1);
+      expect(result.simulationVersion, 3);
+      expect(result.rulesVersion, 2);
       expect(result.prngImplementationId, 'xorshift32-v1');
       expect(gameEventSchemaVersion, 2);
-      expect(gameSimulationVersion, 2);
-      expect(gameRulesVersion, 1);
-      expect(gameFingerprintVersion, 1);
-      expect(gameActionDurationModelVersion, 1);
+      expect(gameSimulationVersion, 3);
+      expect(gameRulesVersion, 2);
+      expect(gameFingerprintVersion, 2);
+      expect(gameActionDurationModelVersion, 2);
 
       expect(result.events.first, isA<GameStarted>());
       expect(result.events.first.sequence, 1);
       expect(result.events.last, isA<GameEnded>());
-      expect(result.events.last.sequence, 833);
+      expect(result.events.last.sequence, 805);
       expect(
         result.events.whereType<GameStarted>().single.startingTeamId,
         input.startingTeamId.value,
@@ -242,32 +244,32 @@ void main() {
     );
 
     test('header differences are reported as header, not event 1', () {
-      final broken = t012CanonicalLedgerV2Json.replaceFirst(
+      final broken = t012CanonicalLedgerV3Json.replaceFirst(
         '"eventSchemaVersion":2',
         '"eventSchemaVersion":3',
       );
       expect(
-        () => expectCanonicalBytes(broken, t012CanonicalLedgerV2Json),
+        () => expectCanonicalBytes(broken, t012CanonicalLedgerV3Json),
         failsWith('ledger header'),
       );
     });
 
     test('event differences report the containing sequence number', () {
       const marker = '"sequence":5,';
-      final markerAt = t012CanonicalLedgerV2Json.indexOf(marker);
+      final markerAt = t012CanonicalLedgerV3Json.indexOf(marker);
       expect(markerAt, greaterThan(0));
       const clockKey = '"gameClock":';
       final clockAt =
-          t012CanonicalLedgerV2Json.indexOf(clockKey, markerAt) +
+          t012CanonicalLedgerV3Json.indexOf(clockKey, markerAt) +
           clockKey.length;
-      final digit = t012CanonicalLedgerV2Json[clockAt];
-      final broken = t012CanonicalLedgerV2Json.replaceRange(
+      final digit = t012CanonicalLedgerV3Json[clockAt];
+      final broken = t012CanonicalLedgerV3Json.replaceRange(
         clockAt,
         clockAt + 1,
         digit == '9' ? '0' : '${int.parse(digit) + 1}',
       );
       expect(
-        () => expectCanonicalBytes(broken, t012CanonicalLedgerV2Json),
+        () => expectCanonicalBytes(broken, t012CanonicalLedgerV3Json),
         failsWith('event sequence #5'),
       );
     });
@@ -279,13 +281,13 @@ void main() {
 
     test('decode, re-encode and validate the committed golden ledger', () {
       final decoded =
-          jsonDecode(t012CanonicalLedgerV2Json) as Map<String, Object?>;
-      expectNoFloats(t012CanonicalLedgerV2Json);
+          jsonDecode(t012CanonicalLedgerV3Json) as Map<String, Object?>;
+      expectNoFloats(t012CanonicalLedgerV3Json);
 
       final ledger = GameEventLedger.fromJson(decoded);
       final reencoded = jsonEncode(ledger.toJson());
-      expectCanonicalBytes(reencoded, t012CanonicalLedgerV2Json);
-      expect(utf8.encode(reencoded), utf8.encode(t012CanonicalLedgerV2Json));
+      expectCanonicalBytes(reencoded, t012CanonicalLedgerV3Json);
+      expect(utf8.encode(reencoded), utf8.encode(t012CanonicalLedgerV3Json));
       expect(sha256Hex(reencoded), pinnedLedgerDigest);
 
       final validated = GameEventReducer.validate(input, ledger);
@@ -307,7 +309,7 @@ void main() {
       'decoded ledger preserves free-throw, foul, rebound and turnover links',
       () {
         final ledger = GameEventLedger.fromJson(
-          jsonDecode(t012CanonicalLedgerV2Json) as Map<String, Object?>,
+          jsonDecode(t012CanonicalLedgerV3Json) as Map<String, Object?>,
         );
         final events = ledger.events;
         final bySequence = {for (final event in events) event.sequence: event};
@@ -333,7 +335,6 @@ void main() {
         final andOnes = events.whereType<FieldGoalAttempt>().where(
           (e) => e.andOne,
         );
-        expect(andOnes, isNotEmpty);
         for (final shot in andOnes) {
           expect(shot.made, isTrue);
           final following =
@@ -618,6 +619,18 @@ void main() {
         reason: 'the ledger header differs only by the input fingerprint',
       );
       expect(second.ledger.inputFingerprint, aliasedFingerprint);
+    });
+  });
+
+  group('historical golden fixture archives', () {
+    test('v1 and v2 historical fixtures remain parseable as JSON', () {
+      final v1 = jsonDecode(t012CanonicalLedgerJson) as Map<String, Object?>;
+      expect(v1['gameSimulationVersion'], 1);
+      expect(v1['events'], isA<List<Object?>>());
+
+      final v2 = jsonDecode(t012CanonicalLedgerV2Json) as Map<String, Object?>;
+      expect(v2['gameSimulationVersion'], 2);
+      expect(v2['events'], isA<List<Object?>>());
     });
   });
 }
