@@ -1,0 +1,63 @@
+{
+  "harness": "t016_performance.dart",
+  "leagueSeed": 20261028,
+  "runtimeSeedBase": 50001,
+  "seedPolicy": "measured game i in [0, games): seed = 50001 + i, range 50001..51000; warmup game i in [0, warmup): seed = 60001 + i, range 60001..60060; ranges disjoint, both outside every statistical seed corpus",
+  "matchupPolicy": "game i uses directed matchup i % 56 (28 lexicographic pairs x 2 orientations); warmup and measured games share the same cycle",
+  "rules": {
+    "rulesVersion": 2,
+    "periods": 4,
+    "periodSeconds": 720,
+    "overtimeSeconds": 300,
+    "maxOvertimes": 10,
+    "shotClockSeconds": 24,
+    "maxEvents": 50000
+  },
+  "versions": {
+    "gameSimulationVersion": 4,
+    "gameRulesVersion": 2,
+    "gameEventSchemaVersion": 2,
+    "gameActionDurationModelVersion": 2,
+    "gameFingerprintVersion": 2
+  },
+  "measuredCohort": {
+    "firstObservedSeed": 50001,
+    "lastObservedSeed": 51000,
+    "distinctObservedSeeds": 1000,
+    "firstObservedMatchupIndex": 0,
+    "lastObservedMatchupIndex": 47,
+    "warmupSeedRange": [
+      60001,
+      60060
+    ],
+    "seedRangesDisjoint": true,
+    "observedScheduleValid": true
+  },
+  "gamesRequested": 1000,
+  "warmupGames": 60,
+  "gamesCompleted": 1000,
+  "typedFailures": 0,
+  "accountingFailures": 0,
+  "boundViolations": 0,
+  "failureSamples": [],
+  "timing": {
+    "loopWallMs": 6161,
+    "perGameTotalMs": 6159.617,
+    "perGameMeanMs": 6.159617,
+    "perGameP50Ms": 5.642,
+    "perGameP95Ms": 9.397,
+    "perGameP99Ms": 12.7,
+    "perGameMaxMs": 26.408,
+    "simulateTotalMs": 4280.503,
+    "simulateP50Ms": 3.869,
+    "simulateP95Ms": 6.502,
+    "simulateMaxMs": 21.667
+  },
+  "memory": {
+    "baselineRssMiB": 21,
+    "endRssMiB": 44,
+    "processMaxRssMiB": 44,
+    "incrementalEndMinusBaselineMiB": 23,
+    "incrementalPeakMinusBaselineMiB": 23
+  }
+}

@@ -16,10 +16,12 @@
 /// It never changes gameplay, probabilities, brackets or rules, and writes only
 /// the file named by `--out`.
 ///
-/// Runtime seeds are `50001 + i`. They exist only to vary game inputs for a
-/// performance measurement: they are outside every statistical seed corpus
+/// Runtime seeds. Measured game `i in [0, games)` uses `50001 + i`; warmup game
+/// `i` uses `60001 + i`. The ranges are disjoint, so `--warmup` never shifts the
+/// measured cohort, and both are outside every statistical seed corpus
 /// (development `1..1300`, Amendment 003 held-out `2001..2600`, Amendment 004
-/// held-out `10001..10600`) and carry no basketball-calibration meaning.
+/// held-out `10001..10600`, unit-test `1..400`). They carry no
+/// basketball-calibration meaning.
 library;
 
 import 'dart:convert';
@@ -33,8 +35,32 @@ const int leagueSeed = 20261028;
 /// Directed matchups: 28 unordered pairs x 2 orientations.
 const int directedMatchups = 56;
 
-/// First runtime seed. Deliberately outside every statistical seed corpus.
+/// First measured-game runtime seed. Deliberately outside every statistical
+/// seed corpus. Measured games use `50001 + i` for `i in [0, games)`.
 const int runtimeSeedBase = 50001;
+
+/// First warmup seed: a disjoint range so warmup can never consume a measured
+/// game's seed, and `--warmup` cannot shift the measured cohort.
+const int warmupSeedBase = 60001;
+
+/// A statistical seed corpus that performance seeds must never overlap.
+final class SeedCorpus {
+  const SeedCorpus(this.label, this.low, this.high);
+
+  final String label;
+  final int low;
+  final int high;
+
+  bool contains(int seed) => seed >= low && seed <= high;
+}
+
+/// Every statistical seed corpus recorded in M002 evidence and tests.
+const List<SeedCorpus> statisticalSeedCorpora = [
+  SeedCorpus('development T009-T015 / Amendment 002', 1, 1300),
+  SeedCorpus('Amendment 003 held-out', 2001, 2600),
+  SeedCorpus('Amendment 004 held-out', 10001, 10600),
+  SeedCorpus('unit tests', 1, 400),
+];
 
 int percentile(List<int> sortedMicros, int p) {
   if (sortedMicros.isEmpty) return 0;
@@ -50,6 +76,8 @@ final class RunOutcome {
     required this.boundViolation,
     required this.completed,
     required this.simulateMicros,
+    required this.seed,
+    required this.matchupIndex,
   });
 
   final bool typedFailure;
@@ -57,6 +85,11 @@ final class RunOutcome {
   final bool boundViolation;
   final bool completed;
   final int simulateMicros;
+
+  /// Seed and matchup actually simulated, read back from the built input.
+  /// `-1` means the input could not be constructed.
+  final int seed;
+  final int matchupIndex;
 }
 
 void main(List<String> args) {
@@ -102,18 +135,22 @@ void main(List<String> args) {
 
   final failureSamples = <String>[];
 
-  RunOutcome runOne(int index) {
-    final matchupIndex = index % directedMatchups;
+  RunOutcome runOne({
+    required int gameIndex,
+    required int seed,
+    required String idPrefix,
+  }) {
+    final matchupIndex = gameIndex % directedMatchups;
     final (home, away) = pairs[matchupIndex];
     try {
       final input = GameInput.create(
-        gameId: 't016-$index',
+        gameId: '$idPrefix-$gameIndex',
         league: league,
         homeTeamId: home.id,
         awayTeamId: away.id,
         homeLineup: ActiveLineup.defaultFor(home),
         awayLineup: ActiveLineup.defaultFor(away),
-        seed: runtimeSeedBase + index,
+        seed: seed,
         rules: rules,
       );
 
@@ -135,6 +172,8 @@ void main(List<String> args) {
           boundViolation: false,
           completed: false,
           simulateMicros: watch.elapsedMicroseconds,
+          seed: input.seed,
+          matchupIndex: matchupIndex,
         );
       }
 
@@ -155,6 +194,8 @@ void main(List<String> args) {
           boundViolation: true,
           completed: false,
           simulateMicros: watch.elapsedMicroseconds,
+          seed: input.seed,
+          matchupIndex: matchupIndex,
         );
       }
 
@@ -164,24 +205,75 @@ void main(List<String> args) {
         boundViolation: false,
         completed: true,
         simulateMicros: watch.elapsedMicroseconds,
+        seed: input.seed,
+        matchupIndex: matchupIndex,
       );
     } on GameValidationException catch (e) {
       if (failureSamples.length < 5) {
         failureSamples.add('typed failure: $e');
       }
-      return const RunOutcome(
+      return RunOutcome(
         typedFailure: true,
         accountingFailure: false,
         boundViolation: false,
         completed: false,
         simulateMicros: 0,
+        seed: -1,
+        matchupIndex: matchupIndex,
       );
     }
   }
 
+  // Guard: measured and warmup seed ranges must stay disjoint, otherwise
+  // `--warmup` could collide with a measured game's seed.
+  if (runtimeSeedBase + games - 1 >= warmupSeedBase) {
+    stderr.writeln(
+      'games=$games exceeds the measured seed range '
+      '($runtimeSeedBase..${warmupSeedBase - 1}); lower --games',
+    );
+    exitCode = 64;
+    return;
+  }
+
+  // Validate the whole schedule BEFORE benchmarking, so a wrong cohort fails
+  // fast instead of producing mislabelled evidence.
+  final scheduleProblems = <String>[];
+  if (warmup > 0 && warmupSeedBase <= runtimeSeedBase + games - 1) {
+    scheduleProblems.add('warmup seed range overlaps the measured range');
+  }
+  for (final corpus in statisticalSeedCorpora) {
+    final measured = [
+      for (var i = 0; i < games; i++) runtimeSeedBase + i,
+    ].where(corpus.contains);
+    if (measured.isNotEmpty) {
+      scheduleProblems.add('measured seeds overlap corpus ${corpus.label}');
+    }
+    final warm = [
+      for (var i = 0; i < warmup; i++) warmupSeedBase + i,
+    ].where(corpus.contains);
+    if (warm.isNotEmpty) {
+      scheduleProblems.add('warmup seeds overlap corpus ${corpus.label}');
+    }
+  }
+  for (var i = 0; i < games; i++) {
+    final matchupIndex = i % directedMatchups;
+    if (matchupIndex < 0 || matchupIndex >= directedMatchups) {
+      scheduleProblems.add('game $i matchup index $matchupIndex out of range');
+      break;
+    }
+  }
+  if (scheduleProblems.isNotEmpty) {
+    for (final problem in scheduleProblems) {
+      stderr.writeln('schedule validation failed: $problem');
+    }
+    exitCode = 65;
+    return;
+  }
+
   // Warmup: page-in, allocator and code-path warmup; outcomes discarded.
+  // Uses its own disjoint seed range and does not advance the measured cohort.
   for (var i = 0; i < warmup; i++) {
-    runOne(i);
+    runOne(gameIndex: i, seed: warmupSeedBase + i, idPrefix: 't016-warmup');
   }
 
   final baselineRss = ProcessInfo.currentRss;
@@ -191,14 +283,33 @@ void main(List<String> args) {
   var accountingFailures = 0;
   var boundViolations = 0;
   var completed = 0;
+  // Observed provenance: what seeds and matchups were actually simulated.
+  final observedSeeds = <int>{};
+  var firstObservedSeed = -1;
+  var lastObservedSeed = -1;
+  var firstObservedMatchup = -1;
+  var lastObservedMatchup = -1;
 
   final loopWatch = Stopwatch()..start();
-  for (var i = warmup; i < warmup + games; i++) {
+  for (var i = 0; i < games; i++) {
     final watch = Stopwatch()..start();
-    final outcome = runOne(i);
+    final outcome = runOne(
+      gameIndex: i,
+      seed: runtimeSeedBase + i,
+      idPrefix: 't016',
+    );
     watch.stop();
     perGameMicros.add(watch.elapsedMicroseconds);
     simulateMicros.add(outcome.simulateMicros);
+    if (outcome.seed >= 0) {
+      observedSeeds.add(outcome.seed);
+      if (firstObservedSeed < 0) {
+        firstObservedSeed = outcome.seed;
+        firstObservedMatchup = outcome.matchupIndex;
+      }
+      lastObservedSeed = outcome.seed;
+      lastObservedMatchup = outcome.matchupIndex;
+    }
     if (outcome.typedFailure) typedFailures++;
     if (outcome.accountingFailure) accountingFailures++;
     if (outcome.boundViolation) boundViolations++;
@@ -207,6 +318,50 @@ void main(List<String> args) {
   loopWatch.stop();
   final endRss = ProcessInfo.currentRss;
   final maxRss = ProcessInfo.maxRss;
+
+  // Verify the OBSERVED cohort against the declared schedule.
+  final observedProblems = <String>[];
+  if (completed > 0) {
+    if (firstObservedSeed != runtimeSeedBase) {
+      observedProblems.add(
+        'first measured seed $firstObservedSeed != $runtimeSeedBase',
+      );
+    }
+    if (lastObservedSeed != runtimeSeedBase + games - 1) {
+      observedProblems.add(
+        'last measured seed $lastObservedSeed != ${runtimeSeedBase + games - 1}',
+      );
+    }
+    if (firstObservedMatchup != 0) {
+      observedProblems.add('first measured matchup $firstObservedMatchup != 0');
+    }
+    final expectedLastMatchup = (games - 1) % directedMatchups;
+    if (lastObservedMatchup != expectedLastMatchup) {
+      observedProblems.add(
+        'last measured matchup $lastObservedMatchup != $expectedLastMatchup',
+      );
+    }
+    if (observedSeeds.length != completed) {
+      observedProblems.add(
+        'distinct observed seeds ${observedSeeds.length} != completed $completed',
+      );
+    }
+    for (final seed in observedSeeds) {
+      if (seed < runtimeSeedBase || seed > runtimeSeedBase + games - 1) {
+        observedProblems.add(
+          'observed measured seed $seed outside declared range',
+        );
+        break;
+      }
+    }
+  }
+  if (observedProblems.isNotEmpty) {
+    for (final problem in observedProblems) {
+      stderr.writeln('observed cohort validation failed: $problem');
+    }
+    exitCode = 66;
+    return;
+  }
 
   final sortedPerGame = [...perGameMicros]..sort();
   final sortedSimulate = [...simulateMicros]..sort();
@@ -219,9 +374,14 @@ void main(List<String> args) {
     'leagueSeed': leagueSeed,
     'runtimeSeedBase': runtimeSeedBase,
     'seedPolicy':
-        'seed = 50001 + i for i in [0, games); outside every statistical seed corpus',
+        'measured game i in [0, games): seed = $runtimeSeedBase + i, range '
+        '$runtimeSeedBase..${runtimeSeedBase + games - 1}; warmup game i in '
+        '[0, warmup): seed = $warmupSeedBase + i, range '
+        '$warmupSeedBase..${warmupSeedBase + warmup - 1}; ranges disjoint, '
+        'both outside every statistical seed corpus',
     'matchupPolicy':
-        'directed matchup i % 56 (28 lexicographic pairs x 2 orientations)',
+        'game i uses directed matchup i % 56 (28 lexicographic pairs x '
+        '2 orientations); warmup and measured games share the same cycle',
     'rules': {
       'rulesVersion': rules.rulesVersion,
       'periods': rules.periods,
@@ -237,6 +397,19 @@ void main(List<String> args) {
       'gameEventSchemaVersion': gameEventSchemaVersion,
       'gameActionDurationModelVersion': gameActionDurationModelVersion,
       'gameFingerprintVersion': gameFingerprintVersion,
+    },
+    'measuredCohort': {
+      'firstObservedSeed': firstObservedSeed,
+      'lastObservedSeed': lastObservedSeed,
+      'distinctObservedSeeds': observedSeeds.length,
+      'firstObservedMatchupIndex': firstObservedMatchup,
+      'lastObservedMatchupIndex': lastObservedMatchup,
+      'warmupSeedRange': [
+        warmupSeedBase,
+        warmup > 0 ? warmupSeedBase + warmup - 1 : warmupSeedBase,
+      ],
+      'seedRangesDisjoint': runtimeSeedBase + games - 1 < warmupSeedBase,
+      'observedScheduleValid': true,
     },
     'gamesRequested': games,
     'warmupGames': warmup,
