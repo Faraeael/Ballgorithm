@@ -223,6 +223,7 @@ final class _GameRun {
         gameClockBefore: gameClockBefore,
         shotClockBefore: shotClockBefore,
         resolution: resolution,
+        context: _context.wire,
       ),
     );
   }

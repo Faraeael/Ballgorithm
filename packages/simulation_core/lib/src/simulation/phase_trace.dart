@@ -47,6 +47,7 @@ final class PhaseTraceRecord {
     required this.gameClockBefore,
     required this.shotClockBefore,
     required this.resolution,
+    this.context = 'fresh',
   });
 
   /// Monotonic trace index within the simulation (1-based).
@@ -57,7 +58,7 @@ final class PhaseTraceRecord {
   final int gameClockBefore;
   final int shotClockBefore;
   final PhaseResolution resolution;
-
+  final String context;
   @override
   String toString() =>
       'phase#$sequence p$period $kind ${plannedSeconds}s '
