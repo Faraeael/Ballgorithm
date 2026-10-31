@@ -64,8 +64,10 @@ $$P(\text{OF}) = \text{clamp}(170 - 3(\overline{IQ}_{\text{off}} - 50) + 2(\over
 1. **Offensive Foul Reduction:** Reducing base probability from 420 bp to 170 bp across $\approx 255$ game phases will reduce offensive fouls from $\approx 10.7$ to $\approx 4.3$ per game ($\approx 2.15$ per team-game), directly into the targeted NBA range $[1.8, 2.5]$.
 2. **Turnover Denominator & Share:** Total turnovers will drop from $\approx 41.8$ to $\approx 35.4$ per game. Offensive-foul share of total turnovers will drop from $\approx 25.8\%$ to $\approx 12.0\% - 14.5\%$, clearing the $\le 24.0\%$ ceiling.
 3. **Turnover Rate per 100 Possessions:** Total turnovers per 100 completed possessions will fall from $\approx 20.3$ to $\approx 17.0 - 17.5$.
-4. **Downstream Conversion:** Phases freed from offensive fouls will flow into field goal attempts ($\approx +6.4$ FGA per game, $+3.2$ per team-game).
-
+4. **Downstream Action Shift (Mechanistic Flow):** Because `categoryDraw` evaluates in order: (1) live turnover, (2) offensive foul, (3) defensive non-shooting foul, (4) field-goal attempt, narrowing the offensive-foul window from $[H, H+420)$ to $[H, H+170)$ mechanically shifts the freed 250 bp interval $[H+170, H+420)$ into **defensive non-shooting fouls**, NOT direct field goal attempts. Consequently:
+   - Defensive personal fouls and non-bonus retained-foul continuations will rise ($\approx +6.4$ per game).
+   - More non-bonus fouls increase team foul accumulation, advancing bonus group timing and awarding more free throws.
+   - Field goal attempts will NOT mechanically increase by $+6.4$; any FGA change will be secondary via possession pace and retained-foul continuation paths.
 ### 3.2 Pre-Registered Quantitative Pilot Guardrails (280-Game Paired Cohort)
 
 | Metric | Pilot Acceptance Envelope | Historical v3 Baseline (280 Games) | Expected v4 Outcome |
