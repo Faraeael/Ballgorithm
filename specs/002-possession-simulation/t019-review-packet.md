@@ -414,7 +414,15 @@ These tables put the drawn ratings beside what the game actually produced. **A s
 
 **Consistent with the model's documented weightings:**
 
-- **Ball-handling concentration.** Point guards carry by far the heaviest turnover load in these samples: `player-4-7` (PG, HAN 71) 10 turnovers in P2; `player-6-4` (PG, HAN 58) 9; `player-6-5` (C, HAN **16**) 9. Because the ballhandler weight is `position base + ballHandling×3 + passing + IQ`, a low-handling centre still receives roughly a third of a point guard's weight — so his 9 turnovers are mechanically reachable, not a violation of the weighting. It is, however, an eye-test question whether a HAN-16 centre should handle that often.
+- **Live-turnover attribution is exposure × hazard, not legacy ballhandler weights (correction).** An earlier version of this packet explained the turnover distribution with the legacy ballhandler score; that is wrong for simulation v4. The implemented mechanic (`probability_model.dart`, Amendment 002 exposure/security contract) is:
+
+  1. **Exposure** (`exposureWeights`) = position base `PG 420 / SG 320 / SF 280 / PF 220 / C 180` **+ passing×2 + basketballIQ×1**. It deliberately excludes ball-handling.
+  2. **Individual live-turnover hazard** (`playerTurnoverHazards`) = base `1093 bp` **− ballHandling×10 − passing×4 − basketballIQ×4 + opponent perimeterDefense×7 + opponent athleticism×3 + phase bonus** (`[250, 100, 0]` by phase), clamped to `[150, 2500]` bp.
+  3. **Actor selection** (`_actorWeights`) is proportional to **exposure × hazard**; the team hazard is the exposure-weighted sum.
+
+  The legacy ballhandler score survives only for **offensive-foul** and **non-shooting-foul** attribution, not for live-turnover selection.
+
+  Checked against P2's actual roster: the two PGs hold 28.1% and 25.0% of their team's exposure×hazard (exposure 493/455 against hazards 888/867), while the HAN-16 centre holds **16.3%** (exposure 179 but hazard **1420 bp**, ~1.6× a PG's). That predicts about 9 of 55 turnovers for him — and he recorded exactly 9. So the concentration is what the implemented weighting produces, not a bug. The open eye-test question is a *design* one: a centre with HAN 16 can still draw 16% of live-turnover attribution, because low handling raises hazard faster than low exposure suppresses it.
 - **Assist distribution.** team-1 recorded 34 assists on 49 made field goals in P1, spread as PG 8, C 8, SG 7, SF 6, PF 5 — near-uniform rather than concentrated on the primary handler, because assists are credited to the *passer* of a made shot whose weighting is `passing×3 + IQ×2 + position bonus` with the shooter excluded. Whether that spread is realistic is an eye-test question for the owner.
 - **Steal–perimeter-defense relationship.** In P2 the four-steal performances came from `player-6-6` (SF, PER 73, ATH 59) and `player-4-2` (C, PER 60) rather than the highest-PER guards, which is within the documented `perimeterDefense×3 + athleticism×2 + position bonus` draw but shows the position bonus materially matters.
 - **Rebounding.** Centres and power forwards dominate defensive rebounds; the interior positions hold the largest rebounding ratings.

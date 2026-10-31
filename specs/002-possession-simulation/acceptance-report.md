@@ -256,3 +256,25 @@ No large experiment was re-run for this report; all figures are read from commit
 | L1/L5/L6/L12 | Accept scope of evidence as-is, or authorize additional measurement | No (deferred) |
 
 M002 closure requires T019 human review plus the two AC09/AC10 owner decisions. **M002 is not declared complete by this report.**
+
+---
+
+## 8. Closeout addendum — 2026-10-31
+
+> **This addendum is appended; sections 1–7 above are the T018 as-of-report findings and are preserved unchanged**, including their `PENDING OWNER REVIEW` labels for AC09/AC10 and the statement that M002 was then not declared complete.
+
+The owner has since rendered the decisions this report left open:
+
+| Item | T018 as-of-report state | Owner decision (2026-10-31) |
+|---|---|---|
+| AC09 | PENDING OWNER REVIEW | **ACCEPTED** for simulation v4 on 6/6 fresh sensitivity experiments; historical v1 E4 INCONCLUSIVE preserved unchanged |
+| AC10 | PENDING OWNER REVIEW | **CONDITIONALLY ACCEPTED** for the limited M002 foundation; historical v2 `tovPer100Completed` 24.7594 vs `[7, 24]` preserved unchanged |
+| D1 | Qualified exception recorded | Exception **continues to apply**; original `INCONCLUSIVE` held-out verdict preserved |
+| T019 | Unauthorized | **Completed** — human gameplay review with conditional acceptance |
+| Android | NOT MEASURED | **Still NOT MEASURED** |
+
+- **Record of decisions:** `M002-OWNER-ACCEPTANCE.md`.
+- **Deferred realism work:** `M003-BACKLOG.md` (planning input only; assigned to no milestone).
+- **Milestone status:** **M002 — ACCEPTED WITH CONDITIONS — TECHNICAL POSSESSION-ENGINE FOUNDATION ONLY.** Not an unconditional statistical certification, not NBA-realism approval, not production release approval.
+
+No threshold, coefficient, clock, fixture, historical raw evidence or prior conclusion in this report was modified by the closeout.
