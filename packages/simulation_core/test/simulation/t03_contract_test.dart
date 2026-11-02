@@ -1,3 +1,4 @@
+import 'package:crypto/crypto.dart';
 import 'dart:convert';
 
 import 'package:simulation_core/simulation_core.dart';
@@ -413,11 +414,22 @@ void main() {
     expect(result.eventSchemaVersion, 3);
   });
 
-  test('a no-disqualification game contains no substitutions', () {
+  test('a no-disqualification game equals the pre-participation baseline', () {
     final input = buildInput(seed: 15);
     final result = GameSimulator().simulate(input);
     expect(result.events.whereType<Substitution>(), isEmpty);
-    expect(result.ledger.events.length, greaterThan(0));
-    GameEventReducer.validate(input, result.ledger);
+    // Captured from commit d29d1ff (pre-T04) with the same input and seed.
+    expect(
+      result.inputFingerprint,
+      'bb1e6ff0ae16c733ca61ecee422dae5064c98c8e70cddea80907a76d6e49c59c',
+    );
+    expect(result.events, hasLength(839));
+    final encoded = jsonEncode(
+      result.events.map((event) => event.toJson()).toList(),
+    );
+    expect(
+      sha256.convert(utf8.encode(encoded)).toString(),
+      '7a82d20efcb58a512cb081f2235f612ae35729e267e81faa12d6ce42e9e8d35c',
+    );
   });
 }
