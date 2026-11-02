@@ -36,7 +36,7 @@ push; internal contradiction review recorded.
 
 **Purpose:** make the model slot-aware behind the existing public API, with no contract change.
 
-**Prerequisites:** T01 frozen; owner decisions DD-M004-01 and DD-M004-02 confirmed.
+**Prerequisites:** T01 frozen; DD-M004-01 and DD-M004-02 approved on 2026-11-02 (freeze record).
 
 **Authorized scope:** a **non-exported** `CourtLineup`/`CourtSlot` used only inside the package;
 `TeamOnCourt` and the nine positional-bonus lookups read slots; an internal converter builds a
@@ -206,4 +206,5 @@ disclosure asserted; disclosure also states the technical-foul departure.
 **Acceptance evidence:** AC-M004 matrix filled with PASS/FAIL/NOT MEASURED; commands and counts;
 explicit non-claims.
 
-**Stop condition:** unanswered owner decisions remain → report, do not freeze.
+**Stop condition:** any approved scope, window, acceptance or version change discovered late → report and
+stop; do not fold it into an acceptance report silently.

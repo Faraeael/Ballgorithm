@@ -16,7 +16,7 @@ positionally. Same-position-only substitution would permanently encode a non-bas
 a second migration when rotations arrive. One type now avoids maintaining two notions of "the five".
 
 **Consequence:** app runner and every test/fixture constructor migrate; fingerprint payload changes.
-**[owner]** confirms removal rather than a compatibility alias.
+**Approved 2026-11-02:** removal rather than a compatibility alias.
 
 ## DD-M004-02 — Positional bonuses read the slot; attributes read the player
 
@@ -36,7 +36,7 @@ substitution, which the equivalence test pins.
 limit. No stored flag, no separate disqualification event.
 
 **Rationale:** the ledger already carries every foul; a derived predicate cannot drift from the
-events. **[owner]** confirms the limit and whether it is configurable.
+events. **Approved 2026-11-02:** the limit is fixed at six for M004; configurability is deferred.
 
 ## DD-M004-04 — Depleted-roster continuation, without technical fouls
 
@@ -48,8 +48,8 @@ subsequent fouls by the continuing player.
 Section I.1 instead assesses a technical foul and a team foul for each such foul; this engine has no
 technical-foul event or technical free throws, so claiming equivalence would be false.
 
-**Consequence:** deliberate, disclosed departure. **[owner]** confirms B (simplified) over A
-(NBA-equivalent, requires technical-foul modelling).
+**Consequence:** deliberate, disclosed departure. **Approved 2026-11-02:** option B (simplified)
+chosen over A (NBA-equivalent, requires technical-foul modelling).
 
 ## DD-M004-05 — Replacement ranking is deterministic and versioned
 
@@ -71,7 +71,8 @@ forbids substitution after a successful field goal; keeping it would be a FIBA-s
 presented as NBA alignment. W1 exists because a retained foul is a dead ball while the possession stays
 open. W0 exists because a disqualified defender must not remain for awarded free throws.
 
-**Consequence:** fewer substitution moments than a user might expect. **[owner]** confirms W3 removal.
+**Consequence:** fewer substitution moments than a user might expect. **Approved 2026-11-02:** W3
+removal confirmed.
 
 ## DD-M004-07 — Horn and game-end handling
 
@@ -115,7 +116,8 @@ window indefinitely. One appearance per player makes the window finite and testa
 semantics stable when rotations arrive instead of widening them later. The simulator policy, not the
 schema, decides when to use them.
 
-**Consequence:** fixtures can exercise the windows without a rotation policy. **[owner]** confirms.
+**Consequence:** fixtures can exercise the windows without a rotation policy. **Approved 2026-11-02:**
+tactical events are ledger-valid; the simulator emits only `foulOut`.
 
 ## DD-M004-11 — Minutes are derived, never tracked
 
@@ -152,8 +154,8 @@ Regular rotations are deferred.
 **Rationale:** rotations without fatigue or tactics multiply reducer window surface for cosmetic rest
 patterns. A foul-out is a genuine rule-driven trigger that proves the participation architecture once.
 
-**Consequence:** in games without disqualifications the bench still never plays. **[owner]** confirms
-the deferral.
+**Consequence:** in games without disqualifications the bench still never plays. **Approved
+2026-11-02:** rotations remain deferred to a later milestone.
 
 ---
 

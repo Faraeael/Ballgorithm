@@ -167,7 +167,8 @@ allowlist is ordered, not a free set of types:
 
 ## 6. Eligibility, disqualification and depletion
 
-- `foulOutLimit = 6` (proposed default; configurability is an owner decision).
+- `foulOutLimit = 6`, **fixed for M004** (owner-approved 2026-11-02). Configurability is not part of
+  this milestone and is deferred.
 - Disqualification is derived: `personalFouls >= foulOutLimit` after the foul event. No stored flag,
   no separate event.
 - Mandatory replacement at the first window available to the team (W0, W1, W4 or W5 as applicable).
