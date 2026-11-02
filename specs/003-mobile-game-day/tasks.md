@@ -45,7 +45,13 @@ this task.
 
 ---
 
-## T021 — Isolate feasibility and deterministic parity gate
+## T021 — Isolate feasibility and deterministic parity gate — **COMPLETE (2026-11-02) — PASS**
+
+**Evidence:** `t021-isolate-gate.md`. Verdict `ISOLATE TRANSPORT — PASS`: direct `GameResult`
+transport works on the native Dart VM, typed `teamsNotDistinct` crosses from inside the worker, seed
+domain verified over 16,384 bounded inputs × 6 league seeds. Added `lib/features/game/game_runner.dart`,
+`lib/features/game/game_seed.dart`, `test/game_runner_parity_test.dart`, `test/game_seed_test.dart`.
+Core untouched. T022–T025 remain pending and unauthorized.
 
 **Scope:** `lib/features/game/game_seed.dart`, `lib/features/game/game_runner.dart`,
 `test/game_seed_test.dart`, `test/game_runner_parity_test.dart` (names indicative).
