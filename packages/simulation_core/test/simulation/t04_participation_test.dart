@@ -49,6 +49,24 @@ void _expectCode(
   );
 }
 
+GameEvent resequenceEvent(GameEvent event, int sequence) {
+  if (event is Substitution) {
+    return Substitution(
+      sequence: sequence,
+      period: event.period,
+      gameClock: event.gameClock,
+      shotClock: event.shotClock,
+      teamId: event.teamId,
+      playerOutId: event.playerOutId,
+      playerInId: event.playerInId,
+      reason: event.reason,
+    );
+  }
+  final json = event.toJson();
+  json['sequence'] = sequence;
+  return GameEvent.fromJson(json);
+}
+
 void main() {
   late GameInput input;
   late TeamId home;
@@ -1072,6 +1090,30 @@ void main() {
         ),
         input,
         GameValidationCode.eventAfterGameEnded,
+      );
+    });
+
+    test('rejects multiple disqualified players left active', () {
+      final result = GameSimulator().simulate(input);
+      final events = result.events.toList();
+      final subIndexes = [
+        for (var i = 0; i < events.length; i++)
+          if (events[i] is Substitution) i,
+      ];
+      expect(subIndexes.length, greaterThanOrEqualTo(2));
+      events.removeAt(subIndexes[1]);
+      events.removeAt(subIndexes[0]);
+      for (var i = 0; i < events.length; i++) {
+        events[i] = resequenceEvent(events[i], i + 1);
+      }
+      _expectCode(
+        GameEventLedger(
+          gameId: input.gameId,
+          inputFingerprint: result.inputFingerprint,
+          events: events,
+        ),
+        input,
+        GameValidationCode.playerNotActive,
       );
     });
 
