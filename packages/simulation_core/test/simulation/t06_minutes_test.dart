@@ -16,6 +16,7 @@ String _bench(GameInput input, TeamId team) => input.league.teams
 void main() {
   final input = buildInput(seed: 42);
   final home = input.homeTeamId;
+  final away = input.awayTeamId;
 
   test('a full game with a W5 substitution yields exact seconds', () {
     final script = GameScript(input)
@@ -121,5 +122,230 @@ void main() {
     // action 680 (10 s).
     expect(box.players[out]!.secondsPlayed, 30);
     expect(box.players[incoming]!.secondsPlayed, 10);
+  });
+
+  test('two substitutions on the same clock change no intervals', () {
+    final script = GameScript(input)
+      ..startGame()
+      ..startPeriod(1, input.startingTeamId, clock: 720);
+    final outA = _id(input, home, Position.pg);
+    final outB = _id(input, home, Position.sg);
+    final bench = input.homeTeam.players
+        .where((p) => !input.homeLineup.containsPlayer(p.id))
+        .toList();
+    script.substitution(
+      team: home,
+      playerOut: outA,
+      playerIn: bench[0].id.value,
+      reason: SubstitutionReason.tactical,
+    );
+    script.substitution(
+      team: home,
+      playerOut: outB,
+      playerIn: bench[1].id.value,
+      reason: SubstitutionReason.tactical,
+    );
+    script.startPossession('p1', input.startingTeamId, clock: 700);
+    script.fga(
+      team: home,
+      shooter: _id(input, home, Position.sf),
+      made: true,
+      clock: 690,
+      shotClock: 14,
+    );
+    script.endPossession(
+      possessionId: 'p1',
+      team: home,
+      reason: PossessionEndReason.madeFieldGoal,
+      clock: 690,
+      shotClock: 14,
+    );
+    script.endPeriod(1);
+    for (var period = 2; period <= 4; period++) {
+      script.startPeriod(
+        period,
+        period.isOdd
+            ? input.startingTeamId
+            : input.opponentOf(input.startingTeamId),
+        clock: 720,
+      );
+      script.endPeriod(period);
+    }
+    script.events.add(
+      GameEnded(
+        sequence: script.events.last.sequence + 1,
+        period: 4,
+        gameClock: 0,
+        shotClock: 0,
+        finalPeriod: 4,
+      ),
+    );
+    final box = EventAccounting.aggregate(
+      GameEventReducer.validate(input, script.ledger()),
+    );
+    expect(box.players[outA]!.secondsPlayed, 0);
+    expect(box.players[outB]!.secondsPlayed, 0);
+    expect(box.players[bench[0].id.value]!.secondsPlayed, 2880);
+    expect(box.players[bench[1].id.value]!.secondsPlayed, 2880);
+  });
+
+  test('overtime minutes use the 300-second period length', () {
+    final script = GameScript(input)
+      ..startGame()
+      ..startPeriod(1, input.startingTeamId, clock: 720);
+    for (var period = 1; period <= 4; period++) {
+      final starter = period.isOdd ? home : away;
+      script
+        ..startPossession('p$period', starter, clock: 700)
+        ..fga(
+          team: starter,
+          shooter: _id(input, starter, Position.sg),
+          made: true,
+          clock: 690,
+          shotClock: 14,
+        )
+        ..endPossession(
+          possessionId: 'p$period',
+          team: starter,
+          reason: PossessionEndReason.madeFieldGoal,
+          clock: 690,
+          shotClock: 14,
+        )
+        ..endPeriod(period);
+      if (period < 4) {
+        script.startPeriod(
+          period + 1,
+          period.isOdd
+              ? input.opponentOf(input.startingTeamId)
+              : input.startingTeamId,
+          clock: 720,
+        );
+      }
+    }
+    // Regulation ends tied 4-4; overtime is 300 seconds.
+    script
+      ..startPeriod(5, home, clock: 300)
+      ..startPossession('p5', home, clock: 280)
+      ..fga(
+        team: home,
+        shooter: _id(input, home, Position.sg),
+        made: true,
+        clock: 270,
+        shotClock: 14,
+      )
+      ..endPossession(
+        possessionId: 'p5',
+        team: home,
+        reason: PossessionEndReason.madeFieldGoal,
+        clock: 270,
+        shotClock: 14,
+      )
+      ..endPeriod(5);
+    script.events.add(
+      GameEnded(
+        sequence: script.events.last.sequence + 1,
+        period: 5,
+        gameClock: 0,
+        shotClock: 0,
+        finalPeriod: 5,
+      ),
+    );
+    final box = EventAccounting.aggregate(
+      GameEventReducer.validate(input, script.ledger()),
+    );
+    for (final id in input.homeLineup.playerIds) {
+      expect(box.players[id]!.secondsPlayed, 4 * 720 + 300);
+    }
+  });
+
+  test('a horn substitution ends the outgoing interval at zero', () {
+    final script = GameScript(input)
+      ..startGame()
+      ..startPeriod(1, input.startingTeamId, clock: 720)
+      ..endPeriod(1);
+    final out = _id(input, home, Position.pg);
+    script.startPeriod(2, input.opponentOf(input.startingTeamId), clock: 720);
+    final incoming = _bench(input, home);
+    script.substitution(
+      team: home,
+      playerOut: out,
+      playerIn: incoming,
+      reason: SubstitutionReason.tactical,
+    );
+    script.endPeriod(2);
+    final box = EventAccounting.aggregate(
+      GameEventReducer.validate(input, script.ledger()),
+    );
+    expect(box.players[out]!.secondsPlayed, 720);
+    expect(box.players[incoming]!.secondsPlayed, 720);
+  });
+
+  test('a depleted five-player roster plays every interval', () {
+    final league = const LeagueGenerator().generate(
+      const GenerationConfig(seed: 20261028, playersPerTeam: 5),
+    );
+    final teamA = league.teams.first;
+    final teamB = league.teams[1];
+    final depleted = GameInput.create(
+      gameId: 'depleted-minutes',
+      league: league,
+      homeTeamId: teamA.id,
+      awayTeamId: teamB.id,
+      homeLineup: CourtLineup.defaultFor(teamA),
+      awayLineup: CourtLineup.defaultFor(teamB),
+      seed: 42,
+      rules: GameRules.standard,
+    );
+    final script = GameScript(depleted)
+      ..startGame()
+      ..startPeriod(1, depleted.startingTeamId, clock: 720);
+    for (var period = 1; period <= 4; period++) {
+      final starter = period.isOdd ? teamA.id : teamB.id;
+      script
+        ..startPossession('p$period', starter, clock: 700)
+        ..fga(
+          team: starter,
+          shooter: starter == teamA.id
+              ? depleted.homeLineup.playerIdAt(Position.sg).value
+              : depleted.awayLineup.playerIdAt(Position.sg).value,
+          made: true,
+          value: period == 3 ? 3 : 2,
+          clock: 690,
+          shotClock: 14,
+        )
+        ..endPossession(
+          possessionId: 'p$period',
+          team: starter,
+          reason: PossessionEndReason.madeFieldGoal,
+          clock: 690,
+          shotClock: 14,
+        )
+        ..endPeriod(period);
+      if (period < 4) {
+        script.startPeriod(
+          period + 1,
+          period.isOdd
+              ? depleted.opponentOf(depleted.startingTeamId)
+              : depleted.startingTeamId,
+          clock: 720,
+        );
+      }
+    }
+    script.events.add(
+      GameEnded(
+        sequence: script.events.last.sequence + 1,
+        period: 4,
+        gameClock: 0,
+        shotClock: 0,
+        finalPeriod: 4,
+      ),
+    );
+    final box = EventAccounting.aggregate(
+      GameEventReducer.validate(depleted, script.ledger()),
+    );
+    for (final id in depleted.homeLineup.playerIds) {
+      expect(box.players[id]!.secondsPlayed, 4 * 720);
+    }
+    expect(box.players, hasLength(10));
   });
 }

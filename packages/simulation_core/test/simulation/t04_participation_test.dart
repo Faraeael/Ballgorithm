@@ -756,6 +756,359 @@ void main() {
     });
   });
 
+  group('additional frozen rejection cases', () {
+    GameScript basePossession() => GameScript(input)
+      ..startGame()
+      ..startPeriod(1, input.startingTeamId, clock: 720)
+      ..startPossession('p1', offense, clock: 700);
+
+    test('rejects a null shot clock during an open possession', () {
+      final script = basePossession();
+      script.foul(
+        team: defense,
+        player: _starter(input, defense, Position.pg),
+        kind: FoulKind.nonShooting,
+        drawnBy: _starter(input, offense, Position.pg),
+        clock: 690,
+        shotClock: 14,
+      );
+      script.substitution(
+        team: defense,
+        playerOut: _starter(input, defense, Position.pg),
+        playerIn: _bench(input, defense),
+        reason: SubstitutionReason.tactical,
+        clearShotClock: true,
+      );
+      _expectCode(script.ledger(), input, GameValidationCode.invalidShotClock);
+    });
+
+    test('rejects a W0 substitution that alters the free-throw group', () {
+      final custom = _input(rules: _customRules);
+      final script = GameScript(custom)
+        ..startGame()
+        ..startPeriod(1, custom.startingTeamId, clock: 720)
+        ..startPossession('p1', custom.startingTeamId, clock: 700);
+      final offenseTeam = custom.startingTeamId;
+      final defenseTeam = custom.opponentOf(offenseTeam);
+      final defender = _starter(custom, defenseTeam, Position.pg);
+      final drawer = _starter(custom, offenseTeam, Position.pg);
+      for (var i = 0; i < 5; i++) {
+        script.foul(
+          team: defenseTeam,
+          player: defender,
+          kind: FoulKind.nonShooting,
+          drawnBy: drawer,
+          clock: 690,
+          shotClock: 14,
+        );
+      }
+      script.foul(
+        team: defenseTeam,
+        player: defender,
+        kind: FoulKind.shooting,
+        freeThrows: 2,
+        drawnBy: drawer,
+        clock: 690,
+        shotClock: 14,
+      );
+      script.substitution(
+        team: defenseTeam,
+        playerOut: defender,
+        playerIn: _bench(custom, defenseTeam),
+        reason: SubstitutionReason.foulOut,
+      );
+      script.ft(
+        team: offenseTeam,
+        shooter: drawer,
+        groupId: 'g1',
+        index: 1,
+        total: 2,
+        made: true,
+        clock: 690,
+        shotClock: 14,
+      );
+      script.ft(
+        team: offenseTeam,
+        shooter: drawer,
+        groupId: 'g2',
+        index: 2,
+        total: 2,
+        made: true,
+        clock: 690,
+        shotClock: 14,
+      );
+      _expectCode(
+        script.ledger(),
+        custom,
+        GameValidationCode.freeThrowSequenceInvalid,
+      );
+    });
+
+    test(
+      'rejects a substitution after a steal turnover ends the possession',
+      () {
+        final script = basePossession();
+        final offender = _starter(input, offense, Position.pg);
+        script.turnover(
+          team: offense,
+          player: offender,
+          reason: TurnoverReason.steal,
+          stolenBy: _starter(input, defense, Position.pg),
+          clock: 690,
+          shotClock: 14,
+        );
+        script.endPossession(
+          possessionId: 'p1',
+          team: offense,
+          reason: PossessionEndReason.turnover,
+          clock: 690,
+          shotClock: 14,
+        );
+        script.substitution(
+          team: offense,
+          playerOut: offender,
+          playerIn: _bench(input, offense),
+          reason: SubstitutionReason.tactical,
+          clearShotClock: true,
+        );
+        _expectCode(script.ledger(), input, GameValidationCode.deadBallInvalid);
+      },
+    );
+
+    test('rejects a substitution after a made field goal (no W3)', () {
+      final script = basePossession();
+      final shooter = _starter(input, offense, Position.sg);
+      script.fga(
+        team: offense,
+        shooter: shooter,
+        made: true,
+        clock: 690,
+        shotClock: 14,
+      );
+      script.endPossession(
+        possessionId: 'p1',
+        team: offense,
+        reason: PossessionEndReason.madeFieldGoal,
+        clock: 690,
+        shotClock: 14,
+      );
+      script.substitution(
+        team: offense,
+        playerOut: shooter,
+        playerIn: _bench(input, offense),
+        reason: SubstitutionReason.tactical,
+        clearShotClock: true,
+      );
+      _expectCode(script.ledger(), input, GameValidationCode.deadBallInvalid);
+    });
+
+    test('rejects a substitution after DeadBallMiss', () {
+      final script = GameScript(input)
+        ..startGame()
+        ..startPeriod(1, input.startingTeamId, clock: 720)
+        ..startPossession('p1', offense, clock: 1, shotClock: 24);
+      final shooter = _starter(input, offense, Position.sg);
+      final miss = script.fga(
+        team: offense,
+        shooter: shooter,
+        made: false,
+        clock: 0,
+        shotClock: 23,
+      );
+      script.deadBall(
+        team: offense,
+        missedEventSequence: miss.sequence,
+        clock: 0,
+        shotClock: 23,
+      );
+      script.substitution(
+        team: offense,
+        playerOut: shooter,
+        playerIn: _bench(input, offense),
+        reason: SubstitutionReason.tactical,
+        clock: 0,
+        shotClock: 23,
+      );
+      _expectCode(script.ledger(), input, GameValidationCode.deadBallInvalid);
+    });
+
+    test('rejects a foreign incoming player', () {
+      final script = GameScript(input)
+        ..startGame()
+        ..startPeriod(1, input.startingTeamId, clock: 720);
+      script.substitution(
+        team: home,
+        playerOut: _starter(input, home, Position.pg),
+        playerIn: input.awayTeam.players
+            .firstWhere((player) => !input.awayLineup.containsPlayer(player.id))
+            .id
+            .value,
+        reason: SubstitutionReason.tactical,
+      );
+      _expectCode(
+        script.ledger(),
+        input,
+        GameValidationCode.foreignLineupPlayer,
+      );
+    });
+
+    test('rejects foulOut for a player below the limit', () {
+      final script = GameScript(input)
+        ..startGame()
+        ..startPeriod(1, input.startingTeamId, clock: 720);
+      script.substitution(
+        team: home,
+        playerOut: _starter(input, home, Position.pg),
+        playerIn: _bench(input, home),
+        reason: SubstitutionReason.foulOut,
+      );
+      _expectCode(script.ledger(), input, GameValidationCode.playerNotActive);
+    });
+
+    test('rejects a substitution whose period does not match', () {
+      final script = GameScript(input)
+        ..startGame()
+        ..startPeriod(1, input.startingTeamId, clock: 720);
+      script.substitution(
+        team: home,
+        playerOut: _starter(input, home, Position.pg),
+        playerIn: _bench(input, home),
+        reason: SubstitutionReason.tactical,
+      );
+      final events = script.events;
+      final sub = events.removeLast() as Substitution;
+      events.add(
+        Substitution(
+          sequence: sub.sequence,
+          period: 2,
+          gameClock: sub.gameClock,
+          shotClock: sub.shotClock,
+          teamId: sub.teamId,
+          playerOutId: sub.playerOutId,
+          playerInId: sub.playerInId,
+          reason: sub.reason,
+        ),
+      );
+      _expectCode(script.ledger(), input, GameValidationCode.periodNotStarted);
+    });
+
+    test('rejects possession end with a conflicting reason', () {
+      final script = basePossession();
+      script.fga(
+        team: offense,
+        shooter: _starter(input, offense, Position.sg),
+        made: false,
+        clock: 690,
+        shotClock: 14,
+      );
+      script.endPossession(
+        possessionId: 'p1',
+        team: offense,
+        reason: PossessionEndReason.turnover,
+        clock: 690,
+        shotClock: 14,
+      );
+      _expectCode(
+        script.ledger(),
+        input,
+        GameValidationCode.possessionEndReasonInvalid,
+      );
+    });
+
+    test('rejects possession end for an unknown possession', () {
+      final script = basePossession();
+      script.endPossession(
+        possessionId: 'nope',
+        team: offense,
+        reason: PossessionEndReason.turnover,
+        clock: 690,
+        shotClock: 14,
+      );
+      _expectCode(
+        script.ledger(),
+        input,
+        GameValidationCode.possessionEndReasonInvalid,
+      );
+    });
+
+    test('rejects an early GameEnded before the final period', () {
+      final script = GameScript(input)
+        ..startGame()
+        ..startPeriod(1, input.startingTeamId, clock: 720)
+        ..endPeriod(1);
+      script.events.add(
+        GameEnded(
+          sequence: script.events.last.sequence + 1,
+          period: 1,
+          gameClock: 0,
+          shotClock: 0,
+          finalPeriod: 1,
+        ),
+      );
+      _expectCode(script.ledger(), input, GameValidationCode.gameEndInvalid);
+    });
+
+    test('rejects any event after GameEnded', () {
+      final result = GameSimulator().simulate(input);
+      final events = result.events.toList();
+      final last = events.last;
+      events.add(
+        Substitution(
+          sequence: last.sequence + 1,
+          period: last.period,
+          gameClock: last.gameClock,
+          shotClock: last.shotClock,
+          teamId: home.value,
+          playerOutId: _starter(input, home, Position.pg),
+          playerInId: _bench(input, home),
+          reason: SubstitutionReason.tactical,
+        ),
+      );
+      _expectCode(
+        GameEventLedger(
+          gameId: input.gameId,
+          inputFingerprint: result.inputFingerprint,
+          events: events,
+        ),
+        input,
+        GameValidationCode.eventAfterGameEnded,
+      );
+    });
+
+    test(
+      'rejects an event crediting a departed starter after substitution',
+      () {
+        final script = GameScript(input)
+          ..startGame()
+          ..startPeriod(1, input.startingTeamId, clock: 720);
+        final out = _starter(input, home, Position.pg);
+        script.substitution(
+          team: home,
+          playerOut: out,
+          playerIn: _bench(input, home),
+          reason: SubstitutionReason.tactical,
+        );
+        script.startPossession('p1', input.startingTeamId, clock: 700);
+        // A made-shot assist by the departed starter must fail eligibility.
+        script.events.add(
+          FieldGoalAttempt(
+            sequence: script.events.last.sequence + 1,
+            period: 1,
+            gameClock: 690,
+            shotClock: 14,
+            teamId: home.value,
+            shooterId: _starter(input, home, Position.sg),
+            shotValue: 2,
+            made: true,
+            andOne: false,
+            assistedById: out,
+          ),
+        );
+        _expectCode(script.ledger(), input, GameValidationCode.playerNotActive);
+      },
+    );
+  });
+
   group('mandatory replacement and depletion', () {
     GameScript sixFouls({
       required GameInput withInput,

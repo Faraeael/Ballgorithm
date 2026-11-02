@@ -412,4 +412,12 @@ void main() {
     expect(result.simulationVersion, 5);
     expect(result.eventSchemaVersion, 3);
   });
+
+  test('a no-disqualification game contains no substitutions', () {
+    final input = buildInput(seed: 15);
+    final result = GameSimulator().simulate(input);
+    expect(result.events.whereType<Substitution>(), isEmpty);
+    expect(result.ledger.events.length, greaterThan(0));
+    GameEventReducer.validate(input, result.ledger);
+  });
 }
