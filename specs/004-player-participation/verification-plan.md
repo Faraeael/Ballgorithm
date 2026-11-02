@@ -26,12 +26,18 @@
 5. **W1 retained-foul fixture** — substitution during an open possession with a pending ceiling.
 6. **W0 fixture** — disqualified defender replaced between foul and first free throw.
 7. **Horn fixtures** — buzzer shooting foul: made final FT and missed final FT (`DeadBallMiss`),
-   including the pending replacement obligation. Positive chain: foul at 0 → awarded free throws
-   (made and missed variants) → `DeadBallMiss` where applicable → `PeriodEnded` → `PeriodStarted` → W5
-   `Substitution` → first possession. Negative chains: `PossessionStarted` (or any live event) before
-   the W5 replacement is rejected; a `FieldGoalAttempt` or `Turnover` while pending is rejected; a
-   substitution outside W5 while pending is rejected. `GameEnded` after the free throws is accepted and
-   voids the obligation; a depleted team acquires no obligation.
+   including the pending replacement obligation. Positive chains, one per simulator path:
+   - **A made last FT at 0:** `PersonalFoul` → `FreeThrowAttempt`s → `PossessionEnded(madeFinalFreeThrow)`
+     → `PeriodEnded` → (`GameEnded` | `PeriodStarted` → W5 `Substitution` → first possession).
+   - **B missed last FT at 0:** `PersonalFoul` → `FreeThrowAttempt`s → `DeadBallMiss` →
+     `PossessionEnded(periodEnd)` → `PeriodEnded` → same continuation.
+   - **C retained non-bonus foul at 0:** `PersonalFoul` → `PossessionEnded(periodEnd)` → `PeriodEnded`
+     → same continuation.
+   Negative chains: a live event before the W5 replacement is rejected; `PossessionEnded` with a reason
+   that does not match the unresolved outcome, with the wrong possession id/team, or out of order is
+   rejected; a substitution outside W5 while pending is rejected; `GameEnded` before the normal
+   `PeriodEnded` sequence is rejected. `GameEnded` after the sequence is accepted and voids the
+   obligation; a depleted team acquires no obligation.
 8. **Bench-production fixture** — a substitute who records points, rebounds and fouls, proving
    attribution to the substituting player and correct box rows. Includes a player who enters and
    leaves again at the same clock: zero seconds, nonzero production, still displayed as a participant.
@@ -65,12 +71,15 @@
 21. Any live event — `PossessionStarted`, `FieldGoalAttempt`, `Rebound`, `Turnover`, `PersonalFoul` —
     while a horn obligation is pending and an eligible bench player exists.
 22. A `Substitution` outside W5 while a horn obligation is pending.
-23. Continuation when an eligible bench player exists.
-24. Two appearances by the same player in one window (loop bound).
-25. Substitution whose period does not match the current period.
-26. Eligibility checked against the starting lineup after a substitution: a departed starter credited, or
+23. A `PossessionEnded` while pending whose reason does not match the unresolved outcome, whose
+    possession id/team differ from the open possession, or that appears out of order.
+24. `GameEnded` before the normal `PeriodEnded` sequence while pending.
+25. Continuation when an eligible bench player exists.
+26. Two appearances by the same player in one window (loop bound).
+27. Substitution whose period does not match the current period.
+28. Eligibility checked against the starting lineup after a substitution: a departed starter credited, or
     an entered substitute rejected.
-27. An over-limit active player with an eligible bench player and no pending obligation (broad-exception
+29. An over-limit active player with an eligible bench player and no pending obligation (broad-exception
     regression).
 
 ## 4. Accounting checks

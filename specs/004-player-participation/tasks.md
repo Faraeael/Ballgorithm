@@ -95,8 +95,10 @@ administrative loop bound.
 **Acceptance evidence:** the negative-test list in `verification-plan.md` §3 all rejected with typed
 codes; legal windows accepted in hand-built ledgers; shot-clock ceiling survives W1 and still rejects a
 later illegal increase; no substitution at clock 0; eligibility after a substitution follows the
-current five; the horn obligation allows only the ordered horn-resolution events and is satisfied only
-by W5 (void after `GameEnded`); a live event before the W5 replacement is rejected.
+current five; the horn obligation follows the phase-aware P1/P2/P3 sequence, with `PossessionEnded`
+restricted to the matching reason and possession and `periodEnd` allowed only after `DeadBallMiss` or a
+retained foul; satisfied only by W5 (void after `GameEnded`); a live event before the W5 replacement and
+any arbitrary `PossessionEnded` are rejected.
 
 **Stop condition:** any need to alter generic clock or possession rules beyond the documented
 exemption — stop.

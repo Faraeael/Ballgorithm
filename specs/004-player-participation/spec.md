@@ -124,14 +124,28 @@ inside a free-throw group opened for another reason, after `DeadBallMiss`, after
 - While an obligation is pending, the window-close check treats the over-limit active player as
   authorized **only** because of that obligation. It is not a general exception: an over-limit active
   player with an eligible substitute and no pending obligation remains invalid.
-- While an obligation is pending, only the ordered horn-resolution transitions are legal:
-  `FreeThrowAttempt` events of the already-awarded group, `DeadBallMiss` for a missed final free
-  throw, `PeriodEnded`, `PeriodStarted`, a lawful W5 `Substitution`, and `GameEnded`.
-- Every other event while an obligation is pending and an eligible substitute exists is invalid —
-  including `PossessionStarted`, `FieldGoalAttempt`, `Rebound`, `Turnover`, `PersonalFoul` and
+
+While an obligation is pending, only the **phase-aware** horn-resolution sequence is legal. The
+allowlist is ordered, not a free set of types:
+
+| Phase | Legal events | Terminal condition |
+|---|---|---|
+| P1 — awarded free throws | `FreeThrowAttempt` events of the already-open group | last attempt made → `PossessionEnded(madeFinalFreeThrow)`; last attempt missed at clock 0 → `DeadBallMiss` then `PossessionEnded(periodEnd)` |
+| P2 — retained non-bonus foul | none between the foul and the possession end | `PossessionEnded(periodEnd)` at clock 0 |
+| P3 — between periods | `PeriodEnded`, then `GameEnded` **or** `PeriodStarted` followed by a lawful W5 `Substitution` | obligation satisfied by the W5 substitution, or void on `GameEnded` |
+
+- `PossessionEnded` is permitted only as the terminal step of P1 or P2, must carry the open
+  possession's `possessionId` and `offenseTeamId`, must not advance either clock, and its reason must
+  match the unresolved outcome: `madeFinalFreeThrow` only after a made last free throw,
+  `periodEnd` only after the `DeadBallMiss` of a missed last free throw or after a retained non-bonus
+  foul at clock 0.
+- Every other event while the obligation is pending and an eligible substitute exists is invalid —
+  including an arbitrary `PossessionEnded` (wrong reason, wrong order or wrong possession),
+  `PossessionStarted`, `FieldGoalAttempt`, `Rebound`, `Turnover`, `PersonalFoul`, and any
   `Substitution` outside W5. Live play may not resume before the replacement.
 - The obligation must be cleared by the W5 `Substitution` before the next period's first
-  `PossessionStarted`. `GameEnded` voids it; depleted teams never acquire one.
+  `PossessionStarted`. `GameEnded` is legal only after the normal `PeriodEnded` sequence and voids the
+  obligation; depleted teams never acquire one.
 - If the team is depleted, no obligation arises (continuation is legal) and the over-limit player may
   continue playing.
 - A buzzer non-bonus foul disqualifies identically and defers to W5.
