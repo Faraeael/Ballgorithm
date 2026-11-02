@@ -5,7 +5,8 @@ Offline-first basketball manager prototype.
 - Milestone 001 — deterministic fictional league generation and a read-only roster UI. Accepted.
 - Milestone 002 — deterministic, event-sourced possession-simulation engine (simulation v4).
   Accepted with conditions; see `specs/002-possession-simulation/M002-OWNER-ACCEPTANCE.md`.
-- Milestone 003 — Mobile Game Day. Specification frozen 2026-11-02; not implemented.
+- Milestone 003 — Mobile Game Day. Accepted 2026-11-02 (functional foundation); see
+  `specs/003-mobile-game-day/M003-OWNER-ACCEPTANCE.md`.
 
 Current cross-milestone status is maintained in `AGENTS.md` §3. No NBA-level realism,
 release-readiness or Android performance claim has been made or measured.
@@ -13,10 +14,10 @@ release-readiness or Android performance claim has been made or measured.
 ## Layout
 
 - `packages/simulation_core/` — pure Dart domain (models, deterministic generator, validation). No Flutter, Flame, database or network imports.
-- `lib/` — Flutter presentation: league list, roster, player profile.
+- `lib/` — Flutter presentation: league list, roster, player profile, game day setup and results.
 - `specs/001-league-player-foundation/` — spec, plan, tasks, design decisions, acceptance report.
 - `specs/002-possession-simulation/` — frozen M002 specification, evidence, calibration records and the owner acceptance record.
-- `specs/003-mobile-game-day/` — frozen Mobile Game Day specification. Not implemented.
+- `specs/003-mobile-game-day/` — frozen Mobile Game Day specification, evidence and the owner acceptance record.
 
 ## Commands
 

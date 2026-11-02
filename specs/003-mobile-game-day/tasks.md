@@ -219,7 +219,7 @@ fingerprint `a68e59818c674f05d0050ccc5d515a1e94ab0e979ef421f17703079c38af980c`.
 
 ---
 
-## T025 — Mobile layout verification and milestone acceptance — **TECHNICAL COMPLETE (2026-11-02); OWNER ACCEPTANCE PENDING**
+## T025 — Mobile layout verification and milestone acceptance — **COMPLETE — OWNER ACCEPTED 2026-11-02**
 
 **Evidence:** `test/game_mobile_layout_test.dart` (13 tests across 360×640, 393×852 and 430×932,
 covering league, setup, loading, error/retry, regulation and overtime results, statistics, player
@@ -267,7 +267,9 @@ Device captures: `20-frozen-identity-tables-360.png`, `21-frozen-identity-rightm
 `22-frozen-identity-rightmost-b-360.png`, `23-frozen-identity-393dp.png`,
 `24-frozen-identity-430dp.png`; names and positions stay visible with `PF`/`TOV`/`BLK` on screen.
 
-M003 is **not accepted** by this task. Owner UX acceptance is pending.
+M003 is **ACCEPTED — FUNCTIONAL MOBILE GAME DAY FOUNDATION** as of 2026-11-02; the decision record is
+`M003-OWNER-ACCEPTANCE.md`. M003 is closed; M004 is unstarted and requires its own specification and
+authorization.
 
 **Scope:** `test/game_mobile_layout_test.dart`, acceptance report
 `specs/003-mobile-game-day/acceptance-report.md`, no production code except layout fixes found here.

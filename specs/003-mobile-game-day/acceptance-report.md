@@ -1,8 +1,9 @@
-# M003 — Acceptance Report (provisional)
+# M003 — Acceptance Report
 
-> **Status:** **TECHNICAL VERIFICATION COMPLETE — OWNER ACCEPTANCE PENDING.**
-> M003 is **not accepted** by this document. Automated tests passing is not owner sign-off, realism
-> approval, release readiness or an Android performance claim.
+> **Status:** **TECHNICAL VERIFICATION COMPLETE — M003 OWNER-ACCEPTED 2026-11-02.**
+> The owner decision is recorded separately in `M003-OWNER-ACCEPTANCE.md`; this report remains the
+> technical evidence. Automated tests passing is not realism approval, release readiness or an Android
+> performance claim.
 > **Date:** 2026-11-02
 > **Baseline:** `develop/m002`, starting commit `415040bd037453cfdafbc70e152d795e508874ea`.
 > **Authorization:** `BALLGORITHM — M003 T025 MOBILE UX VERIFICATION`.
@@ -148,7 +149,8 @@ No Android performance claim is made, and desktop benchmark results are not extr
 5. Android performance and release packaging unmeasured.
 6. The player tables still cut the rightmost visible column mid-cell at 360 dp; the swipe hint was added, but an owner may prefer a stronger affordance (for example a fade or a partial-column design). Section headings scroll away; there are no sticky headers.
 
-## 11. Owner decision requested
+## 11. Owner decision
 
-Accept M003 as **ACCEPTED WITH CONDITIONS**, request visual/layout corrections, or reject. This report
-does not accept the milestone on its own.
+**ACCEPTED — FUNCTIONAL MOBILE GAME DAY FOUNDATION**, decision dated 2026-11-02. The decision, its
+explicit non-acceptances and the preserved limitations are recorded in `M003-OWNER-ACCEPTANCE.md`. This
+report supplies the technical evidence and does not itself accept the milestone.
