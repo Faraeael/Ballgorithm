@@ -26,7 +26,6 @@ class GameSetupScreen extends StatefulWidget {
 class _GameSetupScreenState extends State<GameSetupScreen> {
   Team? _homeTeam;
   Team? _awayTeam;
-  String? _selectionError;
 
   int? _indexOf(Team? team) {
     if (team == null) return null;
@@ -51,20 +50,12 @@ class _GameSetupScreenState extends State<GameSetupScreen> {
   }
 
   void _select({required bool home, required Team team}) {
-    final other = home ? _awayTeam : _homeTeam;
-    if (other != null && other.id.value == team.id.value) {
-      setState(
-        () => _selectionError = 'Home and away teams must be different teams.',
-      );
-      return;
-    }
     setState(() {
       if (home) {
         _homeTeam = team;
       } else {
         _awayTeam = team;
       }
-      _selectionError = null;
     });
   }
 
@@ -110,6 +101,7 @@ class _GameSetupScreenState extends State<GameSetupScreen> {
             fieldKey: const ValueKey('home-team-select'),
             optionKeyPrefix: 'home-option',
             teams: widget.league.teams,
+            excludedTeamId: away?.id,
             selected: home,
             onChanged: (team) => _select(home: true, team: team),
           ),
@@ -119,17 +111,10 @@ class _GameSetupScreenState extends State<GameSetupScreen> {
             fieldKey: const ValueKey('away-team-select'),
             optionKeyPrefix: 'away-option',
             teams: widget.league.teams,
+            excludedTeamId: home?.id,
             selected: away,
             onChanged: (team) => _select(home: false, team: team),
           ),
-          if (_selectionError != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              _selectionError!,
-              key: const ValueKey('selection-error'),
-              style: TextStyle(color: theme.colorScheme.error),
-            ),
-          ],
           const SizedBox(height: 20),
           if (home != null && away != null)
             Text(
@@ -170,6 +155,7 @@ class _TeamDropdown extends StatelessWidget {
     required this.fieldKey,
     required this.optionKeyPrefix,
     required this.teams,
+    required this.excludedTeamId,
     required this.selected,
     required this.onChanged,
   });
@@ -178,11 +164,19 @@ class _TeamDropdown extends StatelessWidget {
   final Key fieldKey;
   final String optionKeyPrefix;
   final List<Team> teams;
+
+  /// The team already chosen for the other role; offering it would allow the
+  /// same team on both sides.
+  final TeamId? excludedTeamId;
   final Team? selected;
   final ValueChanged<Team> onChanged;
 
   @override
   Widget build(BuildContext context) {
+    final available = [
+      for (final team in teams)
+        if (team.id.value != excludedTeamId?.value) team,
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -194,7 +188,7 @@ class _TeamDropdown extends StatelessWidget {
           value: selected,
           hint: Text('Select $label'.toLowerCase()),
           items: [
-            for (final team in teams)
+            for (final team in available)
               DropdownMenuItem<Team>(
                 key: ValueKey('$optionKeyPrefix-${team.id.value}'),
                 value: team,

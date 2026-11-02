@@ -30,7 +30,9 @@ Future<void> _pumpSetup(
 Future<void> _pick(WidgetTester tester, String role, Team team) async {
   await tester.tap(find.byKey(ValueKey('$role-team-select')));
   await tester.pumpAndSettle();
-  await tester.tap(find.byKey(ValueKey('$role-option-${team.id.value}')).last);
+  await tester.tap(
+    find.byKey(ValueKey('$role-option-${team.id.value}')).hitTestable().last,
+  );
   await tester.pumpAndSettle();
 }
 
@@ -42,6 +44,13 @@ bool _confirmEnabled(WidgetTester tester) =>
         .widget<FilledButton>(find.byKey(const ValueKey('confirm-matchup')))
         .onPressed !=
     null;
+
+List<String> _offeredIds(WidgetTester tester, String role) {
+  final dropdown = tester.widget<DropdownButton<Team>>(
+    find.byKey(ValueKey('$role-team-select')),
+  );
+  return [for (final item in dropdown.items!) item.value!.id.value];
+}
 
 void main() {
   late League league;
@@ -106,23 +115,50 @@ void main() {
     expect(_confirmEnabled(tester), isTrue);
   });
 
-  testWidgets('the same team cannot occupy both roles', (tester) async {
+  testWidgets('the other role team is never offered for selection', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(430, 932);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await _pumpSetup(tester, league, onConfirm: confirmed.add);
 
-    final team = league.teams.first;
-    await _pick(tester, 'home', team);
-    await _pick(tester, 'away', team);
+    final homeTeam = league.teams.first;
+    await _pick(tester, 'home', homeTeam);
 
+    expect(_offeredIds(tester, 'away'), isNot(contains(homeTeam.id.value)));
+    expect(_offeredIds(tester, 'away'), hasLength(league.teams.length - 1));
+
+    await _pick(tester, 'away', league.teams[1]);
     expect(
-      find.byKey(const ValueKey('selection-error')),
-      findsOneWidget,
-      reason: 'duplicate selection must be rejected with a message',
+      _offeredIds(tester, 'home'),
+      isNot(contains(league.teams[1].id.value)),
     );
-    expect(_seedText(tester), 'Game seed: not set');
-    expect(_confirmEnabled(tester), isFalse);
+    expect(_offeredIds(tester, 'home'), hasLength(league.teams.length - 1));
+    expect(find.byKey(const ValueKey('selection-error')), findsNothing);
+  });
+
+  testWidgets('a valid matchup stays intact when pickers rebuild', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(430, 932);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await _pumpSetup(tester, league, onConfirm: confirmed.add);
+
+    final home = league.teams[3];
+    final away = league.teams[5];
+    await _pick(tester, 'home', home);
+    await _pick(tester, 'away', away);
+    final seedBefore = _seedText(tester);
+
+    await tester.pump();
+
+    expect(_seedText(tester), seedBefore);
+    expect(_confirmEnabled(tester), isTrue);
+    expect(find.text('${away.name} at ${home.name}'), findsOneWidget);
+    expect(_offeredIds(tester, 'home'), isNot(contains(away.id.value)));
+    expect(_offeredIds(tester, 'away'), isNot(contains(home.id.value)));
     expect(confirmed, isEmpty);
   });
 
