@@ -20,6 +20,7 @@ final class PlayerBoxScore {
     required this.steals,
     required this.blocks,
     required this.personalFouls,
+    required this.secondsPlayed,
   });
 
   final String playerId;
@@ -41,6 +42,9 @@ final class PlayerBoxScore {
   final int steals;
   final int blocks;
   final int personalFouls;
+
+  /// Seconds on court, derived only from validated ledger timestamps.
+  final int secondsPlayed;
 }
 
 final class TeamBoxScore {

@@ -337,7 +337,7 @@ void main() {
       expect(result.homeScore + result.awayScore, greaterThan(0));
       expect(result.homeTeamId.value, request.homeTeamId.value);
       expect(result.awayTeamId.value, request.awayTeamId.value);
-      expect(result.boxScore.players, hasLength(10));
+      expect(result.boxScore.players, hasLength(24));
     },
   );
 }

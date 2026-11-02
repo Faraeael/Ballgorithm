@@ -1614,7 +1614,10 @@ void main() {
         var points = 0;
         var turnovers = 0;
         var fouls = 0;
-        for (final player in game.lineupFor(team).players) {
+        for (final player
+            in game.league.teams
+                .firstWhere((candidate) => candidate.id == team)
+                .players) {
           final stats = result.boxScore.players[player.id.value]!;
           points += stats.points;
           turnovers += stats.turnovers;

@@ -359,7 +359,10 @@ void main() {
       for (final team in [input.homeTeamId, input.awayTeamId]) {
         final box = result.boxScore.teams[team.value]!;
         var playerTurnovers = 0;
-        for (final player in input.lineupFor(team).players) {
+        for (final player
+            in input.league.teams
+                .firstWhere((candidate) => candidate.id.value == team.value)
+                .players) {
           playerTurnovers +=
               result.boxScore.players[player.id.value]!.turnovers;
         }
@@ -385,10 +388,19 @@ void main() {
       final result = GameSimulator().simulate(input);
       for (final turnover in result.events.whereType<Turnover>()) {
         if (turnover.reason == TurnoverReason.shotClock) {
+          final roster = input.league.teams
+              .firstWhere((team) => team.id.value == turnover.teamId)
+              .players;
           expect(
-            turnover.playerId,
-            input.lineupFor(TeamId(turnover.teamId)).players.first.id.value,
+            roster.map((player) => player.id.value),
+            contains(turnover.playerId),
           );
+          if (!hasSubstitutions(result)) {
+            expect(
+              turnover.playerId,
+              input.lineupFor(TeamId(turnover.teamId)).players.first.id.value,
+            );
+          }
           expect(turnover.stolenById, isNull);
         }
         if (turnover.reason == TurnoverReason.offensiveFoul) {

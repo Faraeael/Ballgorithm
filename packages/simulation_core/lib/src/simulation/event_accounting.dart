@@ -11,13 +11,40 @@ abstract final class EventAccounting {
     final input = ledger.input;
     final events = ledger.events;
     final accumulators = <String, _PlayerAccumulator>{};
+    final seconds = <String, int>{};
     for (final teamId in [input.homeTeamId.value, input.awayTeamId.value]) {
-      final lineup = input.lineupFor(TeamId(teamId));
-      for (final playerId in lineup.playerIds) {
-        accumulators[playerId] = _PlayerAccumulator(
-          playerId: playerId,
+      final team = input.league.teams.firstWhere(
+        (candidate) => candidate.id.value == teamId,
+      );
+      for (final player in team.players) {
+        accumulators[player.id.value] = _PlayerAccumulator(
+          playerId: player.id.value,
           teamId: teamId,
         );
+        seconds[player.id.value] = 0;
+      }
+    }
+
+    final active = <String, List<String>>{
+      input.homeTeamId.value: input.homeLineup.playerIds,
+      input.awayTeamId.value: input.awayLineup.playerIds,
+    };
+    var currentPeriod = 0;
+    var lastClock = 0;
+
+    void accrue(int delta) {
+      if (delta < 0) {
+        _fail(
+          GameValidationCode.invalidGameClock,
+          'events',
+          'negative playing-time interval',
+        );
+      }
+      if (delta == 0) return;
+      for (final teamId in [input.homeTeamId.value, input.awayTeamId.value]) {
+        for (final playerId in active[teamId]!) {
+          seconds[playerId] = seconds[playerId]! + delta;
+        }
       }
     }
 
@@ -33,6 +60,33 @@ abstract final class EventAccounting {
     }
 
     for (final event in events) {
+      if (event is GameStarted) {
+        currentPeriod = 1;
+        lastClock = event.gameClock;
+      } else if (event is PeriodStarted) {
+        currentPeriod = event.period;
+        lastClock = event.gameClock;
+      } else if (event is PeriodEnded) {
+        accrue(lastClock);
+        lastClock = 0;
+      } else {
+        if (event.period == currentPeriod) {
+          accrue(lastClock - event.gameClock);
+          lastClock = event.gameClock;
+        }
+      }
+      if (event is Substitution) {
+        final ids = active[event.teamId]!;
+        final index = ids.indexOf(event.playerOutId);
+        if (index < 0 || ids.contains(event.playerInId)) {
+          _fail(
+            GameValidationCode.playerNotActive,
+            'events',
+            'substitution does not match the active five',
+          );
+        }
+        ids[index] = event.playerInId;
+      }
       if (event is FieldGoalAttempt) {
         final player = _player(
           input,
@@ -163,6 +217,10 @@ abstract final class EventAccounting {
       );
     }
 
+    for (final entry in seconds.entries) {
+      accumulators[entry.key]!.seconds = entry.value;
+    }
+
     final players = <String, PlayerBoxScore>{
       for (final entry in accumulators.entries) entry.key: entry.value.freeze(),
     };
@@ -189,6 +247,27 @@ abstract final class EventAccounting {
       }
     }
 
+    if (ledger.state.ended) {
+      final expectedTeamSeconds =
+          5 *
+          [
+            for (var period = 1; period <= ledger.state.period; period++)
+              input.rules.periodLength(period),
+          ].fold<int>(0, (a, b) => a + b);
+      for (final teamId in [input.homeTeamId.value, input.awayTeamId.value]) {
+        final total = seconds.entries
+            .where((entry) => accumulators[entry.key]!.teamId == teamId)
+            .fold<int>(0, (sum, entry) => sum + entry.value);
+        if (total != expectedTeamSeconds) {
+          _fail(
+            GameValidationCode.periodEndInvalid,
+            'secondsPlayed',
+            'team $teamId played-time $total does not reconcile with '
+                '$expectedTeamSeconds',
+          );
+        }
+      }
+    }
     return GameBoxScore(
       players: players,
       teams: teams,
@@ -308,6 +387,7 @@ final class _PlayerAccumulator {
   int steals = 0;
   int blocks = 0;
   int personalFouls = 0;
+  int seconds = 0;
 
   PlayerBoxScore freeze() => PlayerBoxScore(
     playerId: playerId,
@@ -329,6 +409,7 @@ final class _PlayerAccumulator {
     steals: steals,
     blocks: blocks,
     personalFouls: personalFouls,
+    secondsPlayed: seconds,
   );
 }
 
