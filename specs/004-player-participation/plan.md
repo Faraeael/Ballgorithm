@@ -43,7 +43,7 @@ GameEventLedger ──► GameEventReducer.validate ──► ValidatedGameLedge
 | `probability_model.dart` | positional-bonus lookups switch from `player.position` to slot index (nine sites); no coefficient change |
 | `action_intent.dart` | `TeamOnCourt` carries `CourtLineup` |
 | App: `game_runner.dart` | builds `CourtLineup.defaultFor` |
-| App: `game_result_view.dart` | participants only (starters then substitutes, tagged), minutes column, disqualification/continuation indicators, non-participant disclosure |
+| App: `game_result_view.dart` | participants by **entry** (starters then entrants, tagged), minutes column, disqualification/continuation indicators, non-participant disclosure |
 | App tests | migrate lineup construction; new UI assertions |
 
 ## 3. Reducer design
@@ -113,19 +113,16 @@ neither validates against nor clears `_pendingShotClockCeiling`; it must still m
 
 ## 7. Migration plan
 
-1. Introduce `CourtLineup`/`CourtSlot` alongside existing code.
-2. Move `GameInput`/`GameResult` to `CourtLineup`; update the worker runner and every test/fixture
-   constructor — **with public serialization and fingerprint payload unchanged** (slot-ordered player
-   ids only), so no changed payload is published under the old fingerprint version.
-3. Switch positional-bonus lookups to slot index; assert default-lineup equivalence against the pinned
-   v4 baseline independently of fingerprint metadata.
-4. In **one atomic public-contract commit**, change the fingerprint payload to slot-player pairs and
-   bump schema, rules, fingerprint and simulation versions together while adding the event and rules;
-   never publish a new payload under an old version.
-5. Add reducer support, then simulator emission.
-6. Add accounting (all-roster initialization) and UI.
-7. Remove `ActiveLineup` (no alias) once call sites are migrated.
-8. Pin the v5 canonical fixture; keep v1–v4 fixtures untouched and verified by their pinned builds.
+1. T02: introduce a non-exported `CourtLineup`/`CourtSlot` built internally from `ActiveLineup`; public
+   API, barrel, serialization and version identifiers untouched; no reachable mismatched slots.
+2. T02: switch positional-bonus lookups to slot index; assert digest and event-list equivalence against
+   pinned v4 values.
+3. T03: in one atomic commit, adopt publicly (export, migrate `GameInput`/`GameResult`, remove
+   `ActiveLineup`, permit mismatched slots), change the payload to slot-player pairs, bump all four
+   versions, and add the event and rules.
+4. Add reducer support, then simulator emission.
+5. Add accounting (all-roster initialization) and UI.
+6. Pin the v5 canonical fixture; keep v1–v4 fixtures untouched and verified by their pinned builds.
 
 ## 8. Risks
 

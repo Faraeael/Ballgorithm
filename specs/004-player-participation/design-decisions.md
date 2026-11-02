@@ -161,9 +161,10 @@ the deferral.
 
 **Decision:** `EventAccounting.aggregate` initializes **every roster player** of both teams before
 processing events. Substitute events credit the substituting player. Players who never enter keep zero
-seconds and zero production. The results table lists starters (slot order, tagged) followed by
-substitutes who entered (entry order, tagged); non-participants are hidden and the screen states that
-they are not listed.
+seconds and zero production. **Participation is defined by entry, not by minutes**: a player is shown
+if they started or appear as `playerInId` in any `Substitution`, even when their interval is zero
+seconds. The results table lists starters (slot order, tagged) followed by entrants (entry order,
+tagged); non-participants are hidden and the screen states that they are not listed.
 
 **Rationale:** the current implementation initializes only the starting five, so a substitute's event
 would be rejected as uncredited and a substitute's production would be silently missing. Initializing
@@ -187,10 +188,12 @@ contract. An explicit typed rejection is auditable.
 
 ## DD-M004-17 — Atomic public-contract transition
 
-**Decision:** T02 adopts `CourtLineup` while keeping the public JSON shape and fingerprint payload
-byte-identical (slot-ordered player ids). T03 is a single commit that changes the payload to slot-player
-pairs and bumps schema, rules, fingerprint and simulation versions together, adding the event and rules
-in the same commit. The two tasks stay separately authorized.
+**Decision:** T02 introduces `CourtLineup` **not exported** and used only inside the package, built from
+`ActiveLineup`, so public API, serialization, reachable capabilities and version identifiers are
+unchanged. T03 is a single commit that performs public adoption (export, `GameInput`/`GameResult`
+migration, `ActiveLineup` removal, mismatched slots allowed), changes the payload to slot-player pairs,
+and bumps schema, rules, fingerprint and simulation versions together, adding the event and rules in the
+same commit. The two tasks stay separately authorized.
 
 **Rationale:** an intermediate commit that changed the payload under the old version would publish a
 mislabelled contract. Splitting an internal type phase from the atomic public transition keeps review

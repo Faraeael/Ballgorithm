@@ -27,7 +27,8 @@
 6. **W0 fixture** — disqualified defender replaced between foul and first free throw.
 7. **Horn fixtures** — buzzer shooting foul: made final FT and missed final FT (`DeadBallMiss`).
 8. **Bench-production fixture** — a substitute who records points, rebounds and fouls, proving
-   attribution to the substituting player and correct box rows.
+   attribution to the substituting player and correct box rows. Includes a player who enters and
+   leaves again at the same clock: zero seconds, nonzero production, still displayed as a participant.
 9. **v4 equivalence fixtures** — two forms:
    - a **no-disqualification** game: the full event list must equal v4's apart from version metadata;
    - a game **with** substitutions: only the prefix up to the first `Substitution` must equal v4's;

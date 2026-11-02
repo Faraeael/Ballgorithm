@@ -191,8 +191,11 @@ unchanged.
 
 ## 10. UI
 
-- Results screen lists the starting five (slot order, marked as starters) followed by substitutes who
-  entered (order of entry, marked as substitutes), each with minutes.
+- Results screen lists the starting five (slot order, marked as starters) followed by players who
+  **entered** (order of entry, marked as substitutes), each with minutes.
+- Participation is defined by entry, never by `secondsPlayed > 0`: a player who enters and is
+  substituted again at the same clock has zero seconds but may already have recorded production and
+  must remain visible.
 - Players who never enter are **hidden** from the results table. This is a documented display choice,
   not an omission of production: those players generated no events and their zero rows remain in the
   box model. The screen states that non-participants are not listed.

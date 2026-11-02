@@ -30,25 +30,25 @@ push; internal contradiction review recorded.
 
 ---
 
-## T02 — `CourtLineup` and slot semantics (internal-only phase)
+## T02 — Slot semantics, genuinely internal
 
-**Purpose:** adopt the slot-based five and make positional bonuses slot-aware while leaving the public
-contract bytes unchanged.
+**Purpose:** make the model slot-aware behind the existing public API, with no contract change.
 
-**Prerequisites:** T01 frozen; owner decisions DD-M004-01/02 confirmed.
+**Prerequisites:** T01 frozen; owner decisions DD-M004-01 and DD-M004-02 confirmed.
 
-**Authorized scope:** new `CourtLineup`/`CourtSlot`; migrate `GameInput`, `GameResult`, `TeamOnCourt`,
-probability-model positional lookups (nine sites), app runner, test fixtures; remove `ActiveLineup`.
-**Public JSON and the fingerprint payload keep emitting slot-ordered player ids**, byte-identical to
-v4; no version constant changes in this task.
+**Authorized scope:** a **non-exported** `CourtLineup`/`CourtSlot` used only inside the package;
+`TeamOnCourt` and the nine positional-bonus lookups read slots; an internal converter builds a
+slot-identical five from the existing `ActiveLineup`. **`GameInput`, `GameResult`, the package barrel,
+`ActiveLineup`, public constructors and serialization are untouched.** No mismatched-slot lineup is
+reachable from outside the package; no version constant changes.
 
-**Acceptance evidence:** contract tests for size, canonical order, uniqueness, roster ownership,
-slot ≠ position legality; `GameFingerprint.of` digest and event list identical to a pinned v4 value for
-representative default-lineup inputs; full core and Flutter suites green; no coefficient change; a
-repository diff check showing no version-constant edits.
+**Acceptance evidence:** internal tests for size, canonical order, uniqueness and roster ownership;
+`GameFingerprint.of` digest and event list identical to pinned v4 values for representative inputs;
+full core and Flutter suites green; package barrel diff empty; a diff check showing no edits to
+`GameInput`, `GameResult`, `simulation_core.dart` or version constants.
 
-**Stop condition:** any changed public JSON, changed fingerprint bytes, version-constant edit, or
-outcome difference for default lineups — stop and report.
+**Stop condition:** any public API, barrel, serialization or version-constant change, or any reachable
+mismatched-slot lineup — stop and report.
 
 ---
 
@@ -59,19 +59,22 @@ commit so no intermediate build mislabels its contract.
 
 **Prerequisites:** T02 green.
 
-**Authorized scope (single commit):** `Substitution` + `SubstitutionReason`; schema dispatcher;
-`GameRules.foulOutLimit` and `substitutionPolicyVersion`; fingerprint payload changed to slot-player
-pairs; `gameSimulationVersion` 5, `gameRulesVersion` 3, `gameEventSchemaVersion` 3,
+**Authorized scope (single commit):** `Substitution` + `SubstitutionReason`; **public adoption** of
+`CourtLineup` — export it, migrate `GameInput`/`GameResult`/app runner/tests, remove `ActiveLineup`,
+permit mismatched slot/position lineups; schema dispatcher; `GameRules.foulOutLimit` and
+`substitutionPolicyVersion`; fingerprint payload changed to slot-player pairs;
+`gameSimulationVersion` 5, `gameRulesVersion` 3, `gameEventSchemaVersion` 3,
 `gameFingerprintVersion` 3 together; serialization tests; typed rejection of a v4 ledger by the v5
 reader.
 
-**Acceptance evidence:** one commit contains the payload change **and** all four bumps; no commit
-exists where the new payload is emitted under an old version; round-trip and malformed-JSON tests;
-rules validation ranges; `unsupportedEventSchemaVersion` asserted for a v4 ledger; v1–v4 fixtures
-unchanged and still verified by their pinned tests (not by v5 deserialization).
+**Acceptance evidence:** one commit contains public adoption, the payload change **and** all four
+bumps; no commit exists where the new payload or mismatched-slot capability is reachable under an old
+version; round-trip and malformed-JSON tests; rules validation ranges;
+`unsupportedEventSchemaVersion` asserted for a v4 ledger; v1–v4 fixtures unchanged and still verified by
+their pinned tests (not by v5 deserialization).
 
-**Stop condition:** any need to split the payload change from the version bumps, or any historical
-fixture edit — stop.
+**Stop condition:** any need to split public adoption, the payload change or the version bumps across
+commits, or any historical fixture edit — stop.
 
 ---
 
