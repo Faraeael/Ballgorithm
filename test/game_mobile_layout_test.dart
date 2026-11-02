@@ -59,7 +59,7 @@ void _expectNoOverflow(WidgetTester tester) {
   expect(tester.takeException(), isNull);
 }
 
-Future<void> _pumpResult(
+Future<_ControlledRunner> _pumpResult(
   WidgetTester tester,
   GameRequest request,
   GameResult result,
@@ -67,16 +67,28 @@ Future<void> _pumpResult(
   final controlled = _ControlledRunner();
   await tester.pumpWidget(
     MaterialApp(
-      home: GameScreen(
-        key: ValueKey('game-${request.seed}'),
-        request: request,
-        runner: controlled.run,
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            key: const ValueKey('open-game'),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (context) =>
+                    GameScreen(request: request, runner: controlled.run),
+              ),
+            ),
+            child: const Text('league'),
+          ),
+        ),
       ),
     ),
   );
+  await tester.tap(find.byKey(const ValueKey('open-game')));
   await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
   controlled.pending.single.complete(result);
   await tester.pump();
+  return controlled;
 }
 
 /// Walks the whole results page, asserting each section builds without
@@ -170,6 +182,37 @@ Future<void> _walkResults(
   _expectNoOverflow(tester);
   await _scrollTo(tester, find.byKey(const ValueKey('return-to-league')));
   _expectNoOverflow(tester);
+}
+
+/// Taps Rematch (starting a real attempt) and then Return to League.
+Future<void> _exerciseActions(
+  WidgetTester tester,
+  _ControlledRunner controlled,
+) async {
+  final before = controlled.requests.length;
+  final previousSeed = controlled.requests.last.seed;
+
+  await tester.tap(find.byKey(const ValueKey('rematch-game')));
+  await tester.pump();
+
+  expect(controlled.requests, hasLength(before + 1));
+  expect(controlled.requests.last.seed, isNot(previousSeed));
+  expect(find.byKey(const ValueKey('game-loading')), findsOneWidget);
+  expect(find.byKey(const ValueKey('game-success')), findsNothing);
+  _expectNoOverflow(tester);
+
+  controlled.pending.last.complete(simulateRequest(controlled.requests.last));
+  await tester.pump();
+  expect(find.byKey(const ValueKey('game-success')), findsOneWidget);
+  _expectNoOverflow(tester);
+
+  await _scrollTo(tester, find.byKey(const ValueKey('return-to-league')));
+  await tester.tap(find.byKey(const ValueKey('return-to-league')));
+  await tester.pumpAndSettle();
+
+  expect(find.byKey(const ValueKey('open-game')), findsOneWidget);
+  expect(find.byType(GameScreen), findsNothing);
+  expect(tester.takeException(), isNull);
 }
 
 void main() {
@@ -280,28 +323,31 @@ void main() {
       tester,
     ) async {
       _useViewport(tester, size);
-      await _pumpResult(tester, baseRequest, base);
+      final controlled = await _pumpResult(tester, baseRequest, base);
       await _walkResults(tester, baseRequest, base, expectOvertime: false);
+      await _exerciseActions(tester, controlled);
     });
 
     testWidgets('$label: overtime result is fully reachable and readable', (
       tester,
     ) async {
       _useViewport(tester, size);
-      await _pumpResult(tester, overtimeRequest, overtime);
+      final controlled = await _pumpResult(tester, overtimeRequest, overtime);
       await _walkResults(
         tester,
         overtimeRequest,
         overtime,
         expectOvertime: true,
       );
+      await _exerciseActions(tester, controlled);
     });
   }
 
   testWidgets('360x640: long names stay complete and scroll inside the table', (
     tester,
   ) async {
-    _useViewport(tester, _sizes['360x640']!);
+    final size = _sizes['360x640']!;
+    _useViewport(tester, size);
     final longLeague = leagueWithLongPlayerName(
       league,
       teamIndex: testHomeIndex,
@@ -358,13 +404,38 @@ void main() {
     );
     final pageOffset = pageState.position.pixels;
 
+    final pfCell = find.byKey(ValueKey('player-stat-$playerId-PF'));
+    final beforeOffset = tableState.position.pixels;
+    expect(
+      tester.getRect(pfCell).left,
+      greaterThanOrEqualTo(size.width),
+      reason: 'PF is beyond the right edge before scrolling',
+    );
+
     // Start the drag inside the visible part of the name cell; the full text
     // is wider than the viewport, so its centre is not hittable.
     final dragStart =
         tester.getTopLeft(find.byKey(ValueKey('player-name-$playerId'))) +
         const Offset(12, 12);
-    await tester.dragFrom(dragStart, const Offset(-240, 0));
-    await tester.pumpAndSettle();
+    for (
+      var attempt = 0;
+      attempt < 5 && tester.getRect(pfCell).left >= size.width;
+      attempt++
+    ) {
+      await tester.dragFrom(dragStart, const Offset(-600, 0));
+      await tester.pumpAndSettle();
+    }
+
+    expect(
+      tableState.position.pixels,
+      greaterThan(beforeOffset),
+      reason: 'the table moved horizontally',
+    );
+    expect(
+      tester.getRect(pfCell).left,
+      lessThan(size.width),
+      reason: 'PF became reachable after scrolling',
+    );
 
     expect(
       pageState.position.pixels,

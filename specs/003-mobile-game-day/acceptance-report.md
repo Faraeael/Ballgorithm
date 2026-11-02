@@ -73,6 +73,12 @@ only horizontal scroll views are the player tables (asserted per table as an anc
 both player tables and the action buttons are reachable by vertical scrolling; the score, seed, tables
 and controls build at every width.
 
+Actions are exercised, not just located: at each width the suite taps **Rematch** (verifying a new
+request, a new seed, the loading state, then a completed result) and taps **Return to League**
+(verifying the root route and no remaining `GameScreen`). The long-name test measures the table's
+horizontal offset before and after dragging, requires it to increase, requires the `PF` cell to move
+from outside the viewport to inside it, and requires the page's vertical offset to stay unchanged.
+
 **Limits:** widget-test layout is not a device render. Font metrics, system text scaling, gesture
 physics and real clipping are not measured by these tests.
 

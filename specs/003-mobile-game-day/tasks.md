@@ -223,7 +223,11 @@ fingerprint `a68e59818c674f05d0050ccc5d515a1e94ab0e979ef421f17703079c38af980c`.
 
 **Evidence:** `test/game_mobile_layout_test.dart` (13 tests across 360×640, 393×852 and 430×932,
 covering league, setup, loading, error/retry, regulation and overtime results, statistics, player
-tables, rematch and return); `test/game_fixtures.dart` (shared deterministic fixtures);
+tables). At **every** width the result tests actually **tap Rematch** (asserting a new request with a
+new seed, the loading state, then a completed result) and **tap Return to League** (asserting the root
+route with no `GameScreen` left). The long-name test measures the table's scroll offset before and
+after dragging, requires it to increase, requires the `PF` cell to be outside the viewport first and
+inside it afterwards, and requires the page's vertical offset to stay unchanged. `test/game_fixtures.dart` (shared deterministic fixtures);
 `acceptance-report.md` (AC-MGD-01…AC-MGD-10 matrix); `t025-visual-review.md` (Android device captures
 and findings); `amendment-001-scroll-clarification.md` (authorised scrolling clarification).
 
@@ -232,8 +236,8 @@ Commands: `flutter analyze` clean; `flutter test` **71/71**; `dart format --set-
 M002 evidence change.
 
 Device review: debug APK installed on Infinix X6882 (Android 14, API 34, arm64). Full flow performed by
-real touch; device reproduced fixture seed `20327844` → 103–97 in 4 periods; rematch seed `20327845` →
-110–102 with 1 OT. Captures at 360 dp and at ~393/~430 dp via display density. Three defects found and
+real touch, including Rematch and Return to League; device reproduced fixture seed `20327844` →
+103–97 in 4 periods; rematch seed `20327845` → 110–102 with 1 OT. Captures at 360 dp and at ~393/~430 dp via display density. Three defects found and
 fixed: duplicated winner, inconsistent team-statistics column order, and no affordance for the
 horizontally clipped player tables.
 
