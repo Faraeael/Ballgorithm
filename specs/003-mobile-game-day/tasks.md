@@ -124,7 +124,22 @@ layout overflow at 360×640, 393×852 or 430×932. T023–T025 remain pending an
 
 ---
 
-## T023 — Game runner, loading and error handling
+## T023 — Game runner, loading and error handling — **COMPLETE (2026-11-02) — PASS**
+
+**Evidence:** `lib/features/game/game_screen.dart` (new) and the confirm callback in
+`lib/features/league/league_screen.dart` now pushes it; 11 tests in `test/game_flow_test.dart`.
+Full suite 42/42 Flutter tests; `flutter analyze` clean; `dart format --set-exit-if-changed lib test`
+15 files 0 changed; core suite unchanged at 351/351; no hit-test warnings in the new tests.
+
+Implemented: `runGame(GameRequest)` through the already-verified `compute()` boundary, a single
+`_GamePhase` state (loading / failure / success) rendering exactly one body, progress indicator keyed
+`game-loading`, error panel keyed `game-error` with typed `GameValidationIssue` codes and a readable
+unexpected-error message (no stack), retry keyed `retry-game`, and a minimal success state showing the
+real `GameResult` score, periods and seed. Guards: `_running` blocks duplicate attempts (verified by
+two taps before any frame), an attempt counter plus `mounted` check suppresses late completions after
+disposal, and runner failures are caught rather than escaping to `FlutterError.onError`. No fake
+result, no second scoreboard, no state-management dependency. Detailed period and box-score
+presentation remains T024.
 
 **Scope:** `lib/features/game/game_screen.dart`, `lib/features/game/game_runner.dart`,
 `test/game_flow_test.dart`.

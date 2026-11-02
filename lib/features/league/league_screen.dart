@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
 
+import '../game/game_screen.dart';
 import '../game/game_setup_screen.dart';
 import '../roster/roster_screen.dart';
 
@@ -44,17 +45,11 @@ class LeagueScreen extends StatelessWidget {
               MaterialPageRoute<void>(
                 builder: (context) => GameSetupScreen(
                   league: league,
-                  onConfirm: (request) {
-                    // T022 stops at setup; T023 owns running the game.
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Matchup confirmed · seed '
-                          '${request.seed}',
-                        ),
-                      ),
-                    );
-                  },
+                  onConfirm: (request) => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (context) => GameScreen(request: request),
+                    ),
+                  ),
                 ),
               ),
             ),
