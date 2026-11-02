@@ -30,12 +30,13 @@ GameEventLedger ──► GameEventReducer.validate ──► ValidatedGameLedge
 | Component | Change |
 |---|---|
 | `models/*` | unchanged (M001 generation, roster, positions, attributes) |
-| `CourtLineup` / `CourtSlot` | new; replaces `ActiveLineup` in `GameInput`, `GameResult` and the app runner |
+| `CourtLineup` / `CourtSlot` | new; replaces `ActiveLineup` in `GameInput`, `GameResult` and the app runner; **input lineups are starting lineups only** |
+| `game_input.dart` | immutable starting lineups; `isActive` removed or renamed to starting-lineup semantics in the atomic v5 transition |
 | `game_event.dart` | new `Substitution`, new `SubstitutionReason`; schema dispatcher accepts it |
 | `game_versions.dart` | proposed bumps (sim 5, rules 3, schema 3, fingerprint 3) |
 | `game_rules.dart` | `foulOutLimit`, `substitutionPolicyVersion`, validation, `toJson` |
 | `game_fingerprint.dart` | payload: slot-player pairs + new rules fields |
-| `game_reducer.dart` | current-five state, window flag, substitution validation, ceiling exemption, continuation checks |
+| `game_reducer.dart` | current-five state, window flag, substitution validation, ceiling exemption, continuation checks, pending horn-replacement obligation |
 | `game_simulator.dart` | mutable on-court five, foul-out detection, window emission, deterministic replacement |
 | `event_accounting.dart` | initialize every roster player with zero values; credit substitute events to the substituting player; `secondsPlayed` derivation and conservation check |
 | `box_score.dart` | additive `secondsPlayed` |
@@ -53,6 +54,8 @@ State additions (private to `_Replay`):
 - `Map<String, CourtLineup> _lineups` seeded from `input`.
 - `_SubstitutionWindow? _window` with kind and the event that opened it, plus a per-window
   `Set<String> _windowPlayers`.
+- `Map<String, bool> _pendingHornReplacement` per team, surviving `PeriodEnded`, cleared by a lawful
+  W5 substitution or voided by `GameEnded`.
 - Foul counts already derived from events; no new persisted state.
 
 Validation order for `Substitution`:
@@ -72,7 +75,9 @@ Window opening/closing:
 
 - Open W0/W1 inside foul handling, W2/W4 after possession end, W5 in `_periodStarted`.
 - Close on any event that is not a `Substitution`.
-- At close, assert: for each team, an over-limit active player implies empty eligible bench.
+- At close, assert: for each team, an over-limit active player implies either an empty eligible bench
+  or a recorded pending replacement obligation from a clock-0 disqualification. The obligation is
+  cleared only by a lawful W5 substitution (or by `GameEnded`), never by an arbitrary event.
 
 Ceiling rule: the generic pending-shot-clock consumption block gains one exemption — `Substitution`
 neither validates against nor clears `_pendingShotClockCeiling`; it must still match the current
@@ -118,8 +123,10 @@ neither validates against nor clears `_pendingShotClockCeiling`; it must still m
 2. T02: switch positional-bonus lookups to slot index; assert digest and event-list equivalence against
    pinned v4 values.
 3. T03: in one atomic commit, adopt publicly (export, migrate `GameInput`/`GameResult`, remove
-   `ActiveLineup`, permit mismatched slots), change the payload to slot-player pairs, bump all four
-   versions, and add the event and rules.
+   `ActiveLineup`, rename or remove `GameInput.isActive` to starting-lineup semantics, permit
+   mismatched slots), change the payload to slot-player pairs, bump all four versions, and add the
+   event and rules. T03 stops at a compiling contract: no-substitution games still run and are
+   deterministic, the new event round-trips, but reducer acceptance and emission are T04/T05.
 4. Add reducer support, then simulator emission.
 5. Add accounting (all-roster initialization) and UI.
 6. Pin the v5 canonical fixture; keep v1–v4 fixtures untouched and verified by their pinned builds.
@@ -139,6 +146,8 @@ neither validates against nor clears `_pendingShotClockCeiling`; it must still m
 | R9 | Accounting keeps initializing only the starting five, so substitute events are rejected or silently dropped | Accounting must initialize the whole roster; fixture with a scoring/rebounding/fouling substitute |
 | R10 | A version bump ships in a separate commit from the payload change, so an intermediate build mislabels its contract | T03 is one atomic public-contract commit; intermediate T02 keeps old payload bytes |
 | R11 | Historical ledgers are assumed to parse under v5 | Explicit typed rejection; comparisons use two pinned builds; no transparent-parse promise |
+| R12 | Callers treat `GameInput.isActive` as current eligibility after substitutions | Rename/remove it in T03; reducer uses its reconstructed five; tests assert a substituted player is eligible and a starter who left is not |
+| R13 | Horn deferral silently becomes a general over-limit exemption | Pending-replacement obligation is per team and must be satisfied at W5 before the next possession; negative fixtures reject over-limit continuation with an eligible bench and no obligation |
 
 ## 9. Out of scope
 

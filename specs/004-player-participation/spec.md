@@ -27,6 +27,10 @@ rules, or the PRNG implementation.
 2. The active five is reconstructible from `GameStarted` plus `Substitution` events, with the starting
    five supplied by input.
 3. A player's primary position is independent of the slot they occupy.
+3a. `GameInput` holds the **immutable starting lineups**; it is never updated during a game.
+3b. The reducer reconstructs each team's **current five** from `GameStarted` plus every
+    `Substitution`; eligibility after the first substitution is checked against that current five,
+    never against the starting lineup alone.
 4. A sixth personal foul disqualifies immediately; the player may still shoot an awarded free-throw
    group but takes no further live action **unless depleted-roster continuation applies (§6)**. Under
    continuation the player keeps playing, their foul count keeps rising, and no technical foul is
@@ -58,7 +62,10 @@ CourtLineup{ List<CourtSlot> slots }                // exactly 5, canonical orde
   Slot ≠ player primary position is **legal**.
 - Accessors: `playerAt(Position)`, `slotOf(PlayerId)`, `playerIds` (slot order), `toJson` as
   `[{slot, playerId}]`.
-- `GameInput`/`GameResult` carry `CourtLineup`; `isActive` is membership in the current five.
+- `GameInput`/`GameResult` carry `CourtLineup`; the input lineups are the **starting** lineups only.
+- `GameInput.isActive` currently means "in the starting lineup". Under the v5 public transition it must
+  be removed or renamed (for example `isStartingPlayer`) so no caller can mistake it for current
+  eligibility; the reducer's eligibility check uses its reconstructed current five.
 - `ActiveLineup` is replaced, not aliased.
 
 Model rule: **positional bonuses use the occupied slot; attributes use the player.** Nine existing
@@ -111,6 +118,16 @@ inside a free-throw group opened for another reason, after `DeadBallMiss`, after
 - A disqualifying foul at the horn: the player is ineligible immediately; awarded free throws are
   resolved by the awarded shooter; no substitution is emitted or accepted at clock 0; replacement is
   mandatory at W5 of the next period if the game continues, and unnecessary if the game ends.
+- The reducer records a **pending replacement obligation** for that team. The obligation survives
+  `PeriodEnded`. It is satisfied only by a lawful W5 `Substitution` at the next `PeriodStarted`; if
+  `GameEnded` follows instead, the obligation is void and no replacement event is required.
+- While an obligation is pending, the window-close check treats the over-limit active player as
+  authorized **only** because of that obligation. It is not a general exception: an over-limit active
+  player with an eligible substitute and no pending obligation remains invalid.
+- The obligation must be satisfied before the next period's first `PossessionStarted`; any other event
+  while an obligation is pending and an eligible substitute exists is invalid.
+- If the team is depleted, no obligation arises (continuation is legal) and the over-limit player may
+  continue playing.
 - A buzzer non-bonus foul disqualifies identically and defers to W5.
 - Missed final free throws at clock 0 resolve as `DeadBallMiss`, never a live rebound, so no live
   action involves the disqualified player.
@@ -130,8 +147,9 @@ inside a free-throw group opened for another reason, after `DeadBallMiss`, after
   3, Section I.1, which assesses a technical foul and a team foul; it must be disclosed in the app.
 - With a legal five-player roster the bench is empty from tip-off, so the first disqualification
   continues immediately and no substitution occurs in that game.
-- After a window closes, any over-limit active player must be accompanied by an empty eligible bench;
-  otherwise the ledger is invalid.
+- After a window closes, any over-limit active player must be accompanied by an empty eligible bench
+  **or** by a recorded pending replacement obligation from a clock-0 disqualification; otherwise the
+  ledger is invalid. The obligation never authorises any other over-limit continuation.
 
 ## 7. Replacement ranking (deterministic, no PRNG)
 
@@ -191,6 +209,8 @@ unchanged.
 
 ## 10. UI
 
+- Participant display is derived from the **starting lineups plus substitution events** — never from
+  minutes and never from the starting five alone.
 - Results screen lists the starting five (slot order, marked as starters) followed by players who
   **entered** (order of entry, marked as substitutes), each with minutes.
 - Participation is defined by entry, never by `secondsPlayed > 0`: a player who enters and is

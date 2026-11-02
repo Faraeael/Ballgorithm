@@ -31,6 +31,9 @@
 | AC-M004-24 | Results list starters and players who **entered** (by `Substitution`), tagged, with minutes; an entrant with zero seconds but recorded production is still shown; non-participants hidden and disclosed | Widget tests at 360/393/430 including a same-clock entrant | NOT RUN |
 | AC-M004-25 | Historical compatibility is explicit: v5 rejects v4 ledgers with `unsupportedEventSchemaVersion`; v1–v4 evidence verified by pinned tests; v4/v5 comparison uses two pinned builds and normalized configuration | Typed-rejection test; pinned-fixture suites; comparison harness documentation | NOT RUN |
 | AC-M004-26 | Public contract transition is atomic: public adoption, payload change and all four version bumps in one commit; no payload or mismatched-slot capability reachable under an old version | Commit inspection; barrel diff before/after T02; fingerprint digest assertions | NOT RUN |
+| AC-M004-27 | `GameInput` holds starting lineups only; eligibility after a substitution follows the reconstructed current five; `isActive` is removed or renamed to starting-lineup semantics | Reducer tests: substituted player credited, departed starter rejected; API diff; call-site sweep | NOT RUN |
+| AC-M004-28 | Horn disqualification records a pending obligation that survives `PeriodEnded`, is satisfied only at W5, is void after `GameEnded`, and does not become a general over-limit exemption | Positive and negative ledgers: satisfied next period, unsatisfied rejected, game-ended accepted, depleted continuation accepted | NOT RUN |
+| AC-M004-29 | T03 gate: compiles, no-substitution games deterministic, event JSON basic contract, no feature-operational claim, unsupported paths fail explicitly | Build + targeted tests; commit message and evidence wording review | NOT RUN |
 
 ## Explicit non-claims
 

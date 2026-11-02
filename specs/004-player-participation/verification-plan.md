@@ -25,7 +25,10 @@
    continuation valid, five always on court.
 5. **W1 retained-foul fixture** — substitution during an open possession with a pending ceiling.
 6. **W0 fixture** — disqualified defender replaced between foul and first free throw.
-7. **Horn fixtures** — buzzer shooting foul: made final FT and missed final FT (`DeadBallMiss`).
+7. **Horn fixtures** — buzzer shooting foul: made final FT and missed final FT (`DeadBallMiss`),
+   including the pending replacement obligation: satisfied at the next period's W5; rejected when the
+   next period opens a possession first; void when `GameEnded` follows; no obligation for a depleted
+   team.
 8. **Bench-production fixture** — a substitute who records points, rebounds and fouls, proving
    attribution to the substituting player and correct box rows. Includes a player who enters and
    leaves again at the same clock: zero seconds, nonzero production, still displayed as a participant.
@@ -56,9 +59,15 @@
 18. `reason: foulOut` with the out-player below the limit.
 19. `reason: tactical` with the out-player at/over the limit.
 20. Missing mandatory replacement when an eligible bench player exists.
-21. Continuation when an eligible bench player exists.
-22. Two appearances by the same player in one window (loop bound).
-23. Substitution whose period does not match the current period.
+21. Next period's first possession while a horn obligation is pending and an eligible bench player
+    exists.
+22. Continuation when an eligible bench player exists.
+23. Two appearances by the same player in one window (loop bound).
+24. Substitution whose period does not match the current period.
+25. Eligibility checked against the starting lineup after a substitution: a departed starter credited, or
+    an entered substitute rejected.
+26. An over-limit active player with an eligible bench player and no pending obligation (broad-exception
+    regression).
 
 ## 4. Accounting checks
 

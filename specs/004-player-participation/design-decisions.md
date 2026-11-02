@@ -201,3 +201,46 @@ scope small without ever misrepresenting a version.
 
 **Consequence:** default-lineup equivalence is asserted against the pinned v4 baseline by comparing
 event lists and digests independently of fingerprint metadata.
+
+---
+
+## DD-M004-18 — Starting lineups versus current five
+
+**Decision:** `GameInput` carries only the immutable starting lineups. The reducer reconstructs the
+current five from `GameStarted` and the `Substitution` stream. Eligibility is checked against the
+current five. `GameInput.isActive` is removed or renamed to starting-lineup semantics in the atomic v5
+transition so no caller can confuse the two. UI participation is derived from starting lineups plus
+substitution events.
+
+**Rationale:** a mutable "active" predicate on the input would be a second source of truth and would let
+a stale starter remain eligible after leaving the floor.
+
+**Consequence:** the reducer cannot reuse `GameInput.isActive`; accounting initializes from the roster,
+not the starting five.
+
+## DD-M004-19 — Pending replacement obligation at the horn
+
+**Decision:** a disqualification at `gameClock == 0` records a per-team pending replacement obligation.
+It survives `PeriodEnded`, is satisfied only by a lawful W5 `Substitution` at the next
+`PeriodStarted`, and is void if `GameEnded` follows. While pending, the window-close check accepts the
+over-limit active player only through that obligation. Depleted teams accrue no obligation.
+
+**Rationale:** without an explicit obligation, either the over-limit player would be rejected at the
+next event or the checker would need a broad exception that also permits illegal continuation. The
+obligation keeps both invariants narrow and testable.
+
+**Consequence:** the state machine gains one per-team flag; fixtures must cover satisfied, unsatisfied
+(rejected), game-ended and depleted cases.
+
+## DD-M004-20 — T03 is a contract gate, not a feature gate
+
+**Decision:** T03's exit state is: package and consumer compile; no-substitution games executable and
+deterministic; `Substitution` JSON round-trips and malformed forms are rejected; versions and payload
+land atomically. It must not claim participation works. Reducer acceptance is T04; simulator emission is
+T05. Unsupported behavior fails explicitly with typed errors.
+
+**Rationale:** the atomic transition is large enough without also carrying a fully validated
+participation feature; conflating them invites a mislabelled half-feature.
+
+**Consequence:** the T03 acceptance evidence names its limits; reviewers should not read a green T03 as
+a working participation feature.

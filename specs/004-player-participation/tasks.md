@@ -61,17 +61,21 @@ commit so no intermediate build mislabels its contract.
 
 **Authorized scope (single commit):** `Substitution` + `SubstitutionReason`; **public adoption** of
 `CourtLineup` — export it, migrate `GameInput`/`GameResult`/app runner/tests, remove `ActiveLineup`,
-permit mismatched slot/position lineups; schema dispatcher; `GameRules.foulOutLimit` and
-`substitutionPolicyVersion`; fingerprint payload changed to slot-player pairs;
+rename or remove `GameInput.isActive` to starting-lineup semantics, permit mismatched slot/position
+lineups; schema dispatcher; `GameRules.foulOutLimit` and `substitutionPolicyVersion`; fingerprint
+payload changed to slot-player pairs;
 `gameSimulationVersion` 5, `gameRulesVersion` 3, `gameEventSchemaVersion` 3,
 `gameFingerprintVersion` 3 together; serialization tests; typed rejection of a v4 ledger by the v5
 reader.
 
-**Acceptance evidence:** one commit contains public adoption, the payload change **and** all four
-bumps; no commit exists where the new payload or mismatched-slot capability is reachable under an old
-version; round-trip and malformed-JSON tests; rules validation ranges;
-`unsupportedEventSchemaVersion` asserted for a v4 ledger; v1–v4 fixtures unchanged and still verified by
-their pinned tests (not by v5 deserialization).
+**Acceptance evidence (contract gate, not feature gate):** one commit contains public adoption, the
+payload change **and** all four bumps; no commit exists where the new payload or mismatched-slot
+capability is reachable under an old version; the package and Flutter consumer compile;
+no-substitution games remain executable and deterministic; `Substitution` round-trips and malformed
+JSON is rejected; rules validation ranges hold; `unsupportedEventSchemaVersion` is asserted for a v4
+ledger; v1–v4 fixtures unchanged and verified by their pinned tests. T03 must **not** claim the v5
+participation feature is operational: reducer acceptance is T04, simulator emission is T05, and any
+unsupported path fails explicitly.
 
 **Stop condition:** any need to split public adoption, the payload change or the version bumps across
 commits, or any historical fixture edit — stop.
@@ -85,11 +89,13 @@ commits, or any historical fixture edit — stop.
 **Prerequisites:** T03 green; DD-M004-06/07/08/09 confirmed.
 
 **Authorized scope:** current-five state; window flag; W0/W1/W2/W4/W5 validation; eligibility and
-continuation checks; ceiling exemption; administrative loop bound.
+continuation checks; pending horn-replacement obligation across `PeriodEnded`; ceiling exemption;
+administrative loop bound.
 
 **Acceptance evidence:** the negative-test list in `verification-plan.md` §3 all rejected with typed
 codes; legal windows accepted in hand-built ledgers; shot-clock ceiling survives W1 and still rejects a
-later illegal increase; no substitution at clock 0.
+later illegal increase; no substitution at clock 0; eligibility after a substitution follows the
+current five; the horn obligation is satisfied only by W5 and is void after `GameEnded`.
 
 **Stop condition:** any need to alter generic clock or possession rules beyond the documented
 exemption — stop.
