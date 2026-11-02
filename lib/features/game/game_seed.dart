@@ -21,3 +21,8 @@ int deriveGameSeed({
           (rematchIndex & 0xFF)) &
       0x7FFFFFFF;
 }
+
+/// Display text for the seed the engine will consume. The core normalizes a raw
+/// seed of zero to `0x9E3779B9` (`2654435769`), so both values are shown.
+String describeGameSeed(int seed) =>
+    seed == 0 ? '0 (normalized 2654435769)' : '$seed';

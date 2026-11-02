@@ -86,7 +86,17 @@ between Option B and Option C.
 
 ---
 
-## T022 — Team picker and game setup
+## T022 — Team picker and game setup — **COMPLETE (2026-11-02) — PASS**
+
+**Evidence:** `lib/features/game/game_setup_screen.dart` plus a **Play Game** entry in
+`lib/features/league/league_screen.dart`; 10 widget tests in `test/game_setup_test.dart` and one new
+`describeGameSeed` unit test. Full suite 30/30 Flutter tests; `flutter analyze` clean;
+`dart format --set-exit-if-changed lib test` 13 files 0 changed; core suite unchanged at 351/351.
+Confirmation hands a `GameRequest` to an injected callback and never runs a simulation; the league
+screen's default callback only shows a confirmation SnackBar, which T023 replaces. Duplicate role
+selection is rejected with an inline message and confirm stays disabled. Seed display uses
+`deriveGameSeed(..., rematchIndex: 0)` and discloses the zero normalization. No layout overflow at
+360×640, 393×852 or 430×932. T023–T025 remain pending and unauthorized.
 
 **Scope:** `lib/features/game/game_setup_screen.dart`, entry point in
 `lib/features/league/league_screen.dart`, `test/game_setup_test.dart`.

@@ -143,5 +143,10 @@ void main() {
         }
       },
     );
+    test('describeGameSeed discloses the zero normalization', () {
+      expect(describeGameSeed(0), '0 (normalized 2654435769)');
+      expect(describeGameSeed(7), '7');
+      expect(describeGameSeed(0x7FFFFFFF), '${0x7FFFFFFF}');
+    });
   });
 }
