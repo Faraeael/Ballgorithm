@@ -186,11 +186,12 @@ void main() {
     _expectOnlyState('game-success');
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(
-      find.text(
-        '${league.teams[5].name} ${real.awayScore} – ${real.homeScore} '
-        '${league.teams[3].name}',
-      ),
-      findsOneWidget,
+      tester.widget<Text>(find.byKey(const ValueKey('result-score-away'))).data,
+      '${real.awayScore}',
+    );
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('result-score-home'))).data,
+      '${real.homeScore}',
     );
     expect(
       find.textContaining('${real.periodsPlayed} periods'),

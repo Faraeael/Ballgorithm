@@ -160,10 +160,38 @@ presentation remains T024.
 
 ---
 
-## T024 — Results, team statistics and player box scores
+## T024 — Results, team statistics and player box scores — **COMPLETE (2026-11-02) — PASS**
 
-**Scope:** `lib/features/game/*_widgets.dart`, `lib/features/game/game_screen.dart`,
-`test/game_result_test.dart`.
+**Evidence:** `lib/features/game/game_result_view.dart` (new) renders the results; `game_screen.dart`
+now owns loading/failure/success plus rematch and return-to-league. 15 tests in
+`test/game_results_test.dart` and one wording-coupled assertion in `test/game_flow_test.dart` updated to
+the keyed scoreboard (`result-score-home` / `result-score-away`) instead of a composed score string.
+Full suite 57/57 Flutter tests; `flutter analyze` clean;
+`dart format --set-exit-if-changed lib test` 17 files 0 changed; core suite unchanged at 351/351; no
+hit-test warnings.
+
+Rendered from the real `GameResult` only: scoreboard (abbreviation + name, scores, winner, seed, OT
+indicator when `overtimes > 0`, period count), period table keyed
+`period-<role>-<teamId>-<period>` with `Q1..Q4`/`OTn` labels, team statistics table (PTS, FG, 3PT, FT,
+REB, AST, STL, BLK, TOV, PF) keyed `team-stat-<metric>-<teamId>`, and per-team player `DataTable` in
+canonical PG→C order from `GameResult.input.lineupFor` with keys
+`player-row-<playerId>`/`player-stat-<playerId>-<metric>`. Player tables are the only horizontally
+scrollable element. Disclosure keys: `disclosure-lineup`, `disclosure-rematch-cycle`,
+`disclosure-cycle-repeated` (after wraparound), `disclosure-zero-seed` (raw seed 0 only).
+
+Rematch advances `rematchIndex` modulo 256 through the frozen T021 derivation, keeps the same teams,
+reuses the injected runner, returns to loading and replaces the result only on completion. The seed
+position is recovered from the incoming request so a request constructed at index 255 wraps correctly.
+Return to League uses `popUntil(isFirst)`. Late/abandoned attempts are dropped by the attempt counter
+plus `mounted` check.
+
+Observed fixture identity (deterministic, recorded from the test run):
+base seed `20327844`, fingerprint
+`56d6310325d0f434c25d4057e8f0d9594ca099862300a0c1860122b773ed20ce`; rematch seed `20327845`,
+fingerprint `a68e59818c674f05d0050ccc5d515a1e94ab0e979ef421f17703079c38af980c`.
+
+**Scope:** `lib/features/game/game_result_view.dart`, `lib/features/game/game_screen.dart`,
+`test/game_results_test.dart`.
 
 **Acceptance (observable):**
 

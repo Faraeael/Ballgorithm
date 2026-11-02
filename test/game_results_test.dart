@@ -1,0 +1,598 @@
+import 'dart:async';
+
+import 'package:basketball_manager/features/game/game_runner.dart';
+import 'package:basketball_manager/features/game/game_screen.dart';
+import 'package:basketball_manager/features/game/game_seed.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:simulation_core/simulation_core.dart';
+
+const _config = GenerationConfig(seed: 20261028);
+const _homeIndex = 3;
+const _awayIndex = 5;
+
+class _ControlledRunner {
+  final List<GameRequest> requests = <GameRequest>[];
+  final List<Completer<GameResult>> pending = <Completer<GameResult>>[];
+
+  Future<GameResult> run(GameRequest request) {
+    requests.add(request);
+    final completer = Completer<GameResult>();
+    pending.add(completer);
+    return completer.future;
+  }
+}
+
+GameRequest _request(League league, int rematchIndex) => GameRequest(
+  league: league,
+  homeTeamId: league.teams[_homeIndex].id,
+  awayTeamId: league.teams[_awayIndex].id,
+  seed: deriveGameSeed(
+    leagueSeed: league.config.seed,
+    homeIndex: _homeIndex,
+    awayIndex: _awayIndex,
+    rematchIndex: rematchIndex,
+  ),
+);
+
+/// Deterministic fixture: the same input the worker builds, simulated locally.
+GameResult _simulate(GameRequest request) {
+  final league = request.league;
+  final homeTeam = league.teams.singleWhere(
+    (team) => team.id.value == request.homeTeamId.value,
+  );
+  final awayTeam = league.teams.singleWhere(
+    (team) => team.id.value == request.awayTeamId.value,
+  );
+  return GameSimulator().simulate(
+    GameInput.create(
+      gameId:
+          '${request.homeTeamId.value}-${request.awayTeamId.value}-'
+          '${request.seed}',
+      league: league,
+      homeTeamId: request.homeTeamId,
+      awayTeamId: request.awayTeamId,
+      homeLineup: ActiveLineup.defaultFor(homeTeam),
+      awayLineup: ActiveLineup.defaultFor(awayTeam),
+      seed: request.seed,
+      rules: GameRules.standard,
+    ),
+  );
+}
+
+/// Tall surface so the whole results list is built; layout acceptance at phone
+/// widths is T025 work.
+void _useTallSurface(WidgetTester tester) {
+  tester.view.physicalSize = const Size(430, 4000);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+}
+
+Future<void> _pumpGame(
+  WidgetTester tester,
+  GameRequest request,
+  Future<GameResult> Function(GameRequest) runner,
+) async {
+  _useTallSurface(tester);
+  await tester.pumpWidget(
+    MaterialApp(
+      home: GameScreen(
+        key: ValueKey('game-${request.seed}'),
+        request: request,
+        runner: runner,
+      ),
+    ),
+  );
+  await tester.pump();
+}
+
+Future<void> _pumpGameOnRoute(
+  WidgetTester tester,
+  GameRequest request,
+  Future<GameResult> Function(GameRequest) runner,
+) async {
+  _useTallSurface(tester);
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            key: const ValueKey('open-game'),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (context) =>
+                    GameScreen(request: request, runner: runner),
+              ),
+            ),
+            child: const Text('league'),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.byKey(const ValueKey('open-game')));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+}
+
+Future<void> _goBack(WidgetTester tester) async {
+  await tester.pageBack();
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+}
+
+String _text(WidgetTester tester, Key key) =>
+    tester.widget<Text>(find.byKey(key)).data!;
+
+void main() {
+  late League league;
+  late GameRequest baseRequest;
+  late GameResult base;
+  late GameRequest overtimeRequest;
+  late GameResult overtime;
+
+  setUpAll(() {
+    league = const LeagueGenerator().generate(_config);
+    baseRequest = _request(league, 0);
+    base = _simulate(baseRequest);
+
+    overtimeRequest = baseRequest;
+    overtime = base;
+    outer:
+    for (var home = 0; home < league.teams.length; home++) {
+      for (var away = 0; away < league.teams.length; away++) {
+        if (home == away) continue;
+        for (var rematch = 0; rematch < 48; rematch++) {
+          final candidate = GameRequest(
+            league: league,
+            homeTeamId: league.teams[home].id,
+            awayTeamId: league.teams[away].id,
+            seed: deriveGameSeed(
+              leagueSeed: league.config.seed,
+              homeIndex: home,
+              awayIndex: away,
+              rematchIndex: rematch,
+            ),
+          );
+          final result = _simulate(candidate);
+          if (result.overtimes > 0) {
+            overtimeRequest = candidate;
+            overtime = result;
+            break outer;
+          }
+        }
+      }
+    }
+  });
+
+  testWidgets('scoreboard shows team identity, scores and seed', (
+    tester,
+  ) async {
+    final controlled = _ControlledRunner();
+    await _pumpGame(tester, baseRequest, controlled.run);
+    controlled.pending.single.complete(base);
+    await tester.pump();
+
+    final home = league.teams[_homeIndex];
+    final away = league.teams[_awayIndex];
+    expect(
+      _text(tester, const ValueKey('result-score-away')),
+      '${base.awayScore}',
+    );
+    expect(
+      _text(tester, const ValueKey('result-score-home')),
+      '${base.homeScore}',
+    );
+    expect(find.text('${away.abbreviation} · ${away.name}'), findsOneWidget);
+    expect(find.text('${home.abbreviation} · ${home.name}'), findsOneWidget);
+    expect(
+      _text(tester, const ValueKey('result-seed')),
+      'Seed ${describeGameSeed(baseRequest.seed)}',
+    );
+    expect(find.byKey(const ValueKey('result-overtime')), findsNothing);
+  });
+
+  testWidgets('winner is the team with the higher score', (tester) async {
+    final controlled = _ControlledRunner();
+    await _pumpGame(tester, baseRequest, controlled.run);
+    controlled.pending.single.complete(base);
+    await tester.pump();
+
+    final winner = league.teams.singleWhere(
+      (team) => team.id.value == base.winnerTeamId.value,
+    );
+    expect(
+      _text(tester, const ValueKey('result-winner')),
+      'Winner: ${winner.name}',
+    );
+  });
+
+  testWidgets('period table shows the authoritative period points', (
+    tester,
+  ) async {
+    final controlled = _ControlledRunner();
+    await _pumpGame(tester, baseRequest, controlled.run);
+    controlled.pending.single.complete(base);
+    await tester.pump();
+
+    expect(base.periodsPlayed, 4);
+    for (final role in ['home', 'away']) {
+      final teamId = role == 'home'
+          ? baseRequest.homeTeamId.value
+          : baseRequest.awayTeamId.value;
+      final points = base.boxScore.periodPoints[teamId]!;
+      for (var period = 1; period <= base.periodsPlayed; period++) {
+        expect(
+          _text(tester, ValueKey('period-$role-$teamId-$period')),
+          '${points[period]}',
+          reason: '$role period $period',
+        );
+      }
+    }
+    expect(find.text('OT1'), findsNothing);
+  });
+
+  testWidgets('overtime game shows OT periods and indicator', (tester) async {
+    expect(overtime.overtimes, greaterThan(0), reason: 'overtime fixture');
+    final controlled = _ControlledRunner();
+    await _pumpGame(tester, overtimeRequest, controlled.run);
+    controlled.pending.single.complete(overtime);
+    await tester.pump();
+
+    expect(
+      _text(tester, const ValueKey('result-overtime')),
+      '${overtime.overtimes} OT',
+    );
+    expect(find.text('OT1'), findsOneWidget);
+    for (final role in ['home', 'away']) {
+      final teamId = role == 'home'
+          ? overtimeRequest.homeTeamId.value
+          : overtimeRequest.awayTeamId.value;
+      final points = overtime.boxScore.periodPoints[teamId]!;
+      for (var period = 1; period <= overtime.periodsPlayed; period++) {
+        expect(
+          _text(tester, ValueKey('period-$role-$teamId-$period')),
+          '${points[period]}',
+          reason: '$role period $period',
+        );
+      }
+    }
+  });
+
+  testWidgets('team statistics match the TeamBoxScore fields', (tester) async {
+    final controlled = _ControlledRunner();
+    await _pumpGame(tester, baseRequest, controlled.run);
+    controlled.pending.single.complete(base);
+    await tester.pump();
+
+    final homeId = baseRequest.homeTeamId.value;
+    final awayId = baseRequest.awayTeamId.value;
+    final home = base.boxScore.teams[homeId]!;
+    final away = base.boxScore.teams[awayId]!;
+
+    final expected = <String, (String, String)>{
+      'PTS': ('${home.points}', '${away.points}'),
+      'FG': ('${home.fgm}/${home.fga}', '${away.fgm}/${away.fga}'),
+      '3PT': (
+        '${home.threePm}/${home.threePa}',
+        '${away.threePm}/${away.threePa}',
+      ),
+      'FT': ('${home.ftm}/${home.fta}', '${away.ftm}/${away.fta}'),
+      'REB': ('${home.rebounds}', '${away.rebounds}'),
+      'AST': ('${home.assists}', '${away.assists}'),
+      'STL': ('${home.steals}', '${away.steals}'),
+      'BLK': ('${home.blocks}', '${away.blocks}'),
+      'TOV': ('${home.turnovers}', '${away.turnovers}'),
+      'PF': ('${home.personalFouls}', '${away.personalFouls}'),
+    };
+    for (final entry in expected.entries) {
+      expect(
+        _text(tester, ValueKey('team-stat-${entry.key}-$homeId')),
+        entry.value.$1,
+        reason: '${entry.key} home',
+      );
+      expect(
+        _text(tester, ValueKey('team-stat-${entry.key}-$awayId')),
+        entry.value.$2,
+        reason: '${entry.key} away',
+      );
+    }
+  });
+
+  testWidgets('player box scores list five players per team in lineup order', (
+    tester,
+  ) async {
+    final controlled = _ControlledRunner();
+    await _pumpGame(tester, baseRequest, controlled.run);
+    controlled.pending.single.complete(base);
+    await tester.pump();
+
+    for (final teamId in [baseRequest.homeTeamId, baseRequest.awayTeamId]) {
+      final ids = base.input.lineupFor(teamId).playerIds;
+      expect(ids, hasLength(5));
+      final table = tester.widget<DataTable>(
+        find.byKey(ValueKey('player-table-${teamId.value}')),
+      );
+      expect(
+        [for (final row in table.rows) (row.key! as ValueKey<String>).value],
+        [for (final id in ids) 'player-row-$id'],
+        reason: 'canonical PG→C order for ${teamId.value}',
+      );
+    }
+  });
+
+  testWidgets(
+    'player names, positions and statistics come from the box score',
+    (tester) async {
+      final controlled = _ControlledRunner();
+      await _pumpGame(tester, baseRequest, controlled.run);
+      controlled.pending.single.complete(base);
+      await tester.pump();
+
+      final participants = [league.teams[_homeIndex], league.teams[_awayIndex]];
+      for (final team in participants) {
+        final lineups = base.input.lineupFor(team.id).playerIds;
+        for (final playerId in lineups) {
+          final player = team.players.singleWhere(
+            (candidate) => candidate.id.value == playerId,
+          );
+          final box = base.boxScore.players[playerId]!;
+          expect(
+            _text(tester, ValueKey('player-name-$playerId')),
+            player.fullName,
+          );
+          expect(
+            _text(tester, ValueKey('player-stat-$playerId-POS')),
+            player.position.shortName,
+          );
+          expect(
+            _text(tester, ValueKey('player-stat-$playerId-PTS')),
+            '${box.points}',
+          );
+          expect(
+            _text(tester, ValueKey('player-stat-$playerId-FG')),
+            '${box.fgm}/${box.fga}',
+          );
+          expect(
+            _text(tester, ValueKey('player-stat-$playerId-3PT')),
+            '${box.threePm}/${box.threePa}',
+          );
+          expect(
+            _text(tester, ValueKey('player-stat-$playerId-FT')),
+            '${box.ftm}/${box.fta}',
+          );
+          expect(
+            _text(tester, ValueKey('player-stat-$playerId-REB')),
+            '${box.rebounds}',
+          );
+          expect(
+            _text(tester, ValueKey('player-stat-$playerId-AST')),
+            '${box.assists}',
+          );
+          expect(
+            _text(tester, ValueKey('player-stat-$playerId-STL')),
+            '${box.steals}',
+          );
+          expect(
+            _text(tester, ValueKey('player-stat-$playerId-BLK')),
+            '${box.blocks}',
+          );
+          expect(
+            _text(tester, ValueKey('player-stat-$playerId-TOV')),
+            '${box.turnovers}',
+          );
+          expect(
+            _text(tester, ValueKey('player-stat-$playerId-PF')),
+            '${box.personalFouls}',
+          );
+        }
+      }
+    },
+  );
+
+  testWidgets('mandatory disclosures render; zero-seed note is conditional', (
+    tester,
+  ) async {
+    final controlled = _ControlledRunner();
+    await _pumpGame(tester, baseRequest, controlled.run);
+    controlled.pending.single.complete(base);
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('disclosure-lineup')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('disclosure-rematch-cycle')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('disclosure-zero-seed')), findsNothing);
+    expect(
+      _text(tester, const ValueKey('disclosure-lineup')),
+      allOf(
+        contains('fixed five-player lineup'),
+        contains('not modelled'),
+        contains('not a realism claim'),
+      ),
+    );
+
+    final zeroRequest = GameRequest(
+      league: league,
+      homeTeamId: baseRequest.homeTeamId,
+      awayTeamId: baseRequest.awayTeamId,
+      seed: 0,
+    );
+    final zeroControlled = _ControlledRunner();
+    await _pumpGame(tester, zeroRequest, zeroControlled.run);
+    zeroControlled.pending.single.complete(_simulate(zeroRequest));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('disclosure-zero-seed')), findsOneWidget);
+    expect(
+      _text(tester, const ValueKey('result-seed')),
+      'Seed ${describeGameSeed(0)}',
+    );
+  });
+
+  testWidgets('rematch advances the seed and changes the fingerprint', (
+    tester,
+  ) async {
+    final controlled = _ControlledRunner();
+    await _pumpGame(tester, baseRequest, controlled.run);
+    controlled.pending.single.complete(base);
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('rematch-game')));
+    await tester.pump();
+
+    expect(controlled.requests, hasLength(2));
+    final rematch = controlled.requests.last;
+    final expectedSeed = deriveGameSeed(
+      leagueSeed: league.config.seed,
+      homeIndex: _homeIndex,
+      awayIndex: _awayIndex,
+      rematchIndex: 1,
+    );
+    expect(rematch.seed, expectedSeed);
+    expect(rematch.seed, isNot(baseRequest.seed));
+    expect(rematch.homeTeamId.value, baseRequest.homeTeamId.value);
+    expect(rematch.awayTeamId.value, baseRequest.awayTeamId.value);
+    expect(find.byKey(const ValueKey('game-loading')), findsOneWidget);
+
+    final next = _simulate(rematch);
+    controlled.pending[1].complete(next);
+    await tester.pump();
+
+    expect(
+      _text(tester, const ValueKey('result-seed')),
+      'Seed ${describeGameSeed(expectedSeed)}',
+    );
+    expect(next.inputFingerprint, isNot(base.inputFingerprint));
+  });
+
+  testWidgets('rematch result is reproducible from its seed', (tester) async {
+    final controlled = _ControlledRunner();
+    await _pumpGame(tester, baseRequest, controlled.run);
+    controlled.pending.single.complete(base);
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('rematch-game')));
+    await tester.pump();
+
+    final rematch = controlled.requests.last;
+    final first = _simulate(rematch);
+    final second = _simulate(rematch);
+    expect(second.inputFingerprint, first.inputFingerprint);
+    expect(second.homeScore, first.homeScore);
+    expect(second.awayScore, first.awayScore);
+  });
+
+  testWidgets('wrap-around rematch discloses the repeated cycle', (
+    tester,
+  ) async {
+    final lastRequest = _request(league, 255);
+    final firstSeed = _request(league, 0).seed;
+    final controlled = _ControlledRunner();
+    await _pumpGame(tester, lastRequest, controlled.run);
+    controlled.pending.single.complete(_simulate(lastRequest));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('disclosure-cycle-repeated')),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('rematch-game')));
+    await tester.pump();
+
+    final wrapped = controlled.requests.last;
+    expect(wrapped.seed, firstSeed);
+    controlled.pending[1].complete(_simulate(wrapped));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('disclosure-cycle-repeated')),
+      findsOneWidget,
+    );
+    expect(
+      _text(tester, const ValueKey('result-seed')),
+      'Seed ${describeGameSeed(firstSeed)}',
+    );
+  });
+
+  testWidgets('rematch failure offers retry and retries the new seed', (
+    tester,
+  ) async {
+    final controlled = _ControlledRunner();
+    await _pumpGame(tester, baseRequest, controlled.run);
+    controlled.pending.single.complete(base);
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('rematch-game')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('game-loading')), findsOneWidget);
+
+    controlled.pending[1].completeError(StateError('rematch failed'));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('game-error')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('retry-game')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('game-loading')), findsOneWidget);
+    expect(controlled.requests, hasLength(3));
+    expect(controlled.requests[2].seed, controlled.requests[1].seed);
+
+    final retried = _simulate(controlled.requests[2]);
+    controlled.pending[2].complete(retried);
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('game-success')), findsOneWidget);
+    expect(
+      _text(tester, const ValueKey('result-seed')),
+      'Seed ${describeGameSeed(controlled.requests[2].seed)}',
+    );
+  });
+
+  testWidgets('abandoned rematch cannot overwrite a disposed screen', (
+    tester,
+  ) async {
+    final controlled = _ControlledRunner();
+    await _pumpGameOnRoute(tester, baseRequest, controlled.run);
+    controlled.pending.single.complete(base);
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('rematch-game')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('game-loading')), findsOneWidget);
+
+    await _goBack(tester);
+    expect(find.byKey(const ValueKey('open-game')), findsOneWidget);
+
+    controlled.pending[1].complete(_simulate(controlled.requests.last));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
+  test('rematch fixture identity is recorded', () {
+    final rematch = _request(league, 1);
+    final rematchResult = _simulate(rematch);
+    debugPrint(
+      'T024 fixtures: base seed ${baseRequest.seed} '
+      'fingerprint ${base.inputFingerprint}; '
+      'rematch seed ${rematch.seed} '
+      'fingerprint ${rematchResult.inputFingerprint}',
+    );
+    expect(rematch.seed, isNot(baseRequest.seed));
+    expect(rematchResult.inputFingerprint, isNot(base.inputFingerprint));
+  });
+
+  testWidgets('Return to League pops back to the root route', (tester) async {
+    final controlled = _ControlledRunner();
+    await _pumpGameOnRoute(tester, baseRequest, controlled.run);
+    controlled.pending.single.complete(base);
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('return-to-league')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('open-game')), findsOneWidget);
+    expect(find.byType(GameScreen), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+}
