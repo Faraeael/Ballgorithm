@@ -37,13 +37,13 @@ GameEventLedger ──► GameEventReducer.validate ──► ValidatedGameLedge
 | `game_fingerprint.dart` | payload: slot-player pairs + new rules fields |
 | `game_reducer.dart` | current-five state, window flag, substitution validation, ceiling exemption, continuation checks |
 | `game_simulator.dart` | mutable on-court five, foul-out detection, window emission, deterministic replacement |
-| `event_accounting.dart` | `secondsPlayed` derivation and conservation check |
+| `event_accounting.dart` | initialize every roster player with zero values; credit substitute events to the substituting player; `secondsPlayed` derivation and conservation check |
 | `box_score.dart` | additive `secondsPlayed` |
 | `game_state.dart` | unchanged (active five stays reducer-internal) unless owner asks for exposure |
 | `probability_model.dart` | positional-bonus lookups switch from `player.position` to slot index (nine sites); no coefficient change |
 | `action_intent.dart` | `TeamOnCourt` carries `CourtLineup` |
 | App: `game_runner.dart` | builds `CourtLineup.defaultFor` |
-| App: `game_result_view.dart` | minutes column, disqualification/continuation indicators, disclosure update |
+| App: `game_result_view.dart` | participants only (starters then substitutes, tagged), minutes column, disqualification/continuation indicators, non-participant disclosure |
 | App tests | migrate lineup construction; new UI assertions |
 
 ## 3. Reducer design
@@ -115,13 +115,17 @@ neither validates against nor clears `_pendingShotClockCeiling`; it must still m
 
 1. Introduce `CourtLineup`/`CourtSlot` alongside existing code.
 2. Move `GameInput`/`GameResult` to `CourtLineup`; update the worker runner and every test/fixture
-   constructor.
-3. Switch positional-bonus lookups to slot index; assert default-lineup equivalence before adding any
-   substitution behaviour.
-4. Add event, rules and reducer support; simulator emission last.
-5. Add accounting and UI.
-6. Remove `ActiveLineup` (no alias) once call sites are migrated.
-7. Pin the v5 canonical fixture; keep v1–v4 fixtures untouched.
+   constructor — **with public serialization and fingerprint payload unchanged** (slot-ordered player
+   ids only), so no changed payload is published under the old fingerprint version.
+3. Switch positional-bonus lookups to slot index; assert default-lineup equivalence against the pinned
+   v4 baseline independently of fingerprint metadata.
+4. In **one atomic public-contract commit**, change the fingerprint payload to slot-player pairs and
+   bump schema, rules, fingerprint and simulation versions together while adding the event and rules;
+   never publish a new payload under an old version.
+5. Add reducer support, then simulator emission.
+6. Add accounting (all-roster initialization) and UI.
+7. Remove `ActiveLineup` (no alias) once call sites are migrated.
+8. Pin the v5 canonical fixture; keep v1–v4 fixtures untouched and verified by their pinned builds.
 
 ## 8. Risks
 
@@ -135,6 +139,9 @@ neither validates against nor clears `_pendingShotClockCeiling`; it must still m
 | R6 | Minutes accounting double counts or drops intervals | Single-pass derivation from events; conservation check fails the box on mismatch |
 | R7 | App migration churn breaks M003 behaviour | M003 UI tests must stay green with only lineup-type changes |
 | R8 | Depleted five-player rosters surprise users | Explicit disclosure; UI marks continuation |
+| R9 | Accounting keeps initializing only the starting five, so substitute events are rejected or silently dropped | Accounting must initialize the whole roster; fixture with a scoring/rebounding/fouling substitute |
+| R10 | A version bump ships in a separate commit from the payload change, so an intermediate build mislabels its contract | T03 is one atomic public-contract commit; intermediate T02 keeps old payload bytes |
+| R11 | Historical ledgers are assumed to parse under v5 | Explicit typed rejection; comparisons use two pinned builds; no transparent-parse promise |
 
 ## 9. Out of scope
 

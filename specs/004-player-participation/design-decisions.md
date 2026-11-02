@@ -154,3 +154,47 @@ patterns. A foul-out is a genuine rule-driven trigger that proves the participat
 
 **Consequence:** in games without disqualifications the bench still never plays. **[owner]** confirms
 the deferral.
+
+---
+
+## DD-M004-15 — Bench accounting and results display
+
+**Decision:** `EventAccounting.aggregate` initializes **every roster player** of both teams before
+processing events. Substitute events credit the substituting player. Players who never enter keep zero
+seconds and zero production. The results table lists starters (slot order, tagged) followed by
+substitutes who entered (entry order, tagged); non-participants are hidden and the screen states that
+they are not listed.
+
+**Rationale:** the current implementation initializes only the starting five, so a substitute's event
+would be rejected as uncredited and a substitute's production would be silently missing. Initializing
+the whole roster keeps team totals reconcilable and makes the box lookup total. Hiding zero-minute
+players is a presentation choice, not a data omission — their zero rows remain in the box model.
+
+**Consequence:** a fixture where a substitute records points, rebounds and fouls is mandatory; the
+results table grows only by players who actually played.
+
+## DD-M004-16 — Historical ledgers are not transparently portable
+
+**Decision:** `GameEventLedger.fromJson` keeps exact version equality, so a v5 build rejects v4 ledgers
+with `unsupportedEventSchemaVersion`. Historical evidence remains verified by its own pinned fixtures
+and builds. v4/v5 comparison runs both pinned builds and normalizes configuration (league, team ids,
+seed, rules); fingerprints are never compared across versions.
+
+**Rationale:** silently accepting an older schema under new semantics would allow a mislabelled
+contract. An explicit typed rejection is auditable.
+
+**Consequence:** no claim that v5 can read v1–v4 ledgers; a future migration would need its own spec.
+
+## DD-M004-17 — Atomic public-contract transition
+
+**Decision:** T02 adopts `CourtLineup` while keeping the public JSON shape and fingerprint payload
+byte-identical (slot-ordered player ids). T03 is a single commit that changes the payload to slot-player
+pairs and bumps schema, rules, fingerprint and simulation versions together, adding the event and rules
+in the same commit. The two tasks stay separately authorized.
+
+**Rationale:** an intermediate commit that changed the payload under the old version would publish a
+mislabelled contract. Splitting an internal type phase from the atomic public transition keeps review
+scope small without ever misrepresenting a version.
+
+**Consequence:** default-lineup equivalence is asserted against the pinned v4 baseline by comparing
+event lists and digests independently of fingerprint metadata.

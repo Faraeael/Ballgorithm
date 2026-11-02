@@ -26,6 +26,11 @@
 | AC-M004-19 | Historical M001–M003 contracts and fixtures unchanged | Path diff empty for frozen artifacts; core suite count unchanged | NOT RUN |
 | AC-M004-20 | Results UI shows minutes and disqualification/continuation without regressions at 360/393/430 | Widget tests; disclosure assertions | NOT RUN |
 | AC-M004-21 | Scope compliance: no rotations, fatigue, technical fouls, user lineups, persistence | File/API diff review | NOT RUN |
+| AC-M004-22 | Bench production is attributed: a substitute who scores, rebounds and fouls appears with those totals; no event is credited to the replaced player | Hand-built + simulated fixture; box assertions | NOT RUN |
+| AC-M004-23 | Every roster player has a box row; non-participants are zero; team totals reconcile across starters and substitutes | Accounting tests over a substitute game | NOT RUN |
+| AC-M004-24 | Results list starters and participating substitutes, tagged, with minutes; non-participants hidden and disclosed | Widget tests at 360/393/430 | NOT RUN |
+| AC-M004-25 | Historical compatibility is explicit: v5 rejects v4 ledgers with `unsupportedEventSchemaVersion`; v1–v4 evidence verified by pinned tests; v4/v5 comparison uses two pinned builds and normalized configuration | Typed-rejection test; pinned-fixture suites; comparison harness documentation | NOT RUN |
+| AC-M004-26 | Public contract transition is atomic: payload change and all four version bumps in one commit; no payload published under an old version | Commit inspection; fingerprint digest assertions before/after | NOT RUN |
 
 ## Explicit non-claims
 

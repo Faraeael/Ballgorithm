@@ -38,6 +38,11 @@ rules, or the PRNG implementation.
 8. No historical M001/M002/M003 artifact changes meaning.
 9. For default lineups, v5 and v4 follow the same event path up to the first `Substitution`;
    divergence after that point is intended and is not an equivalence failure.
+10. Every roster player has a box-score row, including players who never enter; team totals
+    reconcile across starters and substitutes.
+11. Results list the starting five and every substitute who entered, tagged and with minutes;
+    players who never entered are not listed, and the screen states that explicitly. Their zero box
+    rows still exist in the box model, so no production is omitted and no row is silently missing.
 
 ## 3. Court lineup contract
 
@@ -138,6 +143,11 @@ inside a free-throw group opened for another reason, after `DeadBallMiss`, after
 
 ## 8. Minutes
 
+- `EventAccounting.aggregate` initializes **every roster player** of both teams with zero values
+  before processing events; today it initializes only the starting five, which would reject a
+  substitute's event as uncredited.
+- Substitute events are credited to the substituting player, not to the player they replaced.
+- Players who never enter remain at zero seconds and zero production.
 - `PlayerBoxScore.secondsPlayed` (additive field) is derived only from validated ledger timestamps.
 - Interval: a player accumulates `clock(start) − clock(end)` within each period; substitutions close
   and open intervals at the same timestamp.
@@ -145,7 +155,11 @@ inside a free-throw group opened for another reason, after `DeadBallMiss`, after
   `Σ player.secondsPlayed == 5 × Σ periodLength(played periods)`.
 - No negative intervals, no double counting, no simulator-maintained minutes state.
 - A W1 substitution splits an open possession; both intervals are counted.
-- Box validation fails if the team total does not reconcile.
+- Box validation fails if the team total does not reconcile, or if any event credits a player who is
+  not on that team's roster.
+- Conservation alone is not sufficient evidence of correct participation: a ledger missing a
+  substitution can still conserve team seconds if the outgoing player's interval simply extends.
+  Per-player interval assertions are required (see `verification-plan.md`).
 
 ## 9. Versioning (proposed, not applied)
 
@@ -162,9 +176,27 @@ inside a free-throw group opened for another reason, after `DeadBallMiss`, after
 A new canonical v5 fixture is required; v1–v4 fixtures, mutation suites and M002 evidence are kept
 unchanged.
 
+### 9.1 Historical compatibility
+
+- Historical M001–M003 source evidence and fixtures remain byte-identical and keep their own pinned
+  verification; nothing is rebaselined.
+- `GameEventLedger.fromJson` compares the ledger's schema version to the running constant for exact
+  equality, so a v5 build rejects a v4 ledger with the typed
+  `unsupportedEventSchemaVersion` code. **v5 does not transparently parse historical ledgers**, and
+  this specification does not require it.
+- A v4/v5 statistical comparison runs the two pinned engine builds side by side; each build reads its
+  own inputs and produces its own fingerprint. Comparison uses normalized configurations — same
+  league, team ids, seed and rules — not a shared fingerprint representation.
+- Any future schema migration needs its own specification and migration fixtures.
+
 ## 10. UI
 
-- Results screen: minutes per player, disqualification and continuation indicators.
+- Results screen lists the starting five (slot order, marked as starters) followed by substitutes who
+  entered (order of entry, marked as substitutes), each with minutes.
+- Players who never enter are **hidden** from the results table. This is a documented display choice,
+  not an omission of production: those players generated no events and their zero rows remain in the
+  box model. The screen states that non-participants are not listed.
+- Disqualification and continuation indicators per player.
 - Disclosure adds: foul-outs are modelled; technical-foul penalties are not; a disqualified player may
   continue when no eligible bench player remains; rotations and fatigue are not modelled.
 - No lineup editing, no tactical substitution UI.

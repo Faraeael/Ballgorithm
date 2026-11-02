@@ -30,38 +30,48 @@ push; internal contradiction review recorded.
 
 ---
 
-## T02 — `CourtLineup` and slot semantics
+## T02 — `CourtLineup` and slot semantics (internal-only phase)
 
-**Purpose:** replace the fixed-five type and make positional bonuses slot-aware without changing
-default-lineup behaviour.
+**Purpose:** adopt the slot-based five and make positional bonuses slot-aware while leaving the public
+contract bytes unchanged.
 
 **Prerequisites:** T01 frozen; owner decisions DD-M004-01/02 confirmed.
 
 **Authorized scope:** new `CourtLineup`/`CourtSlot`; migrate `GameInput`, `GameResult`, `TeamOnCourt`,
-probability-model positional lookups, app runner, test fixtures; remove `ActiveLineup`.
+probability-model positional lookups (nine sites), app runner, test fixtures; remove `ActiveLineup`.
+**Public JSON and the fingerprint payload keep emitting slot-ordered player ids**, byte-identical to
+v4; no version constant changes in this task.
 
 **Acceptance evidence:** contract tests for size, canonical order, uniqueness, roster ownership,
-slot ≠ position legality; default-lineup event lists identical to v4 for representative seeds before
-any substitution support exists; full core and Flutter suites green; no coefficient change.
+slot ≠ position legality; `GameFingerprint.of` digest and event list identical to a pinned v4 value for
+representative default-lineup inputs; full core and Flutter suites green; no coefficient change; a
+repository diff check showing no version-constant edits.
 
-**Stop condition:** any outcome difference for default lineups — stop and report.
+**Stop condition:** any changed public JSON, changed fingerprint bytes, version-constant edit, or
+outcome difference for default lineups — stop and report.
 
 ---
 
-## T03 — Event and version contract
+## T03 — Atomic public-contract transition
 
-**Purpose:** add `Substitution` and the pose of v5 identifiers.
+**Purpose:** land the new event, rules fields, fingerprint payload and all four version bumps in one
+commit so no intermediate build mislabels its contract.
 
 **Prerequisites:** T02 green.
 
-**Authorized scope:** `Substitution` event + `SubstitutionReason`; schema dispatcher; `GameRules`
-`foulOutLimit` and `substitutionPolicyVersion`; version constants per `spec.md` §9; serialization
-round-trip tests; ledger rejection of unknown types unchanged.
+**Authorized scope (single commit):** `Substitution` + `SubstitutionReason`; schema dispatcher;
+`GameRules.foulOutLimit` and `substitutionPolicyVersion`; fingerprint payload changed to slot-player
+pairs; `gameSimulationVersion` 5, `gameRulesVersion` 3, `gameEventSchemaVersion` 3,
+`gameFingerprintVersion` 3 together; serialization tests; typed rejection of a v4 ledger by the v5
+reader.
 
-**Acceptance evidence:** round-trip and malformed-JSON tests; rules validation ranges; version values
-asserted; v1–v4 fixtures still parse under their own versions (no silent migration).
+**Acceptance evidence:** one commit contains the payload change **and** all four bumps; no commit
+exists where the new payload is emitted under an old version; round-trip and malformed-JSON tests;
+rules validation ranges; `unsupportedEventSchemaVersion` asserted for a v4 ledger; v1–v4 fixtures
+unchanged and still verified by their pinned tests (not by v5 deserialization).
 
-**Stop condition:** any historical fixture requiring edit — stop.
+**Stop condition:** any need to split the payload change from the version bumps, or any historical
+fixture edit — stop.
 
 ---
 
@@ -110,7 +120,11 @@ reducer accepts every emitted ledger; no PRNG draw added (draw-count assertion o
 
 **Acceptance evidence:** exact conservation for regulation, overtime, W1 split possessions,
 continuation games and five-player rosters; typed failure when a fixture is mutated to break totals; no
-simulator-side minutes state.
+simulator-side minutes state. Hand-built fixtures must assert **exact seconds for every player**:
+outgoing interval closes at the substitution clock, incoming interval opens at the same clock, unused
+bench players stay at zero, two substitutions at one clock are handled, period and overtime boundaries
+anchor correctly, and no interval is negative or overlapping. A fixture where a substitute records
+points, rebounds and fouls is required.
 
 **Stop condition:** conservation failure on a legal ledger.
 
@@ -155,11 +169,13 @@ first-divergence and substitution counts reported descriptively; no AC09/AC10 ac
 **Prerequisites:** T08 evidence available; not a blocking dependency for coding, but acceptance needs
 it.
 
-**Authorized scope:** minutes column, disqualification/continuation indicators, disclosure text;
-existing navigation unchanged.
+**Authorized scope:** participants-only table (starters in slot order, tagged; substitutes in entry
+order, tagged), minutes column, disqualification/continuation indicators, disclosure text including
+that non-participants are not listed; existing navigation unchanged.
 
-**Acceptance evidence:** widget tests at 360/393/430; no overflow; existing M003 tests green; disclosure
-asserts the technical-foul departure.
+**Acceptance evidence:** widget tests at 360/393/430; no overflow; existing M003 tests green; a
+substitute's row and production appear; starter/substitute distinction asserted; non-participant
+disclosure asserted; disclosure also states the technical-foul departure.
 
 **Stop condition:** any need to redesign navigation or theme.
 

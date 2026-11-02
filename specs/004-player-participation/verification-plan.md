@@ -26,7 +26,9 @@
 5. **W1 retained-foul fixture** — substitution during an open possession with a pending ceiling.
 6. **W0 fixture** — disqualified defender replaced between foul and first free throw.
 7. **Horn fixtures** — buzzer shooting foul: made final FT and missed final FT (`DeadBallMiss`).
-8. **v4 equivalence fixtures** — two forms:
+8. **Bench-production fixture** — a substitute who records points, rebounds and fouls, proving
+   attribution to the substituting player and correct box rows.
+9. **v4 equivalence fixtures** — two forms:
    - a **no-disqualification** game: the full event list must equal v4's apart from version metadata;
    - a game **with** substitutions: only the prefix up to the first `Substitution` must equal v4's;
      after that point divergence is expected and is not an equivalence failure.
@@ -63,7 +65,19 @@
 - No negative interval; no interval crossing a period boundary without a `PeriodStarted` anchor.
 - W1 substitution splits a possession correctly.
 - Continuing disqualified player's interval is unsplit.
-- Mutated ledger that drops a substitution must fail conservation, not silently pass.
+- Per-player interval assertions, not only conservation:
+  - outgoing player's interval closes exactly at the substitution clock;
+  - incoming player's interval opens at the same clock;
+  - two substitutions at one clock are both handled;
+  - a W1 substitution splits an open possession;
+  - period and overtime boundaries anchor intervals correctly;
+  - depleted continuation is a single unsplit interval;
+  - unused bench players are exactly zero;
+  - no negative or overlapping intervals.
+- A ledger with a **deleted** substitution may still conserve team seconds (the outgoing player's
+  interval simply extends), so conservation is not sufficient. Such a ledger must be caught by
+  eligibility/five-occupancy validation when it credits an inactive player, and otherwise by per-player
+  interval assertions.
 
 ## 5. Statistical plan (pre-registered before running)
 
@@ -109,6 +123,10 @@ dart test
 Chrome-compatible core tests are required when replay, fingerprints or serialization change — M004
 changes all three — excluding the IO-dependent `domain_isolation_test.dart` with the exclusion
 recorded.
+
+Historical checks: v1–v4 fixtures remain untouched and are exercised by their pinned tests; the v5
+reader's typed rejection of a v4 ledger is asserted; the v4/v5 comparison runs two pinned builds and
+normalizes league, team ids, seed and rules rather than comparing fingerprints across versions.
 
 ## 7. Evidence artefacts
 
