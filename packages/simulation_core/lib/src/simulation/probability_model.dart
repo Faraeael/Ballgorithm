@@ -5,6 +5,7 @@ import '../models/ids.dart';
 import '../models/player.dart';
 import 'action_intent.dart';
 import 'active_lineup.dart';
+import 'court_lineup.dart';
 import 'game_rules.dart';
 
 /// Provisional, uncalibrated ratings-based basketball decision model (T008).
@@ -105,6 +106,15 @@ import 'game_rules.dart';
 /// read (M003). A defense's assigned defender is the same canonical lineup
 /// index (PG defends PG … C defends C).
 final class BasketballProbabilityModel {
+  // Internal slot views, memoised per lineup/side. T02 exposes no slot API.
+  final Expando<CourtLineup> _lineupCourts = Expando<CourtLineup>();
+  final Expando<CourtLineup> _sideCourts = Expando<CourtLineup>();
+
+  CourtLineup _courtOfLineup(ActiveLineup lineup) =>
+      _lineupCourts[lineup] ??= CourtLineup.fromActiveLineup(lineup);
+
+  CourtLineup _courtOf(TeamOnCourt side) =>
+      _sideCourts[side] ??= _courtOfLineup(side.lineup);
   BasketballProbabilityModel({GameRules? rules})
     : rules = rules ?? GameRules.standard;
 
@@ -231,7 +241,7 @@ final class BasketballProbabilityModel {
       );
     }
     if (categoryDraw < turnover + offensiveFoul) {
-      final offender = _pickWeighted(rng, offense.lineup, _ballHandlerScore);
+      final offender = _pickWeighted(rng, _courtOf(offense), _ballHandlerScore);
       final index = _lineupIndex(offense.lineup, offender.id)!;
       return OffensiveFoulAction(
         offenseTeamId: offense.teamId,
@@ -240,7 +250,7 @@ final class BasketballProbabilityModel {
       );
     }
     if (categoryDraw < turnover + offensiveFoul + nonShootingFoul) {
-      final drawnBy = _pickWeighted(rng, offense.lineup, _ballHandlerScore);
+      final drawnBy = _pickWeighted(rng, _courtOf(offense), _ballHandlerScore);
       final index = _lineupIndex(offense.lineup, drawnBy.id)!;
       return NonShootingFoulAction(
         offenseTeamId: offense.teamId,
@@ -273,7 +283,7 @@ final class BasketballProbabilityModel {
         offense.lineup.players[_pickWeightedIndex(rng, actorWeights)];
     final share = stealShareBasisPoints(ballhandler: handler, defense: defense);
     if (rng.nextInt(_maxBasisPoints) < share) {
-      final thief = _pickWeighted(rng, defense.lineup, _stealScore);
+      final thief = _pickWeighted(rng, _courtOf(defense), _stealScore);
       return TurnoverAction(
         offenseTeamId: offense.teamId,
         playerId: handler.id,
@@ -294,13 +304,18 @@ final class BasketballProbabilityModel {
     PhaseKind phase,
     DeterministicRandom rng,
   ) {
-    final shooter = offense
-        .lineup
-        .players[_pickWeightedIndex(rng, shotUsageWeights(offense.lineup))];
-    final index = _lineupIndex(offense.lineup, shooter.id)!;
-    final defender = defense.lineup.players[index];
+    final offenseCourt = _courtOf(offense);
+    final shooter = offenseCourt.playerAtSlotIndex(
+      _pickWeightedIndex(rng, shotUsageWeights(offense.lineup)),
+    );
+    final slotIndex = offenseCourt.slotIndexForPlayer(shooter.id);
+    final defender = defense.lineup.players[slotIndex];
 
-    final zoneWeights = shotZoneWeights(shooter: shooter, phase: phase);
+    final zoneWeights = _shotZoneWeightsForSlot(
+      shooter: shooter,
+      slotIndex: slotIndex,
+      phase: phase,
+    );
     final zoneDraw = rng.nextInt(_maxBasisPoints);
     var zone = ShotZone.three;
     if (zoneDraw < zoneWeights[0]) {
@@ -325,7 +340,7 @@ final class BasketballProbabilityModel {
       if (rng.nextInt(_maxBasisPoints) < assistBp) {
         final passer = _pickWeighted(
           rng,
-          offense.lineup,
+          _courtOf(offense),
           _assistScore,
           exclude: shooter.id,
         );
@@ -366,7 +381,7 @@ final class BasketballProbabilityModel {
     );
     PlayerId? blockedById;
     if (rng.nextInt(_maxBasisPoints) < blockBp) {
-      final blocker = _pickWeighted(rng, defense.lineup, _blockScore);
+      final blocker = _pickWeighted(rng, _courtOf(defense), _blockScore);
       blockedById = blocker.id;
     }
     return ShotAttemptAction(
@@ -399,7 +414,7 @@ final class BasketballProbabilityModel {
     );
     final offensive = rng.nextInt(_maxBasisPoints) < share;
     final side = offensive ? offense : defense;
-    final rebounder = _pickWeighted(rng, side.lineup, _reboundScore);
+    final rebounder = _pickWeighted(rng, _courtOf(side), _reboundScore);
     return ReboundIntent(
       teamId: side.teamId,
       playerId: rebounder.id,
@@ -459,24 +474,24 @@ final class BasketballProbabilityModel {
   /// Normalized shot-usage weights summing to 10000.
   List<int> shotUsageWeights(ActiveLineup offense) {
     final raw = <int>[
-      for (final player in offense.players)
+      for (final slot in _courtOfLineup(offense).slots)
         max(
           60,
-          _usagePositionBase[player.position.index] +
+          _usagePositionBase[slot.slot.index] +
               max(
                     0,
                     max(
-                          player.attributes.insideScoring,
+                          slot.player.attributes.insideScoring,
                           max(
-                            player.attributes.midrange,
-                            player.attributes.threePoint,
+                            slot.player.attributes.midrange,
+                            slot.player.attributes.threePoint,
                           ),
                         ) -
                         50,
                   ) *
                   3 +
-              (player.attributes.ballHandling - 50) * 2 +
-              (player.attributes.basketballIQ - 50),
+              (slot.player.attributes.ballHandling - 50) * 2 +
+              (slot.player.attributes.basketballIQ - 50),
         ),
     ];
     return _normalize(raw);
@@ -486,9 +501,19 @@ final class BasketballProbabilityModel {
   List<int> shotZoneWeights({
     required Player shooter,
     required PhaseKind phase,
+  }) => _shotZoneWeightsForSlot(
+    shooter: shooter,
+    slotIndex: shooter.position.index,
+    phase: phase,
+  );
+
+  List<int> _shotZoneWeightsForSlot({
+    required Player shooter,
+    required int slotIndex,
+    required PhaseKind phase,
   }) {
     final a = shooter.attributes;
-    final position = shooter.position.index;
+    final position = slotIndex;
     final raw = <int>[
       max(
         200,
@@ -561,12 +586,12 @@ final class BasketballProbabilityModel {
   /// decision responsibility. Positive min-one largest-remainder allocation.
   List<int> exposureWeights(ActiveLineup lineup) {
     final raw = <int>[
-      for (final player in lineup.players)
+      for (final slot in _courtOfLineup(lineup).slots)
         max(
           1,
-          _exposurePositionBase[player.position.index] +
-              _exposurePassingWeight * (player.attributes.passing - 50) +
-              _exposureIqWeight * (player.attributes.basketballIQ - 50),
+          _exposurePositionBase[slot.slot.index] +
+              _exposurePassingWeight * (slot.player.attributes.passing - 50) +
+              _exposureIqWeight * (slot.player.attributes.basketballIQ - 50),
         ),
     ];
     return allocatePositiveWeights(raw, _maxBasisPoints);
@@ -781,38 +806,38 @@ final class BasketballProbabilityModel {
 
   // --- Weights and helpers ------------------------------------------------
 
-  int _ballHandlerScore(Player player) {
-    final a = player.attributes;
-    return _handlePositionBase[player.position.index] +
+  int _ballHandlerScore(CourtSlot slot) {
+    final a = slot.player.attributes;
+    return _handlePositionBase[slot.slot.index] +
         a.ballHandling * 3 +
         a.passing +
         a.basketballIQ;
   }
 
-  int _stealScore(Player player) {
-    final a = player.attributes;
-    return _stealPositionBonus[player.position.index] +
+  int _stealScore(CourtSlot slot) {
+    final a = slot.player.attributes;
+    return _stealPositionBonus[slot.slot.index] +
         a.perimeterDefense * 3 +
         a.athleticism * 2;
   }
 
-  int _assistScore(Player player) {
-    final a = player.attributes;
-    return _assistPositionBonus[player.position.index] +
+  int _assistScore(CourtSlot slot) {
+    final a = slot.player.attributes;
+    return _assistPositionBonus[slot.slot.index] +
         a.passing * 3 +
         a.basketballIQ * 2;
   }
 
-  int _blockScore(Player player) {
-    final a = player.attributes;
-    return _blockPositionBonus[player.position.index] +
+  int _blockScore(CourtSlot slot) {
+    final a = slot.player.attributes;
+    return _blockPositionBonus[slot.slot.index] +
         a.interiorDefense * 3 +
         a.athleticism * 2;
   }
 
-  int _reboundScore(Player player) {
-    final a = player.attributes;
-    return _reboundPositionBonus[player.position.index] +
+  int _reboundScore(CourtSlot slot) {
+    final a = slot.player.attributes;
+    return _reboundPositionBonus[slot.slot.index] +
         a.rebounding * 3 +
         a.athleticism;
   }
@@ -828,15 +853,15 @@ final class BasketballProbabilityModel {
   /// `nextInt(10000)`.
   Player _pickWeighted(
     DeterministicRandom rng,
-    ActiveLineup lineup,
-    int Function(Player) weightOf, {
+    CourtLineup court,
+    int Function(CourtSlot) weightOf, {
     PlayerId? exclude,
   }) {
     final weights = <int>[
-      for (final player in lineup.players)
-        player.id == exclude ? 0 : max(1, weightOf(player)),
+      for (final slot in court.slots)
+        slot.player.id == exclude ? 0 : max(1, weightOf(slot)),
     ];
-    return lineup.players[_pickWeightedIndex(rng, weights)];
+    return court.playerAtSlotIndex(_pickWeightedIndex(rng, weights));
   }
 
   static int _pickWeightedIndex(DeterministicRandom rng, List<int> weights) {
