@@ -333,6 +333,63 @@ void main() {
     );
   });
 
+  test('the model roster view rejects every external mutation', () {
+    final input = buildInput(seed: 19);
+    final model = BasketballProbabilityModel(
+      rules: input.rules,
+      players: [
+        for (final team in input.league.teams)
+          for (final player in team.players) player,
+      ],
+    );
+    final playerId = input.homeLineup.playerIds.first;
+    final view = model.rosterPlayers;
+    final canonical = view[playerId]!;
+    final altered = Player(
+      id: canonical.id,
+      firstName: canonical.firstName,
+      lastName: canonical.lastName,
+      position: canonical.position,
+      attributes: PlayerAttributes.fromJson({
+        ...canonical.attributes.toJson(),
+        'threePoint': 100,
+      }),
+    );
+
+    expect(() => view['injected'] = altered, throwsUnsupportedError);
+    expect(() => view[playerId] = altered, throwsUnsupportedError);
+    expect(() => view.remove(playerId), throwsUnsupportedError);
+    expect(view.clear, throwsUnsupportedError);
+    expect(view, hasLength(input.league.teams.length * 12));
+    expect(identical(view[playerId], canonical), isTrue);
+
+    var attempted = 0;
+    final result = GameSimulator(
+      probabilityModel: model,
+      onPhaseTrace: (_) {
+        if (attempted > 0) return;
+        attempted = 4;
+        for (final action in <void Function()>[
+          () => model.rosterPlayers['injected'] = altered,
+          () => model.rosterPlayers[playerId] = altered,
+          () => model.rosterPlayers.remove(playerId),
+          () => model.rosterPlayers.clear(),
+        ]) {
+          expect(action, throwsUnsupportedError);
+        }
+      },
+    ).simulate(input);
+    expect(attempted, 4);
+    expect(identical(model.rosterPlayers[playerId], canonical), isTrue);
+
+    final control = GameSimulator().simulate(input);
+    expect(result.inputFingerprint, control.inputFingerprint);
+    expect(
+      jsonEncode(result.ledger.toJson()),
+      jsonEncode(control.ledger.toJson()),
+    );
+  });
+
   test('simulator emits no Substitution yet', () {
     final result = GameSimulator().simulate(buildInput(seed: 7));
     expect(result.events.whereType<Substitution>(), isEmpty);

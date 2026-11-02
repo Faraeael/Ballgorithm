@@ -121,11 +121,17 @@ final class BasketballProbabilityModel {
   /// first time a rating is needed.
   final Map<String, Player> _playersById;
 
+  late final Map<String, Player> _readOnlyPlayers = Map.unmodifiable(
+    _playersById,
+  );
+
   /// Canonical players this model resolves ratings from, keyed by id.
   ///
-  /// Empty when the model was built without a roster; in that case ratings come
-  /// from the immutable lineups handed in by the simulator.
-  Map<String, Player> get rosterPlayers => _playersById;
+  /// Read-only: exposing the backing map would let a callback replace a player
+  /// after the simulator's roster check, changing outcomes for the same
+  /// fingerprint. Empty when the model was built without a roster; ratings then
+  /// come from the immutable lineups handed in by the simulator.
+  Map<String, Player> get rosterPlayers => _readOnlyPlayers;
 
   Player _playerOf(CourtSlot slot) {
     // Prefer the league roster supplied at construction; a slot's convenience
