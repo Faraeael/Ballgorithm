@@ -382,14 +382,7 @@ class GameResultView extends StatelessWidget {
       key: ValueKey('player-row-${box.playerId}'),
       cells: [
         DataCell(
-          SizedBox(
-            width: 132,
-            child: Text(
-              player.fullName,
-              key: ValueKey('player-name-${box.playerId}'),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
+          Text(player.fullName, key: ValueKey('player-name-${box.playerId}')),
         ),
         DataCell(cell('POS', player.position.shortName)),
         DataCell(cell('PTS', '${box.points}')),

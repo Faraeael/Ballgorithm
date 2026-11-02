@@ -163,10 +163,10 @@ presentation remains T024.
 ## T024 — Results, team statistics and player box scores — **COMPLETE (2026-11-02) — PASS**
 
 **Evidence:** `lib/features/game/game_result_view.dart` (new) renders the results; `game_screen.dart`
-now owns loading/failure/success plus rematch and return-to-league. 15 tests in
+now owns loading/failure/success plus rematch and return-to-league. 16 tests in
 `test/game_results_test.dart` and one wording-coupled assertion in `test/game_flow_test.dart` updated to
 the keyed scoreboard (`result-score-home` / `result-score-away`) instead of a composed score string.
-Full suite 57/57 Flutter tests; `flutter analyze` clean;
+Full suite 58/58 Flutter tests; `flutter analyze` clean;
 `dart format --set-exit-if-changed lib test` 17 files 0 changed; core suite unchanged at 351/351; no
 hit-test warnings.
 
@@ -176,7 +176,9 @@ indicator when `overtimes > 0`, period count), period table keyed
 REB, AST, STL, BLK, TOV, PF) keyed `team-stat-<metric>-<teamId>`, and per-team player `DataTable` in
 canonical PG→C order from `GameResult.input.lineupFor` with keys
 `player-row-<playerId>`/`player-stat-<playerId>-<metric>`. Player tables are the only horizontally
-scrollable element. Disclosure keys: `disclosure-lineup`, `disclosure-rematch-cycle`,
+scrollable element. Player names render in full at intrinsic width with no ellipsis or fixed width; a
+JSON-round-trip league fixture renames a player to `Bartholomew Maximilian Fitzgerald-Washington III`
+and the test asserts the rendered `Text.data` matches and `Text.overflow` is null. Disclosure keys: `disclosure-lineup`, `disclosure-rematch-cycle`,
 `disclosure-cycle-repeated` (after wraparound), `disclosure-zero-seed` (raw seed 0 only).
 
 Rematch advances `rematchIndex` modulo 256 through the frozen T021 derivation, keeps the same teams,

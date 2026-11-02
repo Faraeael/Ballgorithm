@@ -121,6 +121,26 @@ Future<void> _goBack(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 400));
 }
 
+/// Copy of the generated league with one renamed player, built through the
+/// canonical JSON round trip so no model is mutated.
+League _leagueWithLongPlayerName(
+  League league, {
+  required int teamIndex,
+  required int playerIndex,
+  required String firstName,
+  required String lastName,
+}) {
+  final json = league.toJson();
+  final teams = json['teams']! as List<Object?>;
+  final team = teams[teamIndex]! as Map<String, Object?>;
+  final roster = team['roster']! as Map<String, Object?>;
+  final players = roster['players']! as List<Object?>;
+  final player = players[playerIndex]! as Map<String, Object?>;
+  player['firstName'] = firstName;
+  player['lastName'] = lastName;
+  return League.fromJson(json);
+}
+
 String _text(WidgetTester tester, Key key) =>
     tester.widget<Text>(find.byKey(key)).data!;
 
@@ -389,6 +409,42 @@ void main() {
       }
     },
   );
+
+  testWidgets('long player names render in full without ellipsis', (
+    tester,
+  ) async {
+    const longName = ('Bartholomew', 'Maximilian Fitzgerald-Washington III');
+    final longLeague = _leagueWithLongPlayerName(
+      league,
+      teamIndex: _homeIndex,
+      playerIndex: 0,
+      firstName: longName.$1,
+      lastName: longName.$2,
+    );
+    final longRequest = GameRequest(
+      league: longLeague,
+      homeTeamId: longLeague.teams[_homeIndex].id,
+      awayTeamId: longLeague.teams[_awayIndex].id,
+      seed: baseRequest.seed,
+    );
+    final playerId = longLeague.teams[_homeIndex].players.first.id.value;
+    final expectedName = '${longName.$1} ${longName.$2}';
+    final controlled = _ControlledRunner();
+    await _pumpGame(tester, longRequest, controlled.run);
+    controlled.pending.single.complete(_simulate(longRequest));
+    await tester.pump();
+
+    final nameWidget = tester.widget<Text>(
+      find.byKey(ValueKey('player-name-$playerId')),
+    );
+    expect(nameWidget.data, expectedName);
+    expect(
+      nameWidget.overflow,
+      isNull,
+      reason: 'a full name must not be clipped with an ellipsis',
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('mandatory disclosures render; zero-seed note is conditional', (
     tester,
