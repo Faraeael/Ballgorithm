@@ -255,8 +255,12 @@ rows stay aligned. No dependency, no new statistic, no simulation change.
 
 Tests updated: the canonical-order test now asserts vertical order through `player-row-<id>` positions;
 the layout walk asserts the horizontal scroll view is a **descendant** of each table (only statistics
-scroll); the long-name test measures the statistics pane's offset increasing, requires the `PF` cell to
-move from outside the viewport to inside it, and requires the name's screen position to be unchanged.
+scroll). At **every** width (360×640, 393×852, 430×932), for **each** team, the walk scrolls the
+statistics pane to its right edge and asserts: the pane's offset increased, all ten statistic cells
+exist for all five players, `PF` is on screen for every player, and all five names and positions are
+still present with their screen positions unchanged from before the scroll. The separate long-name
+test additionally covers truncation: full text retained, `Text.overflow` null, no overflow, and the
+identity pane unmoved.
 `flutter test` 71/71; `flutter analyze` clean; `dart format` 19 files 0 changed.
 
 Device captures: `20-frozen-identity-tables-360.png`, `21-frozen-identity-rightmost-360.png`,

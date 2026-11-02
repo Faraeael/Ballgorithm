@@ -46,6 +46,14 @@ Finder _horizontalScrollable() => find.byWidgetPredicate(
           widget.axisDirection == AxisDirection.left),
 );
 
+Future<void> _scrollToTop(WidgetTester tester) async {
+  final state = tester.state<ScrollableState>(_verticalScrollable().first);
+  if (state.position.pixels > 0) {
+    state.position.jumpTo(0);
+    await tester.pumpAndSettle();
+  }
+}
+
 Future<void> _scrollTo(WidgetTester tester, Finder target) async {
   await tester.scrollUntilVisible(
     target,
@@ -98,6 +106,7 @@ Future<void> _walkResults(
   GameRequest request,
   GameResult result, {
   required bool expectOvertime,
+  required Size viewport,
 }) async {
   _expectNoOverflow(tester);
 
@@ -178,10 +187,101 @@ Future<void> _walkResults(
     findsOneWidget,
   );
 
+  await _verifyFrozenIdentityAtRightmost(tester, request, result, viewport);
+
   await _scrollTo(tester, find.byKey(const ValueKey('rematch-game')));
   _expectNoOverflow(tester);
   await _scrollTo(tester, find.byKey(const ValueKey('return-to-league')));
   _expectNoOverflow(tester);
+}
+
+/// At the given width, scrolls each team's statistics pane to its right edge and
+/// asserts that every player identity stays visible and unmoved while all ten
+/// statistics remain reachable.
+Future<void> _verifyFrozenIdentityAtRightmost(
+  WidgetTester tester,
+  GameRequest request,
+  GameResult result,
+  Size size,
+) async {
+  await _scrollToTop(tester);
+  for (final teamId in [request.awayTeamId, request.homeTeamId]) {
+    final tableKey = ValueKey('player-table-${teamId.value}');
+    await _scrollTo(tester, find.byKey(tableKey));
+    final ids = result.input.lineupFor(teamId).playerIds;
+    expect(ids, hasLength(5));
+
+    final namesBefore = {
+      for (final id in ids)
+        id: tester.getTopLeft(find.byKey(ValueKey('player-name-$id'))),
+    };
+
+    final scrollable = find
+        .descendant(of: find.byKey(tableKey), matching: _horizontalScrollable())
+        .first;
+    final state = tester.state<ScrollableState>(scrollable);
+    final offsetBefore = state.position.pixels;
+
+    for (var attempt = 0; attempt < 8; attempt++) {
+      final pf = find.byKey(ValueKey('player-stat-${ids.first}-PF'));
+      if (tester.getRect(pf).left < size.width) break;
+      final start =
+          tester.getTopLeft(
+            find.byKey(ValueKey('player-stat-${ids.first}-PTS')),
+          ) +
+          const Offset(8, 12);
+      await tester.dragFrom(start, const Offset(-420, 0));
+      await tester.pumpAndSettle();
+    }
+
+    expect(
+      state.position.pixels,
+      greaterThan(offsetBefore),
+      reason: 'statistics pane moved in ${teamId.value}',
+    );
+
+    for (final id in ids) {
+      expect(
+        find.byKey(ValueKey('player-name-$id')),
+        findsOneWidget,
+        reason: 'name $id visible at rightmost statistics',
+      );
+      expect(
+        find.byKey(ValueKey('player-stat-$id-POS')),
+        findsOneWidget,
+        reason: 'position $id visible at rightmost statistics',
+      );
+      expect(
+        tester.getTopLeft(find.byKey(ValueKey('player-name-$id'))),
+        namesBefore[id],
+        reason: 'identity of $id did not move with the statistics',
+      );
+      for (final metric in [
+        'PTS',
+        'FG',
+        '3PT',
+        'FT',
+        'REB',
+        'AST',
+        'STL',
+        'BLK',
+        'TOV',
+        'PF',
+      ]) {
+        expect(
+          find.byKey(ValueKey('player-stat-$id-$metric')),
+          findsOneWidget,
+          reason: '$metric for $id exists',
+        );
+      }
+      expect(
+        tester.getRect(find.byKey(ValueKey('player-stat-$id-PF'))).left,
+        lessThan(size.width),
+        reason: 'PF for $id is on screen at the rightmost position',
+      );
+    }
+    _expectNoOverflow(tester);
+  }
 }
 
 /// Taps Rematch (starting a real attempt) and then Return to League.
@@ -324,7 +424,13 @@ void main() {
     ) async {
       _useViewport(tester, size);
       final controlled = await _pumpResult(tester, baseRequest, base);
-      await _walkResults(tester, baseRequest, base, expectOvertime: false);
+      await _walkResults(
+        tester,
+        baseRequest,
+        base,
+        expectOvertime: false,
+        viewport: size,
+      );
       await _exerciseActions(tester, controlled);
     });
 
@@ -338,6 +444,7 @@ void main() {
         overtimeRequest,
         overtime,
         expectOvertime: true,
+        viewport: size,
       );
       await _exerciseActions(tester, controlled);
     });

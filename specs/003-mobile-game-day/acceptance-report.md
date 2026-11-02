@@ -75,9 +75,13 @@ and controls build at every width.
 
 Actions are exercised, not just located: at each width the suite taps **Rematch** (verifying a new
 request, a new seed, the loading state, then a completed result) and taps **Return to League**
-(verifying the root route and no remaining `GameScreen`). The long-name test measures the table's
-horizontal offset before and after dragging, requires it to increase, requires the `PF` cell to move
-from outside the viewport to inside it, and requires the page's vertical offset to stay unchanged.
+(verifying the root route and no remaining `GameScreen`).
+
+Player identity is verified per width and per team, not once: for both teams at each of the three
+widths, the statistics pane is scrolled to its right edge and the suite asserts the pane's offset
+increased, all ten statistic cells exist for all five players, `PF` is on screen for every player, and
+all five names and positions remain visible at unchanged screen positions. The long-name test adds the
+truncation check (full text, `Text.overflow` null, no overflow, identity unmoved).
 
 **Limits:** widget-test layout is not a device render. Font metrics, system text scaling, gesture
 physics and real clipping are not measured by these tests.
