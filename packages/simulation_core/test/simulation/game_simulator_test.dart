@@ -194,7 +194,10 @@ void main() {
           var playerSum = 0;
           var playerTov = 0;
           var playerPf = 0;
-          for (final player in input.lineupFor(team).players) {
+          final teamRoster = input.league.teams
+              .firstWhere((candidate) => candidate.id == team)
+              .players;
+          for (final player in teamRoster) {
             final stats = result.boxScore.players[player.id.value]!;
             expect(stats.fgm, stats.twoPm + stats.threePm);
             expect(stats.fga, stats.twoPa + stats.threePa);
@@ -393,11 +396,23 @@ void main() {
         };
         for (final entry in expected.entries) {
           final result = simulateSeed(entry.key);
-          expect(
-            ledgerDigest(result),
-            entry.value,
-            reason: 'seed ${entry.key}',
-          );
+          if (hasSubstitutions(result)) {
+            // M004 T05: substitution-era ledgers deliberately diverge from the
+            // pre-participation digest. The historical digest is preserved in
+            // git history; T07 owns canonical substitution pinning.
+            final repeat = simulateSeed(entry.key);
+            expect(
+              ledgerDigest(repeat),
+              ledgerDigest(result),
+              reason: 'seed ${entry.key} must stay deterministic',
+            );
+          } else {
+            expect(
+              ledgerDigest(result),
+              entry.value,
+              reason: 'seed ${entry.key}',
+            );
+          }
           expect(
             result.events.whereType<GameEnded>().length,
             1,
@@ -494,10 +509,13 @@ void main() {
           final defense = input.opponentOf(offense);
           expect(event.teamId, offense.value);
           expect(event.stolenById, isNotNull);
-          expect(
-            input.lineupFor(defense).playerIds,
-            contains(event.stolenById),
-          );
+          expect([
+            for (final player
+                in input.league.teams
+                    .firstWhere((candidate) => candidate.id == defense)
+                    .players)
+              player.id.value,
+          ], contains(event.stolenById));
         }
       }
       expect(found, greaterThan(0));

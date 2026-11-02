@@ -1,6 +1,7 @@
 import '../generation/deterministic_random.dart';
 import '../models/ids.dart';
 import '../models/player.dart';
+import '../models/team.dart';
 import 'action_intent.dart';
 import 'event_accounting.dart';
 import 'game_event.dart';
@@ -8,6 +9,7 @@ import 'game_fingerprint.dart';
 import 'game_input.dart';
 import 'game_reducer.dart';
 import 'game_result.dart';
+import 'court_lineup.dart';
 import 'game_rules.dart';
 import 'game_validation.dart';
 import 'phase_trace.dart';
@@ -287,14 +289,17 @@ final class _GameRun {
       for (final player in team.players) player.id.value: player,
   };
 
-  late final TeamOnCourt _homeOnCourt = TeamOnCourt(
+  late TeamOnCourt _homeOnCourt = TeamOnCourt(
     teamId: input.homeTeamId,
     lineup: input.homeLineup,
   );
-  late final TeamOnCourt _awayOnCourt = TeamOnCourt(
+  late TeamOnCourt _awayOnCourt = TeamOnCourt(
     teamId: input.awayTeamId,
     lineup: input.awayLineup,
   );
+
+  final Map<String, int> _playerFouls = <String, int>{};
+  final Set<String> _pendingPeriodReplacements = <String>{};
 
   int _sequence = 0;
   int _period = 1;
@@ -406,6 +411,22 @@ final class _GameRun {
         startingTeamId: _offense.value,
       ),
     );
+    // W5: satisfy any deferred or outstanding disqualification before the
+    // first possession of the period.
+    for (final teamId in [input.homeTeamId.value, input.awayTeamId.value]) {
+      final lineup = _onCourt(TeamId(teamId)).lineup;
+      for (final slot in lineup.slots) {
+        if (_disqualified(slot.playerId.value)) {
+          _emitFoulOutReplacement(
+            teamId: teamId,
+            playerId: slot.playerId.value,
+            clock: _clock,
+            shotClock: null,
+          );
+        }
+      }
+    }
+    _pendingPeriodReplacements.clear();
   }
 
   void _playPeriod() {
@@ -675,6 +696,13 @@ final class _GameRun {
           bonus: false,
         ),
       );
+      _recordFoul(action.foulingDefenderId!.value);
+      _emitFoulOutReplacement(
+        teamId: defense.value,
+        playerId: action.foulingDefenderId!.value,
+        clock: clock,
+        shotClock: shotClock,
+      );
       _resolveFreeThrows(
         shooterId: action.shooterId.value,
         attempts: action.freeThrowsAwarded,
@@ -715,6 +743,13 @@ final class _GameRun {
             freeThrowsAwarded: 1,
             bonus: false,
           ),
+        );
+        _recordFoul(action.foulingDefenderId!.value);
+        _emitFoulOutReplacement(
+          teamId: defense.value,
+          playerId: action.foulingDefenderId!.value,
+          clock: clock,
+          shotClock: shotClock,
         );
         _resolveFreeThrows(shooterId: action.shooterId.value, attempts: 1);
       } else {
@@ -810,6 +845,7 @@ final class _GameRun {
         bonus: false,
       ),
     );
+    _recordFoul(action.playerId.value);
     _emit(
       Turnover(
         sequence: _nextSequence(),
@@ -822,6 +858,12 @@ final class _GameRun {
       ),
     );
     _endPossession(PossessionEndReason.turnover);
+    _emitFoulOutReplacement(
+      teamId: _offense.value,
+      playerId: action.playerId.value,
+      clock: _clock,
+      shotClock: null,
+    );
   }
 
   void _resolveNonShootingFoul(NonShootingFoulAction action) {
@@ -842,7 +884,14 @@ final class _GameRun {
         bonus: bonus,
       ),
     );
+    _recordFoul(action.committingPlayerId.value);
     if (bonus) {
+      _emitFoulOutReplacement(
+        teamId: defense.value,
+        playerId: action.committingPlayerId.value,
+        clock: _clock,
+        shotClock: _shotClock,
+      );
       _resolveFreeThrows(shooterId: action.drawnByPlayerId.value, attempts: 2);
       return;
     }
@@ -853,6 +902,99 @@ final class _GameRun {
     if (_shotClock! > rules.shotClockSeconds) {
       _shotClock = rules.shotClockSeconds;
     }
+    _emitFoulOutReplacement(
+      teamId: defense.value,
+      playerId: action.committingPlayerId.value,
+      clock: _clock,
+      shotClock: _shotClock,
+    );
+  }
+
+  Team _teamById(String teamId) =>
+      input.league.teams.firstWhere((team) => team.id.value == teamId);
+
+  int _recordFoul(String playerId) =>
+      _playerFouls[playerId] = (_playerFouls[playerId] ?? 0) + 1;
+
+  bool _disqualified(String playerId) =>
+      (_playerFouls[playerId] ?? 0) >= rules.foulOutLimit;
+
+  List<Player> _eligibleBench(String teamId, CourtLineup lineup) => [
+    for (final player in _teamById(teamId).players)
+      if (!lineup.containsPlayer(player.id) && !_disqualified(player.id.value))
+        player,
+  ];
+
+  /// Deterministic replacement: same slot position first, then roster order.
+  Player? _replacementFor(String teamId, PlayerId outId) {
+    final lineup = _onCourt(TeamId(teamId)).lineup;
+    final candidates = _eligibleBench(teamId, lineup);
+    if (candidates.isEmpty) return null;
+    final slot = lineup.slotOf(outId);
+    for (final player in candidates) {
+      if (player.position == slot) return player;
+    }
+    return candidates.first;
+  }
+
+  void _applySubstitution({
+    required String teamId,
+    required String playerOutId,
+    required String playerInId,
+  }) {
+    final side = _onCourt(TeamId(teamId));
+    final players = [
+      for (final slot in side.lineup.slots)
+        slot.playerId.value == playerOutId
+            ? _playersById[playerInId]!
+            : _playersById[slot.playerId.value]!,
+    ];
+    final lineup = CourtLineup.create(
+      team: _teamById(teamId),
+      slotOrderedPlayers: players,
+    );
+    if (teamId == input.homeTeamId.value) {
+      _homeOnCourt = TeamOnCourt(teamId: input.homeTeamId, lineup: lineup);
+    } else {
+      _awayOnCourt = TeamOnCourt(teamId: input.awayTeamId, lineup: lineup);
+    }
+  }
+
+  /// Emits a mandatory foul-out substitution at the current window.
+  ///
+  /// Returns true when an event was emitted. At clock zero the requirement is
+  /// deferred to the next period's W5.
+  bool _emitFoulOutReplacement({
+    required String teamId,
+    required String playerId,
+    required int clock,
+    required int? shotClock,
+  }) {
+    if (!_disqualified(playerId)) return false;
+    if (_replacementFor(teamId, PlayerId(playerId)) == null) return false;
+    if (clock == 0) {
+      _pendingPeriodReplacements.add(teamId);
+      return false;
+    }
+    final replacement = _replacementFor(teamId, PlayerId(playerId))!;
+    _emit(
+      Substitution(
+        sequence: _nextSequence(),
+        period: _period,
+        gameClock: clock,
+        shotClock: shotClock,
+        teamId: teamId,
+        playerOutId: playerId,
+        playerInId: replacement.id.value,
+        reason: SubstitutionReason.foulOut,
+      ),
+    );
+    _applySubstitution(
+      teamId: teamId,
+      playerOutId: playerId,
+      playerInId: replacement.id.value,
+    );
+    return true;
   }
 
   void _resolveFreeThrows({required String shooterId, required int attempts}) {

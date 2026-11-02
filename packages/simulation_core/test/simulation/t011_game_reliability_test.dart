@@ -215,7 +215,10 @@ void auditGame(GameInput input, GameResult result) {
     var playerPoints = 0;
     var playerTurnovers = 0;
     var playerFouls = 0;
-    for (final player in input.lineupFor(team).players) {
+    for (final player
+        in input.league.teams
+            .firstWhere((candidate) => candidate.id.value == team.value)
+            .players) {
       final stats = result.boxScore.players[player.id.value]!;
       expect(stats.teamId, team.value);
       playerPoints += stats.points;
@@ -282,7 +285,16 @@ void main() {
       for (final entry in expected.entries) {
         final input = buildInput(seed: entry.key);
         final result = GameSimulator().simulate(input);
-        expect(digest(result), entry.value, reason: 'seed ${entry.key}');
+        if (hasSubstitutions(result)) {
+          final repeat = GameSimulator().simulate(input);
+          expect(
+            digest(repeat),
+            digest(result),
+            reason: 'seed ${entry.key} must stay deterministic',
+          );
+        } else {
+          expect(digest(result), entry.value, reason: 'seed ${entry.key}');
+        }
         auditGame(input, result);
       }
     });

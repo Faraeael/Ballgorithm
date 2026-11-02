@@ -15,17 +15,19 @@ GameInput standardInput(int seed, {GameRules? rules}) =>
 /// every published equation against it and against the ledger.
 void auditAccounting(GameInput input, GameResult result) {
   final box = result.boxScore;
-  final lineupIds = <String>{
-    ...input.homeLineup.playerIds,
-    ...input.awayLineup.playerIds,
+  final rosterIds = <String>{
+    for (final team in [input.homeTeam, input.awayTeam])
+      for (final player in team.players) player.id.value,
   };
 
+  // M004 T06: every roster player has a box row; substitutes are credited and
+  // unused players stay at zero (reducer enforces on-court eligibility).
   expect(
-    box.players.keys.toSet().difference(lineupIds),
+    box.players.keys.toSet().difference(rosterIds),
     isEmpty,
-    reason: 'only active players may be credited',
+    reason: 'only roster players may be credited',
   );
-  expect(box.players.keys.toSet(), lineupIds);
+  expect(box.players.keys.toSet(), rosterIds);
 
   for (final teamId in [input.homeTeamId, input.awayTeamId]) {
     final team = box.teams[teamId.value]!;
@@ -60,7 +62,10 @@ void auditAccounting(GameInput input, GameResult result) {
     }
 
     var players = const _Totals();
-    for (final player in input.lineupFor(teamId).players) {
+    for (final player
+        in input.league.teams
+            .firstWhere((candidate) => candidate.id == teamId)
+            .players) {
       final stats = box.players[player.id.value]!;
       expect(stats.playerId, player.id.value);
       expect(stats.teamId, teamId.value);
@@ -117,9 +122,16 @@ void auditCausality(GameInput input, GameResult result) {
   final events = result.events;
   final bySequence = {for (final event in events) event.sequence: event};
   final lineupOf = {
-    input.homeTeamId.value: input.homeLineup.playerIds.toSet(),
-    input.awayTeamId.value: input.awayLineup.playerIds.toSet(),
+    input.homeTeamId.value: input.homeLineup.playerIds,
+    input.awayTeamId.value: input.awayLineup.playerIds,
   };
+  void applySubstitution(Substitution event) {
+    final active = lineupOf[event.teamId]!;
+    final index = active.indexOf(event.playerOutId);
+    expect(index, isNot(-1));
+    expect(active, isNot(contains(event.playerInId)));
+    active[index] = event.playerInId;
+  }
 
   final missSequences = <int>{};
   final resolvedMisses = <int>{};
@@ -129,6 +141,10 @@ void auditCausality(GameInput input, GameResult result) {
     expect(event.sequence, i + 1);
     if (i > 0) {
       expect(event.period, greaterThanOrEqualTo(events[i - 1].period));
+    }
+    if (event is Substitution) {
+      applySubstitution(event);
+      continue;
     }
     if (event is FieldGoalAttempt) {
       expect(lineupOf[event.teamId], contains(event.shooterId));
@@ -202,10 +218,7 @@ void auditCausality(GameInput input, GameResult result) {
         case TurnoverReason.shotClock:
           expect(event.shotClock, 0);
           expect(event.gameClock, greaterThan(0));
-          expect(
-            event.playerId,
-            playerAt(input, TeamId(event.teamId), Position.pg),
-          );
+          expect(event.playerId, lineupOf[event.teamId]!.first);
         case TurnoverReason.offensiveFoul:
           expect(event.stolenById, isNull);
           final foul = bySequence[event.sequence - 1];
