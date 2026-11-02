@@ -1,5 +1,8 @@
 import '../models/ids.dart';
+import '../models/player.dart';
+import '../models/team.dart';
 import 'box_score.dart';
+import 'court_lineup.dart';
 import 'event_accounting.dart';
 import 'game_event.dart';
 import 'game_fingerprint.dart';
@@ -87,11 +90,50 @@ final class _FreeThrowGroup {
   String? groupId;
 }
 
+enum _SubWindowKind { w0, w1, w2, w4, w5 }
+
+enum _HornPhase { p1, p2 }
+
+final class _SubWindow {
+  _SubWindow({
+    required this.kind,
+    required this.teamId,
+    required this.sequence,
+  });
+
+  final _SubWindowKind kind;
+
+  /// `null` means both teams may substitute in this window.
+  final String? teamId;
+  final int sequence;
+  final Map<String, Set<String>> usedPlayers = <String, Set<String>>{};
+}
+
 final class _Replay {
-  _Replay(this.input, this.events);
+  _Replay(this.input, this.events) {
+    _lineups = {
+      input.homeTeamId.value: input.homeLineup,
+      input.awayTeamId.value: input.awayLineup,
+    };
+    _teamsById = {for (final team in input.league.teams) team.id.value: team};
+    _rosterById = {
+      for (final team in input.league.teams)
+        for (final player in team.players) player.id.value: player,
+    };
+  }
 
   final GameInput input;
   final List<GameEvent> events;
+
+  late Map<String, CourtLineup> _lineups;
+  late Map<String, Team> _teamsById;
+  late Map<String, Player> _rosterById;
+  final Map<String, int> _playerFouls = <String, int>{};
+  _SubWindow? _window;
+  final Map<String, bool> _pendingHornReplacement = <String, bool>{};
+  _HornPhase? _hornPhase;
+  bool _hornPossessionEnded = false;
+  bool _turnoverFromOffensiveFoul = false;
 
   GameState _state = GameState.initial;
   int _lastSequence = 0;
@@ -179,7 +221,9 @@ final class _Replay {
       );
     }
     if (_pendingShotClockCeiling != null) {
-      if (event is! PeriodEnded && event is! GameEnded) {
+      if (event is! PeriodEnded &&
+          event is! GameEnded &&
+          event is! Substitution) {
         final sc = event.shotClock;
         if (sc == null || sc > _pendingShotClockCeiling!) {
           _fail(
@@ -216,6 +260,11 @@ final class _Replay {
       );
     }
 
+    if (event is! Substitution) {
+      _closeWindow();
+    }
+    _guardHornOrder(event);
+
     if (event is GameStarted) {
       _gameStarted(event);
     } else if (!_state.started) {
@@ -247,11 +296,7 @@ final class _Replay {
     } else if (event is Turnover) {
       _turnoverEvent(event);
     } else if (event is Substitution) {
-      _fail(
-        GameValidationCode.unsupportedEventType,
-        'event ${event.sequence}',
-        'Substitution events are not accepted until T04',
-      );
+      _substitution(event);
     } else {
       _fail(
         GameValidationCode.unsupportedEventType,
@@ -278,6 +323,7 @@ final class _Replay {
   }
 
   void _updateZeroTimeGuard(GameEvent event) {
+    if (event is Substitution) return;
     if (_state.started &&
         event.period == _state.period &&
         event.gameClock == _lastClock) {
@@ -390,6 +436,7 @@ final class _Replay {
       clearShotClock: true,
       clearPossession: true,
     );
+    _openWindow(_SubWindowKind.w5);
   }
 
   void _periodEndedEvent(PeriodEnded event) {
@@ -459,6 +506,9 @@ final class _Replay {
         'GameEnded cannot end in a tie',
       );
     }
+    _pendingHornReplacement.clear();
+    _hornPhase = null;
+    _hornPossessionEnded = false;
     _state = _state.copyWith(ended: true);
   }
 
@@ -575,7 +625,21 @@ final class _Replay {
       case PossessionEndReason.periodEnd:
         _expectedNextOffenseTeamId = null;
     }
+    final hadHornObligation = _pendingHornReplacement.isNotEmpty;
+    final offensiveFoulTurnover = _turnoverFromOffensiveFoul;
     _clearPending();
+    _turnoverFromOffensiveFoul = false;
+    if (hadHornObligation) {
+      _hornPossessionEnded = true;
+    }
+    if (event.gameClock > 0) {
+      if (reason == PossessionEndReason.madeFinalFreeThrow) {
+        _openWindow(_SubWindowKind.w2);
+      } else if (reason == PossessionEndReason.turnover &&
+          offensiveFoulTurnover) {
+        _openWindow(_SubWindowKind.w4);
+      }
+    }
     _state = _state.copyWith(clearPossession: true, clearShotClock: true);
   }
 
@@ -673,6 +737,9 @@ final class _Replay {
       event.sequence,
     );
 
+    _playerFouls[event.committingPlayerId] =
+        (_playerFouls[event.committingPlayerId] ?? 0) + 1;
+
     if (_pendingAndOne) {
       if (event.kind != FoulKind.shooting ||
           event.committingTeamId !=
@@ -696,6 +763,14 @@ final class _Replay {
         total: 1,
         event: event,
       );
+      final andOneDisqualified = _isDisqualified(event.committingPlayerId);
+      if (event.gameClock == 0) {
+        if (andOneDisqualified) {
+          _setHornObligation(event.committingTeamId, _HornPhase.p1);
+        }
+      } else if (andOneDisqualified) {
+        _openWindow(_SubWindowKind.w0, teamId: event.committingTeamId);
+      }
       return;
     }
 
@@ -801,6 +876,29 @@ final class _Replay {
       );
     }
     _noShotClockIncrease(event);
+
+    // Participation windows opened by a defensive foul (T04).
+    if (event.kind != FoulKind.offensive) {
+      final disqualified = _isDisqualified(event.committingPlayerId);
+      final awardsFreeThrows = event.freeThrowsAwarded > 0;
+      if (event.gameClock == 0) {
+        if (disqualified) {
+          _setHornObligation(
+            event.committingTeamId,
+            awardsFreeThrows ? _HornPhase.p1 : _HornPhase.p2,
+          );
+        }
+      } else if (awardsFreeThrows) {
+        // Frozen W0: only a disqualifying free-throw-awarding foul opens it,
+        // for the offending defender's team. An ordinary shooting/bonus foul
+        // opens no window here.
+        if (disqualified) {
+          _openWindow(_SubWindowKind.w0, teamId: event.committingTeamId);
+        }
+      } else {
+        _openWindow(_SubWindowKind.w1);
+      }
+    }
   }
 
   void _freeThrow(FreeThrowAttempt event) {
@@ -1091,6 +1189,9 @@ final class _Replay {
           );
         }
     }
+    if (event.reason == TurnoverReason.offensiveFoul) {
+      _turnoverFromOffensiveFoul = true;
+    }
     _pendingTurnover = true;
     _noShotClockIncrease(event);
   }
@@ -1139,7 +1240,7 @@ final class _Replay {
         'unknown team $teamId',
       );
     }
-    if (!input.isStartingPlayer(team!, _playerId(playerId))) {
+    if (!_isActive(team!, _playerId(playerId))) {
       _fail(
         GameValidationCode.playerNotActive,
         'event $sequence.playerId',
@@ -1251,6 +1352,246 @@ final class _Replay {
   GameBoxScore _boxScore() => EventAccounting.aggregate(
     ValidatedGameLedger._(input, _processed, _state),
   );
+
+  // --- Participation (M004 T04) -------------------------------------------
+
+  CourtLineup _activeLineup(String teamId) => _lineups[teamId]!;
+
+  bool _isActive(TeamId teamId, PlayerId playerId) =>
+      _activeLineup(teamId.value).containsPlayer(playerId);
+
+  bool _isDisqualified(String playerId) =>
+      (_playerFouls[playerId] ?? 0) >= input.rules.foulOutLimit;
+
+  bool _onRoster(String teamId, String playerId) =>
+      _rosterById[playerId] != null &&
+      _teamsById[teamId]!.players.any((player) => player.id.value == playerId);
+
+  List<Player> _eligibleBench(String teamId) {
+    final active = _lineups[teamId]!;
+    return [
+      for (final player in _teamsById[teamId]!.players)
+        if (!active.containsPlayer(player.id) &&
+            !_isDisqualified(player.id.value))
+          player,
+    ];
+  }
+
+  void _openWindow(_SubWindowKind kind, {String? teamId}) {
+    _window = _SubWindow(kind: kind, teamId: teamId, sequence: _lastSequence);
+  }
+
+  void _closeWindow() {
+    final window = _window;
+    if (window == null) return;
+    _window = null;
+    for (final teamId in [input.homeTeamId.value, input.awayTeamId.value]) {
+      final lineup = _lineups[teamId]!;
+      final disqualified = [
+        for (final slot in lineup.slots)
+          if (_isDisqualified(slot.playerId.value)) slot.playerId.value,
+      ];
+      if (disqualified.isEmpty) continue;
+      if (_eligibleBench(teamId).isEmpty) continue;
+      _fail(
+        GameValidationCode.playerNotActive,
+        'window ${window.kind.name}',
+        'disqualified ${disqualified.join(', ')} for $teamId must be replaced '
+            'before this substitution window closes',
+      );
+    }
+  }
+
+  void _setHornObligation(String teamId, _HornPhase phase) {
+    if (_eligibleBench(teamId).isEmpty) return;
+    _pendingHornReplacement[teamId] = true;
+    _hornPhase = phase;
+    _hornPossessionEnded = false;
+  }
+
+  void _guardHornOrder(GameEvent event) {
+    if (_pendingHornReplacement.isEmpty) return;
+    final bool allowed;
+    if (event is FreeThrowAttempt) {
+      allowed = _hornPhase == _HornPhase.p1 && _freeThrows != null;
+    } else if (event is DeadBallMiss) {
+      allowed = _hornPhase == _HornPhase.p1 && _pendingMiss != null;
+    } else if (event is PossessionEnded) {
+      allowed = !_hornPossessionEnded;
+    } else if (event is PeriodEnded) {
+      allowed = _hornPossessionEnded;
+    } else if (event is PeriodStarted) {
+      allowed = _hornPossessionEnded && _periodEnded;
+    } else if (event is Substitution) {
+      allowed = _window?.kind == _SubWindowKind.w5;
+    } else if (event is GameEnded) {
+      allowed = true;
+    } else {
+      allowed = false;
+    }
+    if (!allowed) {
+      _fail(
+        GameValidationCode.deadBallInvalid,
+        'event ${event.sequence}',
+        'event is not part of the pending horn replacement sequence',
+      );
+    }
+  }
+
+  void _substitution(Substitution event) {
+    final window = _window;
+    if (window == null) {
+      _fail(
+        GameValidationCode.deadBallInvalid,
+        'event ${event.sequence}',
+        'no substitution window is open',
+      );
+    }
+    if (window.teamId != null && window.teamId != event.teamId) {
+      _fail(
+        GameValidationCode.wrongTeam,
+        'event ${event.sequence}.teamId',
+        'this window is restricted to ${window.teamId}',
+      );
+    }
+    if (event.period != _state.period) {
+      _fail(
+        GameValidationCode.periodNotStarted,
+        'event ${event.sequence}.period',
+        'substitution period does not match the active period',
+      );
+    }
+    if (event.gameClock == 0) {
+      _fail(
+        GameValidationCode.deadBallInvalid,
+        'event ${event.sequence}.gameClock',
+        'no substitution may occur at game clock zero',
+      );
+    }
+    if (event.gameClock != _state.gameClock) {
+      _fail(
+        GameValidationCode.deadBallClockAdvanced,
+        'event ${event.sequence}.gameClock',
+        'substitution must not change the game clock',
+      );
+    }
+    if (event.shotClock != _state.shotClock) {
+      _fail(
+        GameValidationCode.invalidShotClock,
+        'event ${event.sequence}.shotClock',
+        'substitution must not change the shot clock',
+      );
+    }
+    final teamId = event.teamId;
+    final lineup = _lineups[teamId];
+    if (lineup == null) {
+      _fail(
+        GameValidationCode.wrongTeam,
+        'event ${event.sequence}.teamId',
+        'unknown team $teamId',
+      );
+    }
+    final active = lineup;
+    final outId = event.playerOutId;
+    final inId = event.playerInId;
+    if (outId == inId) {
+      _fail(
+        GameValidationCode.playerNotActive,
+        'event ${event.sequence}',
+        'a player cannot replace themselves',
+      );
+    }
+    if (!active.containsPlayer(PlayerId(outId))) {
+      _fail(
+        GameValidationCode.playerNotActive,
+        'event ${event.sequence}.playerOutId',
+        'player $outId is not on court for $teamId',
+      );
+    }
+    if (active.containsPlayer(PlayerId(inId))) {
+      _fail(
+        GameValidationCode.duplicateLineupPlayer,
+        'event ${event.sequence}.playerInId',
+        'player $inId is already on court',
+      );
+    }
+    if (!_onRoster(teamId, inId)) {
+      _fail(
+        GameValidationCode.foreignLineupPlayer,
+        'event ${event.sequence}.playerInId',
+        'player $inId is not on team $teamId',
+      );
+    }
+    if (_isDisqualified(inId)) {
+      _fail(
+        GameValidationCode.playerNotActive,
+        'event ${event.sequence}.playerInId',
+        'player $inId is disqualified and cannot enter',
+      );
+    }
+
+    final disqualifedActive = [
+      for (final slot in active.slots)
+        if (_isDisqualified(slot.playerId.value)) slot.playerId.value,
+    ];
+    if (disqualifedActive.isNotEmpty && _eligibleBench(teamId).isNotEmpty) {
+      if (event.reason != SubstitutionReason.foulOut ||
+          !disqualifedActive.contains(outId)) {
+        _fail(
+          GameValidationCode.playerNotActive,
+          'event ${event.sequence}',
+          'a disqualified player must be replaced first',
+        );
+      }
+    }
+
+    switch (event.reason) {
+      case SubstitutionReason.foulOut:
+        if (!_isDisqualified(outId)) {
+          _fail(
+            GameValidationCode.playerNotActive,
+            'event ${event.sequence}.playerOutId',
+            'foul-out substitution requires a disqualified player '
+                '(fouls ${_playerFouls[outId] ?? 0}/${input.rules.foulOutLimit})',
+          );
+        }
+      case SubstitutionReason.tactical:
+        if (_isDisqualified(outId)) {
+          _fail(
+            GameValidationCode.playerNotActive,
+            'event ${event.sequence}.playerOutId',
+            'a tactical substitution cannot remove a disqualified player',
+          );
+        }
+    }
+
+    final used = window.usedPlayers.putIfAbsent(teamId, () => <String>{});
+    if (!used.add(outId) || !used.add(inId)) {
+      _fail(
+        GameValidationCode.deadBallInvalid,
+        'event ${event.sequence}',
+        'a player may appear at most once per substitution window',
+      );
+    }
+
+    final replacement = _rosterById[inId]!;
+    final players = [
+      for (final slot in active.slots)
+        slot.playerId.value == outId
+            ? replacement
+            : _rosterById[slot.playerId.value]!,
+    ];
+    _lineups[teamId] = CourtLineup.create(
+      team: _teamsById[teamId]!,
+      slotOrderedPlayers: players,
+    );
+
+    if (_pendingHornReplacement.remove(teamId) != null &&
+        _pendingHornReplacement.isEmpty) {
+      _hornPhase = null;
+      _hornPossessionEnded = false;
+    }
+  }
 
   void _clearPending() {
     _pendingMadeFg = false;

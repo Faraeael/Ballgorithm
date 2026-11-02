@@ -24,6 +24,14 @@ GameInput buildInput({
   );
 }
 
+/// True when a ledger contains a participation change.
+bool hasSubstitutions(GameResult result) =>
+    result.events.any((event) => event is Substitution);
+
+/// Events before the first substitution, used for v4/v5 equivalence.
+List<GameEvent> eventsBeforeFirstSubstitution(List<GameEvent> events) =>
+    events.takeWhile((event) => event is! Substitution).toList();
+
 GameBoxScore account(GameInput input, List<GameEvent> events) =>
     EventAccounting.aggregate(
       GameEventReducer.validate(input, buildLedger(input, events)),
@@ -274,6 +282,30 @@ final class GameScript {
       shotClock: shotClock,
       possessionId: possessionId,
       offenseTeamId: team.value,
+      reason: reason,
+    );
+    events.add(event);
+    return event;
+  }
+
+  Substitution substitution({
+    required TeamId team,
+    required String playerOut,
+    required String playerIn,
+    required SubstitutionReason reason,
+    int? clock,
+    int? shotClock,
+    bool clearShotClock = false,
+  }) {
+    final last = events.last;
+    final event = Substitution(
+      sequence: _next(),
+      period: _period,
+      gameClock: clock ?? last.gameClock,
+      shotClock: clearShotClock ? null : (shotClock ?? last.shotClock),
+      teamId: team.value,
+      playerOutId: playerOut,
+      playerInId: playerIn,
       reason: reason,
     );
     events.add(event);

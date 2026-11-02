@@ -61,7 +61,7 @@ void main() {
       );
     });
 
-    test('reducer rejects Substitution explicitly until T04', () {
+    test('reducer rejects a Substitution with no open window', () {
       final input = buildInput();
       final ledger = GameEventLedger(
         gameId: input.gameId,
@@ -83,11 +83,19 @@ void main() {
             shotClock: null,
             startingTeamId: input.startingTeamId.value,
           ),
-          Substitution(
+          PossessionStarted(
             sequence: 3,
             period: 1,
             gameClock: input.rules.periodSeconds,
-            shotClock: null,
+            shotClock: input.rules.shotClockSeconds,
+            possessionId: 'p1',
+            offenseTeamId: input.startingTeamId.value,
+          ),
+          Substitution(
+            sequence: 4,
+            period: 1,
+            gameClock: input.rules.periodSeconds,
+            shotClock: input.rules.shotClockSeconds,
             teamId: input.homeTeamId.value,
             playerOutId: event.playerOutId,
             playerInId: event.playerInId,
@@ -101,7 +109,7 @@ void main() {
           isA<GameValidationException>().having(
             (e) => e.toString(),
             'message',
-            contains('not accepted until T04'),
+            contains('no substitution window is open'),
           ),
         ),
       );
@@ -390,9 +398,17 @@ void main() {
     );
   });
 
-  test('simulator emits no Substitution yet', () {
-    final result = GameSimulator().simulate(buildInput(seed: 7));
-    expect(result.events.whereType<Substitution>(), isEmpty);
+  test('simulator emits only foul-out substitutions and they validate', () {
+    final result = GameSimulator().simulate(buildInput(seed: 42));
+    final substitutions = result.events.whereType<Substitution>().toList();
+    expect(substitutions, isNotEmpty);
+    expect(
+      substitutions.every(
+        (event) => event.reason == SubstitutionReason.foulOut,
+      ),
+      isTrue,
+      reason: 'the T05 simulator never emits tactical substitutions',
+    );
     expect(result.simulationVersion, 5);
     expect(result.eventSchemaVersion, 3);
   });
