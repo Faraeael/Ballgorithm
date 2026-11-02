@@ -27,17 +27,19 @@ Before design, code, tests, or documentation changes:
 
 Do not treat the mere presence of an unchecked task, a proposed amendment, or a passing test as permission to implement, rebaseline, or sign off a milestone.
 
-## 3. Current project checkpoint (2026-10-31; reverify before acting)
+## 3. Current project checkpoint (2026-11-02; reverify before acting)
 
-- Repository: `Faraeael/Ballgorithm`.
-- Active M002 integration branch: `develop/m002`; reported local worktree: `E:\ballgorithm-dev`. As of the 2026-10-31 OMP verification, `AGENTS.md` was present only in `E:\basketball-manager-sdd` on the historical `docs/m002-frozen-spec` branch; **the active development worktree was missing this file**. Install this updated file at `E:\ballgorithm-dev\AGENTS.md` before starting the next development session. Verify locally; the remote branch may lag or differ from a local worktree.
+**Authoritative current-status pointer: this section.** It supersedes any stale status sentence in older operational documents. Frozen specification text is exempt: it records the state at freeze time and is never rewritten to match the present.
+
+- Repository: `Faraeael/Ballgorithm`. Active branch: `develop/m002`; worktree: `E:\ballgorithm-dev`; checkpoint commit `6ca43b632e9229216a49966b35bb660c6651c2e8`, pushed 2026-11-02.
 - M001 league/player foundation: accepted **GO** baseline.
-- M002 possession simulation: **T004–T015 have been implemented/executed** according to `specs/002-possession-simulation/tasks.md`; M002 is **not closed**.
-- T014 / **AC09:** historical v1 E4 ball-handling experiment was inconclusive; a v2 development rerun passed, but do **not** silently rewrite the frozen result or declare overall AC09 signed off.
-- T015 / **AC10:** 1,120-game calibration was executed, but owner acceptance remains pending. Recorded issues include 24.76 turnovers/100 possessions and 14.65 shot-clock violations/game; the A1 duration-after-14-second-reset interaction warrants design review. These are diagnostic observations, **not approval to tune parameters**.
-- The previously reported T015 commit was `06e080e30bbfb489e5d41cd10fb81550d627f745`. Treat this as a historical checkpoint, **not** a guarantee of current HEAD.
+- M002 possession simulation: **T001–T019 complete; ACCEPTED WITH CONDITIONS** on 2026-10-31 (`specs/002-possession-simulation/M002-OWNER-ACCEPTANCE.md`). Accepted scope is the technical possession-engine foundation only — simulation v4, rules 2, event schema 2, fingerprint 2, duration model 2, PRNG `xorshift32-v1`.
+- T014 / **AC09:** ACCEPTED for simulation v4 on 6/6 fresh held-out sensitivity experiments. The historical v1 E4 `INCONCLUSIVE` result and its numbers remain unchanged in `t014-sensitivity-report.md` and must never be re-scored.
+- T015 / **AC10:** CONDITIONALLY ACCEPTED for the limited M002 foundation. Historical diagnostics stand: v2 `tovPer100Completed` 24.7594 above the `[7, 24]` band, and 14.65 shot-clock violations/game with the documented A1 14-second-reset interaction. These are preserved records, **not** approval to tune parameters.
+- **T016–T019 are complete and closed:** T016 after the provenance correction, T017 after blocker resolution, T018 for the AC01–AC13 evidence report, T019 on human owner acceptance. M002 is **not** a production, realism, store-readiness or Android-performance approval — read the conditions in `M002-OWNER-ACCEPTANCE.md` §7.
 - Amendment 003 (continuation timing): **design/review only unless separately approved**. Do not assume a proposal file exists in every worktree; inspect first.
-- **T016–T019 remain unauthorized** until the owner explicitly approves them. No M002 completion/GO claim.
+- M003 **Mobile Game Day**: specification **FROZEN and owner-approved 2026-11-02** in `specs/003-mobile-game-day/`. T020 is complete; T021–T025 are pending and each requires separate authorization. No implementation is authorized.
+- M004 **Player Participation**: candidate only, not frozen, not numbered as a commitment. **Basketball Decision-Making**: unscheduled later work. `specs/002-possession-simulation/M003-BACKLOG.md` remains planning input and assigns nothing.
 
 **Important correction:** an older AGENTS.md stated that M002 had zero implementation and that T003 was wholly unapproved. That statement is obsolete. Some frozen `plan.md`/`design-decisions.md` headers still describe their original pre-implementation state; use the later task/evidence record for execution status, without changing the frozen historical text just to make it read as current.
 

@@ -1,4 +1,4 @@
-# Tasks 002 — PHASE 1, T008, AMENDMENT 001, T009–T015 EXECUTED; T016–T019 NOT AUTHORIZED
+# Tasks 002 — T001–T019 COMPLETE; M002 ACCEPTED WITH CONDITIONS (2026-10-31)
 
 Specification frozen: 2026-10-28 at baseline `a431aeb5a652b134ce40cf442c7d9ffee874fe79`.
 Phase 1 (T004–T007) is implemented on `feat/m002-phase1-simulation-foundation`.
@@ -9,10 +9,14 @@ T011 is implemented on `feat/m002-t011-game-reliability`; see `t011-game-reliabi
 T012 is implemented on `develop/m002`; see `t012-canonical-ledger.md`.
 T013 is implemented on `develop/m002`; see `t013-adversarial-validation.md`.
 T014 execution is complete on `develop/m002`; see `t014-sensitivity-report.md`.
-The AC09 statistical gate is NOT passed on the historical v1 data (E4 v1 was
-inconclusive; the v2 development rerun passed). T015 execution is complete and
-AC10 is READY FOR OWNER REVIEW (not passed): the passive A1 trace closed the last
-mandatory measurement gap. T016–T019 remain unauthorized and unchecked.
+The AC09 gate was resolved by the owner on 2026-10-31 for simulation v4; the
+historical v1 E4 inconclusive result is preserved unchanged in
+`t014-sensitivity-report.md`. AC10 is CONDITIONALLY ACCEPTED for the limited M002
+foundation. T016 closed after the provenance correction, T017 closed after the
+blocker was resolved, T018 delivered the AC01–AC13 report, and T019 closed on
+human owner acceptance. M002 is ACCEPTED WITH CONDITIONS — the decision record is
+`M002-OWNER-ACCEPTANCE.md`, which does not rewrite any earlier task text. Current
+cross-milestone status is maintained in `AGENTS.md` §3.
 
 Current workflow: all further authorized M002 tasks land as one reviewed commit
 per task on `develop/m002` in the `E:/ballgorithm-dev` worktree. The older
@@ -20,8 +24,8 @@ per-milestone branches named above are historical records of where each task was
 first implemented; they no longer exist.
 
 OD-01…OD-14 and A1/A2 are recorded in `design-decisions.md` and
-`review-findings.md`. The specification is frozen; no implementation task may
-start before T003 receives separate authorization.
+`review-findings.md`. The specification is frozen; T003 authorization was granted
+and T001–T019 are complete. Current cross-milestone status is in `AGENTS.md` §3.
 
 ## Design/review gate
 
