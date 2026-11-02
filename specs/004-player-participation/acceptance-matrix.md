@@ -1,7 +1,7 @@
 # Acceptance Matrix 004 — Foundational Player Participation
 
-> **Status:** **DRAFT — NOT FROZEN.** All rows are **NOT RUN**; this matrix defines what evidence will
-> be required, not what has been achieved.
+> **Status:** **FROZEN — OWNER APPROVED 2026-11-02.** All rows remain **NOT RUN**; this matrix defines
+the evidence required, not evidence achieved.
 
 | ID | Requirement | Evidence required | Status |
 |---|---|---|---|

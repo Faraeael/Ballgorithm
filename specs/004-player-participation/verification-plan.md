@@ -1,6 +1,7 @@
 # Verification Plan 004 — Foundational Player Participation
 
-> **Status:** **DRAFT — NOT FROZEN.** Defines required evidence; nothing here has been run.
+> **Status:** **FROZEN — OWNER APPROVED 2026-11-02.** Defines required evidence; nothing here has been
+run.
 
 ## 1. Test layers
 

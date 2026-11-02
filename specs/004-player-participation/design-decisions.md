@@ -1,7 +1,7 @@
 # Design Decisions 004 — Foundational Player Participation
 
-> **Status:** **DRAFT — NOT FROZEN.** Proposed decisions for owner review. Items marked **[owner]** need
-> an explicit decision before freezing; the rest are implementation details inside the proposed scope.
+> **Status:** **FROZEN — OWNER APPROVED 2026-11-02.** DD-M004-01, 03, 04, 06, 07, 10 and 14 are
+approved by the owner, together with the supporting decisions and the phase-aware horn contract.
 > **Baseline:** `develop/m002` at `125e1e652baa41db17f3684242bbd73683f9602b`.
 
 ---

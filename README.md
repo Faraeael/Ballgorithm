@@ -7,6 +7,8 @@ Offline-first basketball manager prototype.
   Accepted with conditions; see `specs/002-possession-simulation/M002-OWNER-ACCEPTANCE.md`.
 - Milestone 003 — Mobile Game Day. Accepted 2026-11-02 (functional foundation); see
   `specs/003-mobile-game-day/M003-OWNER-ACCEPTANCE.md`.
+- Milestone 004 — Foundational Player Participation. Specification frozen 2026-11-02; implementation
+  not started.
 
 Current cross-milestone status is maintained in `AGENTS.md` §3. No NBA-level realism,
 release-readiness or Android performance claim has been made or measured.

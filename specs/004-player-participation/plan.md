@@ -1,6 +1,7 @@
 # Plan 004 — Foundational Player Participation
 
-> **Status:** **DRAFT — NOT FROZEN.** Planning input for owner review; no implementation authorized.
+> **Status:** **FROZEN — OWNER APPROVED 2026-11-02.** No implementation authorized; T02 awaits a
+separate owner authorization.
 > **Baseline:** `develop/m002` at `125e1e652baa41db17f3684242bbd73683f9602b`.
 > **Companions:** `spec.md`, `tasks.md`, `design-decisions.md`, `acceptance-matrix.md`, `verification-plan.md`.
 

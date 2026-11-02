@@ -1,6 +1,7 @@
 # Tasks 004 — Foundational Player Participation
 
-> **Status:** **DRAFT — NOT FROZEN.** No task below is authorized by appearing here.
+> **Status:** **FROZEN — OWNER APPROVED 2026-11-02.** No task below is authorized by appearing here;
+each needs its own owner authorization, starting with T02.
 > **Baseline:** `develop/m002` at `125e1e652baa41db17f3684242bbd73683f9602b`.
 > Each task needs its own owner authorization after the specification is frozen.
 
@@ -15,7 +16,7 @@
 
 ---
 
-## T01 — Specification package drafting — **DRAFT COMPLETE (2026-11-02); AWAITING OWNER REVIEW**
+## T01 — Specification package drafting — **COMPLETE — FROZEN 2026-11-02; T02 AWAITING AUTHORIZATION**
 
 **Purpose:** produce a reviewable M004 contract package.
 
@@ -26,7 +27,8 @@
 **Acceptance evidence:** six DRAFT documents; no source, test, fixture or version-constant change; no
 push; internal contradiction review recorded.
 
-**Stop condition:** owner review. Freezing requires a separate authorization.
+**Stop condition:** completed. The specification was frozen by explicit owner approval on 2026-11-02
+(see `spec.md` freeze record). T02 requires its own authorization.
 
 ---
 

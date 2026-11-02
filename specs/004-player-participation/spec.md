@@ -1,7 +1,19 @@
 # Specification 004 — Foundational Player Participation
 
-> **Status:** **DRAFT — NOT FROZEN.** Prepared for owner review under `BALLGORITHM — M004 T01 SPECIFICATION DRAFT`.
-> Nothing here authorizes implementation. Proposed version numbers are targets, not applied constants.
+> **Status:** **FROZEN — OWNER APPROVED 2026-11-02.** Implemented by T02–T10, each needing its own
+authorization; version numbers below are targets until their task lands.
+>
+> **Freeze record — owner approval 2026-11-02.** M004 — Foundational Player Participation, Design 1,
+approved. Approved decisions: DD-M004-01, 03, 04, 06, 07, 10, 14, plus the supporting decisions and the
+final phase-aware horn-resolution contract (P1/P2/P3). Owner acknowledgements: `ActiveLineup` is
+replaced in the public v5 contract; disqualification is fixed at six personal fouls; depleted-roster
+continuation simulates no technical foul; post-field-goal substitution windows remain excluded;
+clock-zero disqualifications defer replacement to W5 of the next period when play continues; tactical
+substitution events are ledger-valid while the simulator emits only foul-out substitutions; rotations,
+fatigue, coaching AI and user lineup controls remain deferred; every roster player has a v5
+`GameBoxScore` entry including unused players with zero statistics; v5 does not transparently
+deserialize v4 ledgers; slot-based positional semantics are approved. T02 is **not** authorized by this
+freeze.
 > **Baseline:** `develop/m002` at `125e1e652baa41db17f3684242bbd73683f9602b` (M003 accepted and closed).
 > **Predecessors:** M002 possession contracts (frozen), M003 Mobile Game Day (accepted), `M003-BACKLOG.md` (planning input).
 
