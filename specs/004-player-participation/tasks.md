@@ -95,7 +95,8 @@ administrative loop bound.
 **Acceptance evidence:** the negative-test list in `verification-plan.md` §3 all rejected with typed
 codes; legal windows accepted in hand-built ledgers; shot-clock ceiling survives W1 and still rejects a
 later illegal increase; no substitution at clock 0; eligibility after a substitution follows the
-current five; the horn obligation is satisfied only by W5 and is void after `GameEnded`.
+current five; the horn obligation allows only the ordered horn-resolution events and is satisfied only
+by W5 (void after `GameEnded`); a live event before the W5 replacement is rejected.
 
 **Stop condition:** any need to alter generic clock or possession rules beyond the documented
 exemption — stop.

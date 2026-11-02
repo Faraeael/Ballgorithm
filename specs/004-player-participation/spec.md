@@ -124,8 +124,14 @@ inside a free-throw group opened for another reason, after `DeadBallMiss`, after
 - While an obligation is pending, the window-close check treats the over-limit active player as
   authorized **only** because of that obligation. It is not a general exception: an over-limit active
   player with an eligible substitute and no pending obligation remains invalid.
-- The obligation must be satisfied before the next period's first `PossessionStarted`; any other event
-  while an obligation is pending and an eligible substitute exists is invalid.
+- While an obligation is pending, only the ordered horn-resolution transitions are legal:
+  `FreeThrowAttempt` events of the already-awarded group, `DeadBallMiss` for a missed final free
+  throw, `PeriodEnded`, `PeriodStarted`, a lawful W5 `Substitution`, and `GameEnded`.
+- Every other event while an obligation is pending and an eligible substitute exists is invalid —
+  including `PossessionStarted`, `FieldGoalAttempt`, `Rebound`, `Turnover`, `PersonalFoul` and
+  `Substitution` outside W5. Live play may not resume before the replacement.
+- The obligation must be cleared by the W5 `Substitution` before the next period's first
+  `PossessionStarted`. `GameEnded` voids it; depleted teams never acquire one.
 - If the team is depleted, no obligation arises (continuation is legal) and the over-limit player may
   continue playing.
 - A buzzer non-bonus foul disqualifies identically and defers to W5.

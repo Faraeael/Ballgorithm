@@ -78,6 +78,9 @@ Window opening/closing:
 - At close, assert: for each team, an over-limit active player implies either an empty eligible bench
   or a recorded pending replacement obligation from a clock-0 disqualification. The obligation is
   cleared only by a lawful W5 substitution (or by `GameEnded`), never by an arbitrary event.
+- While an obligation is pending, an explicit allowlist governs which events may follow (free throws of
+  the awarded group, `DeadBallMiss`, `PeriodEnded`, `PeriodStarted`, W5 `Substitution`, `GameEnded`);
+  any live event is rejected until the replacement is recorded.
 
 Ceiling rule: the generic pending-shot-clock consumption block gains one exemption — `Substitution`
 neither validates against nor clears `_pendingShotClockCeiling`; it must still match the current

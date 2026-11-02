@@ -229,8 +229,10 @@ over-limit active player only through that obligation. Depleted teams accrue no 
 next event or the checker would need a broad exception that also permits illegal continuation. The
 obligation keeps both invariants narrow and testable.
 
-**Consequence:** the state machine gains one per-team flag; fixtures must cover satisfied, unsatisfied
-(rejected), game-ended and depleted cases.
+**Consequence:** the state machine gains one per-team flag and a narrow allowlist of events that may
+follow while it is pending (free throws of the awarded group, `DeadBallMiss`, `PeriodEnded`,
+`PeriodStarted`, W5 `Substitution`, `GameEnded`); any live event is rejected. Fixtures must cover
+satisfied, unsatisfied (rejected), live-event-while-pending (rejected), game-ended and depleted cases.
 
 ## DD-M004-20 — T03 is a contract gate, not a feature gate
 
