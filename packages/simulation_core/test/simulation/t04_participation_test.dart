@@ -1093,7 +1093,7 @@ void main() {
       );
     });
 
-    test('rejects multiple disqualified players left active', () {
+    test('rejects replay while a disqualified player remains active', () {
       final result = GameSimulator().simulate(input);
       final events = result.events.toList();
       final subIndexes = [
@@ -1115,6 +1115,95 @@ void main() {
         input,
         GameValidationCode.playerNotActive,
       );
+    });
+
+    test('rejects a window closing with two disqualified players', () {
+      // Two disqualifications can coexist only while a window is open; the
+      // window-close guard must reject the ledger before it can validate.
+      final input = _input(rules: _customRules);
+      final offense = input.startingTeamId;
+      final defense = input.opponentOf(offense);
+      final first = _starter(input, defense, Position.pg);
+      final second = _starter(input, defense, Position.sg);
+      final drawer = _starter(input, offense, Position.pg);
+      final script = GameScript(input)
+        ..startGame()
+        ..startPeriod(1, offense, clock: 720);
+      for (var i = 0; i < 5; i++) {
+        final clock = 700 - i * 10;
+        script
+          ..startPossession('h$i', offense, clock: clock, shotClock: 24)
+          ..foul(
+            team: defense,
+            player: first,
+            kind: FoulKind.nonShooting,
+            drawnBy: drawer,
+            clock: clock - 5,
+            shotClock: 19,
+          )
+          ..turnover(
+            team: offense,
+            player: drawer,
+            reason: TurnoverReason.nonSteal,
+            clock: clock - 5,
+            shotClock: 19,
+          )
+          ..endPossession(
+            possessionId: 'h$i',
+            team: offense,
+            reason: PossessionEndReason.turnover,
+            clock: clock - 5,
+            shotClock: 19,
+          )
+          ..startPossession('a$i', defense, clock: clock - 5, shotClock: 24)
+          ..turnover(
+            team: defense,
+            player: first,
+            reason: TurnoverReason.nonSteal,
+            clock: clock - 10,
+            shotClock: 19,
+          )
+          ..endPossession(
+            possessionId: 'a$i',
+            team: defense,
+            reason: PossessionEndReason.turnover,
+            clock: clock - 10,
+            shotClock: 19,
+          );
+      }
+      script
+        ..startPossession('h5', offense, clock: 600, shotClock: 24)
+        ..foul(
+          team: defense,
+          player: first,
+          kind: FoulKind.nonShooting,
+          drawnBy: drawer,
+          clock: 595,
+          shotClock: 19,
+        )
+        ..foul(
+          team: defense,
+          player: second,
+          kind: FoulKind.nonShooting,
+          drawnBy: drawer,
+          clock: 590,
+          shotClock: 14,
+        )
+        ..turnover(
+          team: offense,
+          player: drawer,
+          reason: TurnoverReason.nonSteal,
+          clock: 590,
+          shotClock: 14,
+        )
+        ..endPossession(
+          possessionId: 'h5',
+          team: offense,
+          reason: PossessionEndReason.turnover,
+          clock: 590,
+          shotClock: 14,
+        );
+      _expectCode(script.ledger(), input, GameValidationCode.playerNotActive);
     });
 
     test(
