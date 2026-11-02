@@ -112,7 +112,6 @@ class GameResultView extends StatelessWidget {
           team: away,
           score: result.awayScore,
           scoreKey: const ValueKey('result-score-away'),
-          isWinner: winner.id.value == away.id.value,
         ),
         const SizedBox(height: 8),
         _scoreRow(
@@ -121,7 +120,6 @@ class GameResultView extends StatelessWidget {
           team: home,
           score: result.homeScore,
           scoreKey: const ValueKey('result-score-home'),
-          isWinner: winner.id.value == home.id.value,
         ),
         const SizedBox(height: 12),
         Wrap(
@@ -166,7 +164,6 @@ class GameResultView extends StatelessWidget {
     required Team team,
     required int score,
     required Key scoreKey,
-    required bool isWinner,
   }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -181,13 +178,6 @@ class GameResultView extends StatelessWidget {
                 style: theme.textTheme.titleMedium,
                 overflow: TextOverflow.ellipsis,
               ),
-              if (isWinner)
-                Text(
-                  'Winner',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
             ],
           ),
         ),
@@ -316,8 +306,8 @@ class GameResultView extends StatelessWidget {
         TableRow(
           children: [
             text('', header: true),
-            text(home.abbreviation, header: true),
             text(away.abbreviation, header: true),
+            text(home.abbreviation, header: true),
           ],
         ),
         for (final row in rows)
@@ -328,12 +318,12 @@ class GameResultView extends StatelessWidget {
                 child: Text(row.$1, style: theme.textTheme.bodyMedium),
               ),
               text(
-                row.$2,
-                key: ValueKey('team-stat-${row.$1}-${home.id.value}'),
-              ),
-              text(
                 row.$3,
                 key: ValueKey('team-stat-${row.$1}-${away.id.value}'),
+              ),
+              text(
+                row.$2,
+                key: ValueKey('team-stat-${row.$1}-${home.id.value}'),
               ),
             ],
           ),
@@ -343,34 +333,47 @@ class GameResultView extends StatelessWidget {
 
   Widget _playerTable(ThemeData theme, Team team) {
     final lineupIds = result.input.lineupFor(team.id).playerIds;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        key: ValueKey('player-table-${team.id.value}'),
-        columnSpacing: 14,
-        horizontalMargin: 4,
-        headingRowHeight: 36,
-        dataRowMinHeight: 34,
-        dataRowMaxHeight: 40,
-        columns: const [
-          DataColumn(label: Text('Player')),
-          DataColumn(label: Text('POS')),
-          DataColumn(label: Text('PTS')),
-          DataColumn(label: Text('FG')),
-          DataColumn(label: Text('3PT')),
-          DataColumn(label: Text('FT')),
-          DataColumn(label: Text('REB')),
-          DataColumn(label: Text('AST')),
-          DataColumn(label: Text('STL')),
-          DataColumn(label: Text('BLK')),
-          DataColumn(label: Text('TOV')),
-          DataColumn(label: Text('PF')),
-        ],
-        rows: [
-          for (final playerId in lineupIds)
-            _playerRow(theme, team, result.boxScore.players[playerId]!),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Swipe sideways for FT, REB, AST, STL, BLK, TOV and PF.',
+          key: ValueKey('player-table-scroll-hint-${team.id.value}'),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 4),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            key: ValueKey('player-table-${team.id.value}'),
+            columnSpacing: 14,
+            horizontalMargin: 4,
+            headingRowHeight: 36,
+            dataRowMinHeight: 34,
+            dataRowMaxHeight: 40,
+            columns: const [
+              DataColumn(label: Text('Player')),
+              DataColumn(label: Text('POS')),
+              DataColumn(label: Text('PTS')),
+              DataColumn(label: Text('FG')),
+              DataColumn(label: Text('3PT')),
+              DataColumn(label: Text('FT')),
+              DataColumn(label: Text('REB')),
+              DataColumn(label: Text('AST')),
+              DataColumn(label: Text('STL')),
+              DataColumn(label: Text('BLK')),
+              DataColumn(label: Text('TOV')),
+              DataColumn(label: Text('PF')),
+            ],
+            rows: [
+              for (final playerId in lineupIds)
+                _playerRow(theme, team, result.boxScore.players[playerId]!),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
