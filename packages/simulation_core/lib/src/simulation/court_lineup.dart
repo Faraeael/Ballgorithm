@@ -77,12 +77,19 @@ final class CourtLineup {
       }
     }
     if (issues.isNotEmpty) throw GameValidationException(issues);
+
+    // Store the roster's own Player instances. A caller cannot smuggle altered
+    // ratings under a valid roster id: the canonical fingerprint covers ids and
+    // league data, so behaviour must come from the roster object too.
+    final rosterById = {
+      for (final player in team.players) player.id.value: player,
+    };
     return CourtLineup._([
       for (var index = 0; index < slotOrderedPlayers.length; index++)
         CourtSlot(
           slot: Position.values[index],
           playerId: slotOrderedPlayers[index].id,
-          player: slotOrderedPlayers[index],
+          player: rosterById[slotOrderedPlayers[index].id.value],
         ),
     ]);
   }

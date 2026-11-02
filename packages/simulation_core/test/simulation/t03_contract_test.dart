@@ -183,6 +183,156 @@ void main() {
     expect(v5['inputFingerprint'], isNot(v4['inputFingerprint']));
   });
 
+  test('altered lineup objects cannot change behaviour for the same ids', () {
+    final base = buildInput(seed: 11);
+    final home = base.homeTeam;
+    final alteredPlayers = [
+      for (final player in base.homeLineup.players)
+        player.id.value == home.players.first.id.value
+            ? Player(
+                id: player.id,
+                firstName: player.firstName,
+                lastName: player.lastName,
+                position: player.position,
+                attributes: PlayerAttributes.fromJson({
+                  ...player.attributes.toJson(),
+                  'threePoint': 100,
+                  'insideScoring': 100,
+                }),
+              )
+            : player,
+    ];
+    final alteredLineup = CourtLineup.create(
+      team: home,
+      slotOrderedPlayers: alteredPlayers,
+    );
+    final alteredInput = GameInput.create(
+      gameId: base.gameId,
+      league: base.league,
+      homeTeamId: base.homeTeamId,
+      awayTeamId: base.awayTeamId,
+      homeLineup: alteredLineup,
+      awayLineup: base.awayLineup,
+      seed: base.seed,
+      rules: base.rules,
+    );
+    expect(
+      GameFingerprint.of(alteredInput),
+      GameFingerprint.of(base),
+      reason: 'ids and league are identical, so the fingerprint must match',
+    );
+    final first = GameSimulator().simulate(alteredInput);
+    final second = GameSimulator().simulate(base);
+    expect(
+      jsonEncode(first.ledger.toJson()),
+      jsonEncode(second.ledger.toJson()),
+      reason:
+          'behaviour must come from the canonical roster, not the supplied '
+          'objects',
+    );
+  });
+
+  test('a foreign Team with same ids cannot inject altered ratings', () {
+    final base = buildInput(seed: 13);
+    final home = base.homeTeam;
+    final alteredPlayers = [
+      for (final player in home.players)
+        player.id.value == base.homeLineup.playerIds.first
+            ? Player(
+                id: player.id,
+                firstName: player.firstName,
+                lastName: player.lastName,
+                position: player.position,
+                attributes: PlayerAttributes.fromJson({
+                  ...player.attributes.toJson(),
+                  'threePoint': 100,
+                }),
+              )
+            : player,
+    ];
+    final fakeTeam = Team(
+      id: home.id,
+      name: home.name,
+      abbreviation: home.abbreviation,
+      roster: Roster(alteredPlayers),
+    );
+    final foreignLineup = CourtLineup.create(
+      team: fakeTeam,
+      slotOrderedPlayers: [
+        for (final playerId in base.homeLineup.playerIds)
+          alteredPlayers.firstWhere((player) => player.id.value == playerId),
+      ],
+    );
+    final rebuilt = GameInput.create(
+      gameId: base.gameId,
+      league: base.league,
+      homeTeamId: base.homeTeamId,
+      awayTeamId: base.awayTeamId,
+      homeLineup: foreignLineup,
+      awayLineup: base.awayLineup,
+      seed: base.seed,
+      rules: base.rules,
+    );
+    expect(GameFingerprint.of(rebuilt), GameFingerprint.of(base));
+    final canonical = base.homeTeam.players.firstWhere(
+      (player) => player.id.value == base.homeLineup.playerIds.first,
+    );
+    expect(identical(rebuilt.homeLineup.players.first, canonical), isTrue);
+    expect(
+      jsonEncode(GameSimulator().simulate(rebuilt).ledger.toJson()),
+      jsonEncode(GameSimulator().simulate(base).ledger.toJson()),
+    );
+  });
+
+  test('injected models must agree with the input league roster', () {
+    final input = buildInput(seed: 17);
+    final altered = [
+      for (final player in input.homeTeam.players)
+        Player(
+          id: player.id,
+          firstName: player.firstName,
+          lastName: player.lastName,
+          position: player.position,
+          attributes: PlayerAttributes.fromJson({
+            ...player.attributes.toJson(),
+            'insideScoring': 100,
+          }),
+        ),
+    ];
+    final injected = BasketballProbabilityModel(
+      rules: input.rules,
+      players: altered,
+    );
+    expect(
+      () => GameSimulator(probabilityModel: injected).simulate(input),
+      throwsA(
+        isA<GameValidationException>().having(
+          (e) => e.codes,
+          'codes',
+          contains(GameValidationCode.invalidRules),
+        ),
+      ),
+    );
+
+    final canonical = BasketballProbabilityModel(
+      rules: input.rules,
+      players: [
+        for (final team in input.league.teams)
+          for (final player in team.players) player,
+      ],
+    );
+    expect(
+      GameSimulator(probabilityModel: canonical).simulate(input).homeScore,
+      GameSimulator().simulate(input).homeScore,
+    );
+    expect(
+      GameSimulator(
+        probabilityModel: BasketballProbabilityModel(),
+      ).simulate(input).homeScore,
+      GameSimulator().simulate(input).homeScore,
+    );
+  });
+
   test('simulator emits no Substitution yet', () {
     final result = GameSimulator().simulate(buildInput(seed: 7));
     expect(result.events.whereType<Substitution>(), isEmpty);

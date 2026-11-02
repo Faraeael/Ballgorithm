@@ -94,7 +94,49 @@ final class GameSimulator {
       ).run();
     }
     _requireCompatibleA1(injected.rules, input.rules);
+    _requireCanonicalRoster(injected, input);
     return _GameRun(input, injected, onPhaseTrace).run();
+  }
+
+  /// Rejects an injected model whose roster disagrees with the input league.
+  ///
+  /// An injected model built without players falls back to the immutable input
+  /// lineups, which [GameInput] has already canonicalised against this league.
+  static void _requireCanonicalRoster(
+    BasketballProbabilityModel model,
+    GameInput input,
+  ) {
+    final modelPlayers = model.rosterPlayers;
+    if (modelPlayers.isEmpty) return;
+    final issues = <GameValidationIssue>[];
+    for (final team in [input.homeTeam, input.awayTeam]) {
+      for (final player in team.players) {
+        final candidate = modelPlayers[player.id.value];
+        if (candidate == null ||
+            candidate.position != player.position ||
+            !_sameAttributes(candidate, player)) {
+          issues.add(
+            GameValidationIssue(
+              code: GameValidationCode.invalidRules,
+              path: 'probabilityModel.players',
+              message:
+                  'injected model player ${player.id.value} does not match the '
+                  'input league roster',
+            ),
+          );
+        }
+      }
+    }
+    if (issues.isNotEmpty) throw GameValidationException(issues);
+  }
+
+  static bool _sameAttributes(Player left, Player right) {
+    final a = left.attributes.asMap;
+    final b = right.attributes.asMap;
+    for (final entry in a.entries) {
+      if (b[entry.key] != entry.value) return false;
+    }
+    return a.length == b.length;
   }
 
   /// Rejects an injected model whose A1 configuration differs from the input.

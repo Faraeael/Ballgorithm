@@ -95,6 +95,31 @@ void main() {
     });
   });
 
+  test('stores canonical roster players, not caller-supplied objects', () {
+    final original = defaultLineup.players.first;
+    final altered = Player(
+      id: original.id,
+      firstName: original.firstName,
+      lastName: original.lastName,
+      position: original.position,
+      attributes: PlayerAttributes.fromJson({
+        ...original.attributes.toJson(),
+        'insideScoring': 99,
+        'threePoint': 99,
+      }),
+    );
+    final players = [...defaultLineup.players]..[0] = altered;
+    final court = CourtLineup.create(team: team, slotOrderedPlayers: players);
+    final canonical = team.players.firstWhere(
+      (player) => player.id.value == original.id.value,
+    );
+    expect(identical(court.players.first, canonical), isTrue);
+    expect(
+      court.players.first.attributes.insideScoring,
+      canonical.attributes.insideScoring,
+    );
+  });
+
   test('serializes identity as ordered slot/player-id pairs', () {
     final slots = defaultLineup.toJson();
     expect(slots, hasLength(5));

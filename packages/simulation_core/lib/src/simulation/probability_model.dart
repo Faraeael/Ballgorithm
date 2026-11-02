@@ -121,8 +121,16 @@ final class BasketballProbabilityModel {
   /// first time a rating is needed.
   final Map<String, Player> _playersById;
 
+  /// Canonical players this model resolves ratings from, keyed by id.
+  ///
+  /// Empty when the model was built without a roster; in that case ratings come
+  /// from the immutable lineups handed in by the simulator.
+  Map<String, Player> get rosterPlayers => _playersById;
+
   Player _playerOf(CourtSlot slot) {
-    final player = slot.player ?? _playersById[slot.playerId.value];
+    // Prefer the league roster supplied at construction; a slot's convenience
+    // reference may belong to a different object graph even with the same id.
+    final player = _playersById[slot.playerId.value] ?? slot.player;
     if (player == null) {
       throw ArgumentError.value(
         slot.playerId.value,

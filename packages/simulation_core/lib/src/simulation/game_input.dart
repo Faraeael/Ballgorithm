@@ -95,8 +95,8 @@ final class GameInput {
       league: league,
       homeTeamId: homeTeamId,
       awayTeamId: awayTeamId,
-      homeLineup: homeLineup,
-      awayLineup: awayLineup,
+      homeLineup: _canonicalLineup(league, homeTeam!, homeLineup),
+      awayLineup: _canonicalLineup(league, awayTeam!, awayLineup),
       seed: seed,
       rules: rules,
     );
@@ -135,6 +135,24 @@ final class GameInput {
   /// substitutions. Named explicitly so callers cannot confuse the two.
   bool isStartingPlayer(TeamId teamId, PlayerId playerId) =>
       lineupFor(teamId).containsPlayer(playerId);
+
+  /// Rebuilds a lineup from this league's roster so slot player references are
+  /// the canonical objects covered by the input fingerprint.
+  static CourtLineup _canonicalLineup(
+    League league,
+    Team team,
+    CourtLineup supplied,
+  ) {
+    final rosterById = {
+      for (final player in team.players) player.id.value: player,
+    };
+    return CourtLineup.create(
+      team: team,
+      slotOrderedPlayers: [
+        for (final playerId in supplied.playerIds) rosterById[playerId]!,
+      ],
+    );
+  }
 
   static Team? _team(League league, TeamId id) {
     for (final team in league.teams) {
