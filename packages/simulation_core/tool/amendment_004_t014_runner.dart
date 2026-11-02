@@ -44,7 +44,7 @@ void main(List<String> args) {
     const GenerationConfig(seed: t014.leagueFixtureSeed),
   );
   final homeTeam = league.teams[0];
-  final lineup = ActiveLineup.defaultFor(homeTeam);
+  final lineup = CourtLineup.defaultFor(homeTeam);
   final subjects = t014.selectSubjects(lineup);
   final experiments = t014.buildExperiments(homeTeam, lineup, subjects);
 

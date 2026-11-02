@@ -106,7 +106,7 @@ void main() {
   });
 
   group('individual hazard', () {
-    List<int> hazardsFor(ActiveLineup lineup) => model.playerTurnoverHazards(
+    List<int> hazardsFor(CourtLineup lineup) => model.playerTurnoverHazards(
       offense: TeamOnCourt(teamId: const TeamId('home'), lineup: lineup),
       defense: permissiveDefense,
       phase: PhaseKind.halfCourt,
@@ -178,7 +178,7 @@ void main() {
     });
 
     test('ceiling clamps over interior handling values near the extremes', () {
-      TeamOnCourt offenseOf(ActiveLineup lineup) =>
+      TeamOnCourt offenseOf(CourtLineup lineup) =>
           TeamOnCourt(teamId: const TeamId('home'), lineup: lineup);
       final pressure = teamOnCourt(
         'away',

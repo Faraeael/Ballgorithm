@@ -273,11 +273,11 @@ void main() {
 
     test('required published seeds keep their canonical digests', () {
       const expected = {
-        1: '839d7e50f1664a49cdae0d37e0d464e061d926414250a96968c673b4fd317d92',
-        42: 'dc8c06cedd10d3cff938e023e11e520c09a667ac12edc2b2469953eea0371fab',
-        99: '238c78a8b36d02ba750b28c6e23d74ecd782486b38d8ff01e66da9cb03ea9438',
+        1: '04524d55ed4c304c0fbfa222349476c6f6e10f9af1cdee72555927e095eb9855',
+        42: '3ba26e3d34abf8b1e40f5469fa3c043be8ac712f9b39c6b3b992859d92cd3cc2',
+        99: '05d54e5e49c47de89550771b23d0ceedd071e2d97d6834fb1e227b4ca540476c',
         20261029:
-            'aabf12782a45d6b1efdfe7d17b62961919012437b94fc712ccf4eac27baf3219',
+            '0aa5fdec5ffa5d1514950d48bf6e56639587ca70938e410b3b439f2035115fb8',
       };
       for (final entry in expected.entries) {
         final input = buildInput(seed: entry.key);

@@ -42,13 +42,26 @@ Player playerOf(
 );
 
 /// Canonical five, optionally overriding attributes per position.
-ActiveLineup lineupOf({
+CourtLineup lineupOf({
   Map<Position, PlayerAttributes> overrides = const {},
   String teamPrefix = 'home',
-}) => ActiveLineup.create([
-  for (final position in Position.values)
-    playerOf(position, attributes: overrides[position], teamPrefix: teamPrefix),
-]);
+}) {
+  final players = [
+    for (final position in Position.values)
+      playerOf(
+        position,
+        attributes: overrides[position],
+        teamPrefix: teamPrefix,
+      ),
+  ];
+  final team = Team(
+    id: TeamId('team-$teamPrefix'),
+    name: 'Synthetic $teamPrefix',
+    abbreviation: 'SYN',
+    roster: Roster(players),
+  );
+  return CourtLineup.create(team: team, slotOrderedPlayers: players);
+}
 
 TeamOnCourt teamOnCourt(
   String teamId, {

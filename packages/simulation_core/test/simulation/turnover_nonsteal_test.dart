@@ -110,7 +110,7 @@ void main() {
     final s = script();
     s.startPossession('p1', starter);
     final bench = teamFor(starter).players
-        .firstWhere((player) => !input.isActive(starter, player.id))
+        .firstWhere((player) => !input.isStartingPlayer(starter, player.id))
         .id
         .value;
     s.turnover(
@@ -340,17 +340,17 @@ void main() {
     expect(decoded.toJson(), json);
   });
 
-  test('header emits event schema v2 and rejects legacy v1 headers', () {
+  test('header emits event schema v3 and rejects legacy v2 headers', () {
     final ledger = GameEventLedger(
       gameId: 'game-1',
       inputFingerprint: 'a' * 64,
       events: const [],
     );
     final json = ledger.toJson();
-    expect(json['eventSchemaVersion'], 2);
+    expect(json['eventSchemaVersion'], 3);
 
     final legacy = jsonDecode(jsonEncode(json)) as Map<String, Object?>;
-    legacy['eventSchemaVersion'] = 1;
+    legacy['eventSchemaVersion'] = 2;
     expect(
       () => GameEventLedger.fromJson(legacy),
       throwsA(
@@ -365,11 +365,11 @@ void main() {
 
   test('pinned fingerprint matches the actual v2 canonical input', () {
     final canonical = GameFingerprint.canonicalPayload(input);
-    expect(canonical['versions'], containsPair('eventSchema', 2));
-    expect(GameFingerprint.canonicalJson(input), contains('"eventSchema":2'));
+    expect(canonical['versions'], containsPair('eventSchema', 3));
+    expect(GameFingerprint.canonicalJson(input), contains('"eventSchema":3'));
     expect(
       GameFingerprint.of(input),
-      'b52e242bec7458f847c2ab5fca8f2d87b594fc3adf9068bc5862ab1a0f8b20c1',
+      'e9b99720fa77ecd362e05029ebdba80ded67828f662f8b5f09e1edf8581ed3ed',
     );
     expect(
       GameFingerprint.of(input),

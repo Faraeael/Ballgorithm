@@ -1,7 +1,7 @@
 import '../models/ids.dart';
 import '../models/league.dart';
 import '../models/team.dart';
-import 'active_lineup.dart';
+import 'court_lineup.dart';
 import 'game_rules.dart';
 import 'game_validation.dart';
 
@@ -23,8 +23,8 @@ final class GameInput {
     required League league,
     required TeamId homeTeamId,
     required TeamId awayTeamId,
-    required ActiveLineup homeLineup,
-    required ActiveLineup awayLineup,
+    required CourtLineup homeLineup,
+    required CourtLineup awayLineup,
     required int seed,
     required GameRules rules,
   }) {
@@ -106,8 +106,8 @@ final class GameInput {
   final League league;
   final TeamId homeTeamId;
   final TeamId awayTeamId;
-  final ActiveLineup homeLineup;
-  final ActiveLineup awayLineup;
+  final CourtLineup homeLineup;
+  final CourtLineup awayLineup;
   final int seed;
   final GameRules rules;
 
@@ -126,11 +126,15 @@ final class GameInput {
   TeamId opponentOf(TeamId teamId) =>
       teamId == homeTeamId ? awayTeamId : homeTeamId;
 
-  ActiveLineup lineupFor(TeamId teamId) =>
+  CourtLineup lineupFor(TeamId teamId) =>
       teamId == homeTeamId ? homeLineup : awayLineup;
 
-  bool isActive(TeamId teamId, PlayerId playerId) =>
-      lineupFor(teamId).containsPlayer(playerId.value);
+  /// True when the player is in the immutable **starting** lineup.
+  ///
+  /// This is not current eligibility: replay tracks the active five from
+  /// substitutions. Named explicitly so callers cannot confuse the two.
+  bool isStartingPlayer(TeamId teamId, PlayerId playerId) =>
+      lineupFor(teamId).containsPlayer(playerId);
 
   static Team? _team(League league, TeamId id) {
     for (final team in league.teams) {
@@ -141,20 +145,20 @@ final class GameInput {
 
   static void _checkOwnership(
     Team team,
-    ActiveLineup lineup,
+    CourtLineup lineup,
     String path,
     List<GameValidationIssue> issues,
   ) {
     final rosterIds = {for (final player in team.players) player.id.value};
-    for (var i = 0; i < lineup.players.length; i++) {
-      final player = lineup.players[i];
-      if (!rosterIds.contains(player.id.value)) {
+    for (var i = 0; i < lineup.slots.length; i++) {
+      final playerId = lineup.slots[i].playerId;
+      if (!rosterIds.contains(playerId.value)) {
         issues.add(
           GameValidationIssue(
             code: GameValidationCode.foreignLineupPlayer,
-            path: '$path.players[$i]',
+            path: '$path.slots[$i]',
             message:
-                'player ${player.id.value} does not belong to '
+                'player ${playerId.value} does not belong to '
                 '${team.id.value}',
           ),
         );

@@ -120,22 +120,22 @@ void main() {
     });
   });
 
-  group('ActiveLineup', () {
-    test('rejects wrong order, duplicates and wrong size', () {
+  group('CourtLineup', () {
+    test('accepts reordered lineups and rejects duplicates and wrong size', () {
       final input = buildInput();
       final players = input.homeLineup.players;
-      expect(
-        () => ActiveLineup.create([players[1], players[0], ...players.skip(2)]),
-        throwsA(
-          isA<GameValidationException>().having(
-            (e) => e.codes,
-            'codes',
-            contains(GameValidationCode.invalidLineupPositions),
-          ),
-        ),
+      final swapped = CourtLineup.create(
+        team: input.homeTeam,
+        slotOrderedPlayers: [players[1], players[0], ...players.skip(2)],
       );
+      expect(swapped.playerIdAtSlotIndex(0), players[1].id);
+      expect(swapped.slotAt(0), Position.pg);
+      expect(swapped.players[0].position, Position.sg);
       expect(
-        () => ActiveLineup.create([players[0], players[0], ...players.skip(2)]),
+        () => CourtLineup.create(
+          team: input.homeTeam,
+          slotOrderedPlayers: [players[0], players[0], ...players.skip(2)],
+        ),
         throwsA(
           isA<GameValidationException>().having(
             (e) => e.codes,
@@ -145,7 +145,10 @@ void main() {
         ),
       );
       expect(
-        () => ActiveLineup.create(players.take(4).toList()),
+        () => CourtLineup.create(
+          team: input.homeTeam,
+          slotOrderedPlayers: players.take(4).toList(),
+        ),
         throwsA(
           isA<GameValidationException>().having(
             (e) => e.codes,
@@ -169,7 +172,7 @@ void main() {
         roster: Roster(withoutCenter),
       );
       expect(
-        () => ActiveLineup.defaultFor(incomplete),
+        () => CourtLineup.defaultFor(incomplete),
         throwsA(
           isA<GameValidationException>().having(
             (e) => e.codes,
@@ -189,7 +192,7 @@ void main() {
       expect(GameFingerprint.of(input), matches(RegExp(r'^[0-9a-f]{64}$')));
       expect(
         GameFingerprint.of(input),
-        'b52e242bec7458f847c2ab5fca8f2d87b594fc3adf9068bc5862ab1a0f8b20c1',
+        'e9b99720fa77ecd362e05029ebdba80ded67828f662f8b5f09e1edf8581ed3ed',
       );
 
       final otherSeed = buildInput(seed: 43);
@@ -206,7 +209,10 @@ void main() {
         league: input.league,
         homeTeamId: input.homeTeamId,
         awayTeamId: input.awayTeamId,
-        homeLineup: ActiveLineup.create(replacement),
+        homeLineup: CourtLineup.create(
+          team: input.homeTeam,
+          slotOrderedPlayers: replacement,
+        ),
         awayLineup: input.awayLineup,
         seed: input.seed,
         rules: input.rules,

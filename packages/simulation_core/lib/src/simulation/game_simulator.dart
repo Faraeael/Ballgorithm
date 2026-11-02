@@ -83,7 +83,13 @@ final class GameSimulator {
     if (injected == null) {
       return _GameRun(
         input,
-        BasketballProbabilityModel(rules: input.rules),
+        BasketballProbabilityModel(
+          rules: input.rules,
+          players: [
+            for (final team in input.league.teams)
+              for (final player in team.players) player,
+          ],
+        ),
         onPhaseTrace,
       ).run();
     }
@@ -233,6 +239,11 @@ final class _GameRun {
 
   final List<GameEvent> events = <GameEvent>[];
   final Map<String, int> _teamFouls = <String, int>{};
+
+  late final Map<String, Player> _playersById = {
+    for (final team in input.league.teams)
+      for (final player in team.players) player.id.value: player,
+  };
 
   late final TeamOnCourt _homeOnCourt = TeamOnCourt(
     teamId: input.homeTeamId,
@@ -521,7 +532,10 @@ final class _GameRun {
           shotClockBefore,
           PhaseResolution.shotClockExpiryNoAttempt,
         );
-        final handler = _onCourt(_offense).lineup.players.first;
+        final handler = _player(
+          _onCourt(_offense),
+          _onCourt(_offense).lineup.slots.first.playerId.value,
+        );
         _emit(
           Turnover(
             sequence: _nextSequence(),
@@ -547,7 +561,10 @@ final class _GameRun {
         );
         _clock -= shotClock;
         _shotClock = 0;
-        final handler = _onCourt(_offense).lineup.players.first;
+        final handler = _player(
+          _onCourt(_offense),
+          _onCourt(_offense).lineup.slots.first.playerId.value,
+        );
         _emit(
           Turnover(
             sequence: _nextSequence(),
@@ -898,10 +915,13 @@ final class _GameRun {
       : input.opponentOf(input.startingTeamId);
 
   Player _player(TeamOnCourt side, String playerId) {
-    for (final player in side.lineup.players) {
-      if (player.id.value == playerId) return player;
+    final player = _playersById[playerId];
+    if (player == null) {
+      throw StateError(
+        'player $playerId is not active for ${side.teamId.value}',
+      );
     }
-    throw StateError('player $playerId is not active for ${side.teamId.value}');
+    return player;
   }
 
   bool _wouldBeBonusFoul() {

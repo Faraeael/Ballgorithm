@@ -1,5 +1,5 @@
 import '../models/ids.dart';
-import 'active_lineup.dart';
+import 'court_lineup.dart';
 
 /// One team's active five plus its team identity.
 ///
@@ -9,7 +9,7 @@ final class TeamOnCourt {
   const TeamOnCourt({required this.teamId, required this.lineup});
 
   final TeamId teamId;
-  final ActiveLineup lineup;
+  final CourtLineup lineup;
 }
 
 /// Live offensive-phase classification from the A1 duration model.

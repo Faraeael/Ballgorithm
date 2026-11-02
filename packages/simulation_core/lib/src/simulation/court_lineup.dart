@@ -2,119 +2,151 @@ import '../models/ids.dart';
 import '../models/player.dart';
 import '../models/position.dart';
 import '../models/team.dart';
-import 'active_lineup.dart';
+import 'game_validation.dart';
 
-/// One canonical court slot and the player who currently occupies it.
+/// One canonical court slot and the player occupying it.
 ///
-/// Internal to `simulation_core` during M004 T02: it is deliberately absent
-/// from the package barrel. Public exposure happens only in the atomic v5
-/// transition.
+/// Frozen M004 contract: identity is the slot plus the player id. A player's
+/// primary position may differ from the occupied slot.
 final class CourtSlot {
-  const CourtSlot({required this.slot, required this.player});
+  const CourtSlot({required this.slot, required this.playerId, this.player});
 
   final Position slot;
-  final Player player;
+  final PlayerId playerId;
+
+  /// Non-serialized convenience reference. Identity and serialization are
+  /// slot + player id; this field never appears in JSON or fingerprints.
+  final Player? player;
+
+  Map<String, Object?> toJson() => {
+    'slot': slot.shortName,
+    'playerId': playerId.value,
+  };
 }
 
-/// Five canonical court slots, PG..C, each holding a unique roster player.
-///
-/// T02 invariant: every reachable lineup keeps each player in their primary
-/// position, so slot-based calculations are numerically identical to the
-/// previous position-based ones.
+/// Five canonical PG..C court slots, each holding a unique roster player.
 final class CourtLineup {
   CourtLineup._(List<CourtSlot> slots)
     : slots = List<CourtSlot>.unmodifiable(slots);
 
-  /// Builds an internally valid lineup from a team roster.
+  /// Builds a lineup from slot-ordered roster players.
   ///
-  /// Rejects a wrong slot count, non-canonical order, a player outside the
-  /// roster, a duplicate player, or a player whose primary position differs
-  /// from the slot. T03 relaxes the last rule.
-  factory CourtLineup.create(Team team, List<Player> slotOrderedPlayers) {
+  /// The slot at index `i` is `Position.values[i]`; the player's own primary
+  /// position is not constrained and may differ.
+  /// Builds a lineup and validates roster ownership, size, uniqueness and
+  /// canonical slot assignment.
+  factory CourtLineup.create({
+    required Team team,
+    required List<Player> slotOrderedPlayers,
+  }) {
+    final issues = <GameValidationIssue>[];
     if (slotOrderedPlayers.length != Position.values.length) {
-      throw ArgumentError.value(
-        slotOrderedPlayers.length,
-        'slotOrderedPlayers',
-        'a court lineup requires exactly ${Position.values.length} players',
+      issues.add(
+        GameValidationIssue(
+          code: GameValidationCode.invalidLineupSize,
+          path: 'lineup.players',
+          message:
+              'lineup requires exactly ${Position.values.length} players, '
+              'got ${slotOrderedPlayers.length}',
+        ),
       );
     }
     final rosterIds = <String>{
       for (final player in team.players) player.id.value,
     };
     final seen = <String>{};
-    final slots = <CourtSlot>[];
     for (var index = 0; index < slotOrderedPlayers.length; index++) {
       final player = slotOrderedPlayers[index];
-      final slot = Position.values[index];
-      if (!rosterIds.contains(player.id.value)) {
-        throw ArgumentError.value(
-          player.id.value,
-          'slotOrderedPlayers[$index]',
-          'player is not on team ${team.id.value}',
+      if (!rosterIds.contains(player.id.value) && issues.isEmpty) {
+        issues.add(
+          GameValidationIssue(
+            code: GameValidationCode.foreignLineupPlayer,
+            path: 'lineup.players[$index]',
+            message: 'player ${player.id.value} is not on ${team.id.value}',
+          ),
         );
       }
       if (!seen.add(player.id.value)) {
-        throw ArgumentError.value(
-          player.id.value,
-          'slotOrderedPlayers[$index]',
-          'duplicate player',
+        issues.add(
+          GameValidationIssue(
+            code: GameValidationCode.duplicateLineupPlayer,
+            path: 'lineup.players[$index]',
+            message: 'duplicate player ${player.id.value}',
+          ),
         );
       }
-      if (player.position != slot) {
-        throw ArgumentError.value(
-          player.position.shortName,
-          'slotOrderedPlayers[$index]',
-          'T02 requires ${slot.shortName} in this slot',
-        );
-      }
-      slots.add(CourtSlot(slot: slot, player: player));
     }
-    return CourtLineup._(slots);
+    if (issues.isNotEmpty) throw GameValidationException(issues);
+    return CourtLineup._([
+      for (var index = 0; index < slotOrderedPlayers.length; index++)
+        CourtSlot(
+          slot: Position.values[index],
+          playerId: slotOrderedPlayers[index].id,
+          player: slotOrderedPlayers[index],
+        ),
+    ]);
   }
 
-  /// Converts the validated fixed five into canonical slots.
-  ///
-  /// Ownership and uniqueness were already enforced by `ActiveLineup` and
-  /// `GameInput`; only canonical order is re-checked here.
-  factory CourtLineup.fromActiveLineup(ActiveLineup lineup) {
-    if (lineup.players.length != Position.values.length) {
-      throw ArgumentError.value(
-        lineup.players.length,
-        'lineup',
-        'a court lineup requires exactly ${Position.values.length} players',
-      );
-    }
-    final slots = <CourtSlot>[];
-    for (var index = 0; index < lineup.players.length; index++) {
-      final player = lineup.players[index];
-      final slot = Position.values[index];
-      if (player.position != slot) {
-        throw ArgumentError.value(
-          player.position.shortName,
-          'lineup[$index]',
-          'T02 requires ${slot.shortName} in this slot',
-        );
+  /// First eligible player per position in stable roster order.
+  factory CourtLineup.defaultFor(Team team) {
+    final selected = <Player>[];
+    for (final position in Position.values) {
+      Player? found;
+      for (final player in team.players) {
+        if (player.position == position) {
+          found = player;
+          break;
+        }
       }
-      slots.add(CourtSlot(slot: slot, player: player));
+      if (found == null) {
+        throw GameValidationException([
+          GameValidationIssue(
+            code: GameValidationCode.invalidLineupPositions,
+            path: 'lineup.players',
+            message: 'team ${team.id.value} has no ${position.shortName}',
+          ),
+        ]);
+      }
+      selected.add(found);
     }
-    return CourtLineup._(slots);
+    return CourtLineup.create(team: team, slotOrderedPlayers: selected);
   }
 
   final List<CourtSlot> slots;
 
-  List<Player> get players => [for (final slot in slots) slot.player];
+  List<String> get playerIds => [for (final slot in slots) slot.playerId.value];
 
-  Player playerAt(Position slot) => slots[Position.values.indexOf(slot)].player;
+  /// Slot-ordered players. Throws if a slot was built without a player
+  /// reference (for example from a future deserializer).
+  List<Player> get players => [for (final slot in slots) _requirePlayer(slot)];
 
-  Player playerAtSlotIndex(int index) => slots[index].player;
+  Player _requirePlayer(CourtSlot slot) {
+    final player = slot.player;
+    if (player == null) {
+      throw ArgumentError.value(
+        slot.playerId.value,
+        'slots',
+        'slot has no resolved player',
+      );
+    }
+    return player;
+  }
+
+  Player playerAt(Position slot) =>
+      _requirePlayer(slots[Position.values.indexOf(slot)]);
+
+  Player playerAtSlotIndex(int index) => _requirePlayer(slots[index]);
+
+  PlayerId playerIdAt(Position slot) =>
+      slots[Position.values.indexOf(slot)].playerId;
+
+  PlayerId playerIdAtSlotIndex(int index) => slots[index].playerId;
 
   Position slotAt(int index) => slots[index].slot;
 
-  CourtSlot slotOfPlayer(PlayerId playerId) {
+  Position slotOf(PlayerId playerId) {
     for (final slot in slots) {
-      if (slot.player.id.value == playerId.value) {
-        return slot;
-      }
+      if (slot.playerId.value == playerId.value) return slot.slot;
     }
     throw ArgumentError.value(
       playerId.value,
@@ -123,13 +155,37 @@ final class CourtLineup {
     );
   }
 
-  int slotIndexForPlayer(PlayerId playerId) =>
-      slots.indexOf(slotOfPlayer(playerId));
+  int slotIndexForPlayer(PlayerId playerId) {
+    for (var index = 0; index < slots.length; index++) {
+      if (slots[index].playerId.value == playerId.value) return index;
+    }
+    throw ArgumentError.value(
+      playerId.value,
+      'playerId',
+      'player is not on the court',
+    );
+  }
+
+  CourtSlot slotOfPlayerSlot(PlayerId playerId) {
+    for (final slot in slots) {
+      if (slot.playerId.value == playerId.value) return slot;
+    }
+    throw ArgumentError.value(
+      playerId.value,
+      'playerId',
+      'player is not on the court',
+    );
+  }
 
   bool containsPlayer(PlayerId playerId) {
     for (final slot in slots) {
-      if (slot.player.id.value == playerId.value) return true;
+      if (slot.playerId.value == playerId.value) return true;
     }
     return false;
   }
+
+  /// Ordered slot/player-id pairs, as required by the frozen contract.
+  List<Map<String, Object?>> toJson() => [
+    for (final slot in slots) slot.toJson(),
+  ];
 }

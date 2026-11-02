@@ -5,7 +5,7 @@ import 'package:simulation_core/simulation_core.dart';
 import 'package:test/test.dart';
 
 import 'support.dart';
-import 't012_canonical_ledger_fixture_v4.dart';
+import 't012_canonical_ledger_fixture_v5.dart';
 import 't013_support.dart';
 import 't011_game_reliability_test.dart' as t011;
 
@@ -142,18 +142,18 @@ void main() {
       }
       expect(
         sha256.convert(utf8.encode(expected)).toString(),
-        sha256.convert(utf8.encode(t012CanonicalLedgerV4Json)).toString(),
+        sha256.convert(utf8.encode(t012CanonicalLedgerV5Json)).toString(),
         reason: 'T012 golden must remain the canonical seed-42 ledger',
       );
     });
 
     test('pinned T012 seeds still reproduce their published digests', () {
       const published = {
-        1: '839d7e50f1664a49cdae0d37e0d464e061d926414250a96968c673b4fd317d92',
-        42: 'dc8c06cedd10d3cff938e023e11e520c09a667ac12edc2b2469953eea0371fab',
-        99: '238c78a8b36d02ba750b28c6e23d74ecd782486b38d8ff01e66da9cb03ea9438',
+        1: '04524d55ed4c304c0fbfa222349476c6f6e10f9af1cdee72555927e095eb9855',
+        42: '3ba26e3d34abf8b1e40f5469fa3c043be8ac712f9b39c6b3b992859d92cd3cc2',
+        99: '05d54e5e49c47de89550771b23d0ceedd071e2d97d6834fb1e227b4ca540476c',
         20261029:
-            'aabf12782a45d6b1efdfe7d17b62961919012437b94fc712ccf4eac27baf3219',
+            '0aa5fdec5ffa5d1514950d48bf6e56639587ca70938e410b3b439f2035115fb8',
       };
       for (final entry in published.entries) {
         final input = standardInput(entry.key);
@@ -181,7 +181,7 @@ void main() {
       String? gameId,
       League? league,
       TeamId? homeTeamId,
-      ActiveLineup? homeLineup,
+      CourtLineup? homeLineup,
       GameRules? rules,
     }) => GameInput.create(
       gameId: gameId ?? base.gameId,
@@ -224,27 +224,35 @@ void main() {
     test('lineup size, order, duplicates and empty game id are rejected', () {
       final players = base.homeLineup.players;
       expect(
-        () => ActiveLineup.create(players.take(4).toList()),
+        () => CourtLineup.create(
+          team: base.homeTeam,
+          slotOrderedPlayers: players.take(4).toList(),
+        ),
         throwsCode(GameValidationCode.invalidLineupSize),
       );
-      expect(
-        () => ActiveLineup.create([
+      final swapped = CourtLineup.create(
+        team: base.homeTeam,
+        slotOrderedPlayers: [
           players[1],
           players[0],
           players[2],
           players[3],
           players[4],
-        ]),
-        throwsCode(GameValidationCode.invalidLineupPositions),
+        ],
       );
+      expect(swapped.slotAt(0), Position.pg);
+      expect(swapped.players[0].position, Position.sg);
       expect(
-        () => ActiveLineup.create([
-          players[0],
-          players[1],
-          players[2],
-          players[3],
-          players[3],
-        ]),
+        () => CourtLineup.create(
+          team: base.homeTeam,
+          slotOrderedPlayers: [
+            players[0],
+            players[1],
+            players[2],
+            players[3],
+            players[3],
+          ],
+        ),
         throwsCode(GameValidationCode.duplicateLineupPlayer),
       );
       expect(
@@ -255,7 +263,7 @@ void main() {
 
     test('unsupported or invalid rules are rejected before gameplay', () {
       expect(
-        () => rebuild(rules: GameRules(rulesVersion: 3)),
+        () => rebuild(rules: GameRules(rulesVersion: 2)),
         throwsCode(GameValidationCode.unsupportedRulesVersion),
       );
       for (final rules in [
@@ -304,7 +312,7 @@ void main() {
       );
       expect(
         () => GameEventLedger.fromJson(
-          corrupt((json) => json['eventSchemaVersion'] = 3),
+          corrupt((json) => json['eventSchemaVersion'] = 2),
         ),
         throwsCode(GameValidationCode.unsupportedEventSchemaVersion),
       );

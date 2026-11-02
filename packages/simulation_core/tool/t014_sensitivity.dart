@@ -101,7 +101,7 @@ void main() {
   );
   final homeTeam = league.teams[0];
   final awayTeam = league.teams[1];
-  final lineup = ActiveLineup.defaultFor(homeTeam);
+  final lineup = CourtLineup.defaultFor(homeTeam);
 
   final subjects = selectSubjects(lineup);
   final experiments = buildExperiments(homeTeam, lineup, subjects);
@@ -421,7 +421,7 @@ String _git(List<String> arguments) {
 String _fmt(Object? value) =>
     value is double ? value.toStringAsFixed(5) : '$value';
 
-String _subjectPosition(ActiveLineup lineup, String subjectId) => subjectId
+String _subjectPosition(CourtLineup lineup, String subjectId) => subjectId
     .split('+')
     .map(
       (id) => lineup.players
@@ -438,7 +438,7 @@ void _accumulate(Map<String, int> target, Map<String, int> values) {
 }
 
 /// Deterministic rating-based subject selection (protocol §2).
-Map<String, Player> selectSubjects(ActiveLineup lineup) {
+Map<String, Player> selectSubjects(CourtLineup lineup) {
   Player best(String attribute) {
     var chosen = lineup.players.first;
     var bestValue = chosen.attributes.asMap[attribute]!;
@@ -463,7 +463,7 @@ Map<String, Player> selectSubjects(ActiveLineup lineup) {
 
 List<Experiment> buildExperiments(
   Team home,
-  ActiveLineup lineup,
+  CourtLineup lineup,
   Map<String, Player> subjects,
 ) => [
   Experiment(
@@ -710,8 +710,8 @@ GameInput buildInput(League league, int seed) {
     league: league,
     homeTeamId: home.id,
     awayTeamId: away.id,
-    homeLineup: ActiveLineup.defaultFor(home),
-    awayLineup: ActiveLineup.defaultFor(away),
+    homeLineup: CourtLineup.defaultFor(home),
+    awayLineup: CourtLineup.defaultFor(away),
     seed: seed,
     rules: GameRules.standard,
   );

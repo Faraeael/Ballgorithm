@@ -219,6 +219,17 @@ sealed class GameEvent {
           missedEventSequence: _int(json, 'missedEventSequence', path),
           reason: DeadBallReason.parse(_str(json, 'reason', path), path),
         );
+      case 'Substitution':
+        return Substitution(
+          sequence: sequence,
+          period: period,
+          gameClock: gameClock,
+          shotClock: shotClock,
+          teamId: _str(json, 'teamId', path),
+          playerOutId: _str(json, 'playerOutId', path),
+          playerInId: _str(json, 'playerInId', path),
+          reason: SubstitutionReason.parse(_str(json, 'reason', path), path),
+        );
       case 'Turnover':
         return Turnover(
           sequence: sequence,
@@ -732,4 +743,58 @@ bool _bool(Map<String, Object?> json, String key, String path) {
   final value = json[key];
   if (value is! bool) _malformed('$path.$key', 'required boolean');
   return value;
+}
+
+/// Reason for one substitution.
+enum SubstitutionReason {
+  foulOut('foulOut'),
+  tactical('tactical');
+
+  const SubstitutionReason(this.wire);
+
+  final String wire;
+
+  static SubstitutionReason parse(String raw, String path) {
+    for (final value in values) {
+      if (value.wire == raw) return value;
+    }
+    throw GameValidationException([
+      GameValidationIssue(
+        code: GameValidationCode.unsupportedEventType,
+        path: path,
+        message: 'unknown substitution reason "$raw"',
+      ),
+    ]);
+  }
+}
+
+/// One dead-ball lineup change (M004 contract; acceptance lands in T04).
+final class Substitution extends GameEvent {
+  const Substitution({
+    required super.sequence,
+    required super.period,
+    required super.gameClock,
+    required super.shotClock,
+    required this.teamId,
+    required this.playerOutId,
+    required this.playerInId,
+    required this.reason,
+  });
+
+  final String teamId;
+  final String playerOutId;
+  final String playerInId;
+  final SubstitutionReason reason;
+
+  @override
+  String get type => 'Substitution';
+
+  @override
+  Map<String, Object?> toJson() => {
+    ..._baseJson(),
+    'teamId': teamId,
+    'playerOutId': playerOutId,
+    'playerInId': playerInId,
+    'reason': reason.wire,
+  };
 }

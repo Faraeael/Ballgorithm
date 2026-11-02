@@ -25,8 +25,8 @@ GameResult _simulateOnCallingIsolate(GameRequest request) {
     league: league,
     homeTeamId: request.homeTeamId,
     awayTeamId: request.awayTeamId,
-    homeLineup: ActiveLineup.defaultFor(homeTeam),
-    awayLineup: ActiveLineup.defaultFor(awayTeam),
+    homeLineup: CourtLineup.defaultFor(homeTeam),
+    awayLineup: CourtLineup.defaultFor(awayTeam),
     seed: request.seed,
     rules: GameRules.standard,
   );
@@ -218,8 +218,8 @@ void main() {
       league: league,
       homeTeamId: team.id,
       awayTeamId: league.teams[1].id,
-      homeLineup: ActiveLineup.defaultFor(team),
-      awayLineup: ActiveLineup.defaultFor(league.teams[1]),
+      homeLineup: CourtLineup.defaultFor(team),
+      awayLineup: CourtLineup.defaultFor(league.teams[1]),
       seed: seed,
       rules: GameRules.standard,
     );

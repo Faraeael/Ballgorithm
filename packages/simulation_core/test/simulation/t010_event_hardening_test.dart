@@ -27,11 +27,15 @@ void main() {
     ap = playerAt(input, a, Position.pg);
     bp = playerAt(input, b, Position.pg);
     aBench = input.homeTeam.players
-        .firstWhere((player) => !input.isActive(input.homeTeamId, player.id))
+        .firstWhere(
+          (player) => !input.isStartingPlayer(input.homeTeamId, player.id),
+        )
         .id
         .value;
     bBench = input.awayTeam.players
-        .firstWhere((player) => !input.isActive(input.awayTeamId, player.id))
+        .firstWhere(
+          (player) => !input.isStartingPlayer(input.awayTeamId, player.id),
+        )
         .id
         .value;
   });

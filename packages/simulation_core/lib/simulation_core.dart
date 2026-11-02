@@ -16,7 +16,7 @@ export 'src/models/team.dart';
 export 'src/validation/league_validator.dart';
 export 'src/validation/validation_result.dart';
 export 'src/simulation/action_intent.dart';
-export 'src/simulation/active_lineup.dart';
+export 'src/simulation/court_lineup.dart';
 export 'src/simulation/box_score.dart';
 export 'src/simulation/event_accounting.dart';
 export 'src/simulation/game_event.dart';

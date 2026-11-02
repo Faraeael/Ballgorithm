@@ -17,8 +17,8 @@ GameInput buildInput({
     league: league,
     homeTeamId: home.id,
     awayTeamId: away.id,
-    homeLineup: ActiveLineup.defaultFor(home),
-    awayLineup: ActiveLineup.defaultFor(away),
+    homeLineup: CourtLineup.defaultFor(home),
+    awayLineup: CourtLineup.defaultFor(away),
     seed: seed,
     rules: rules ?? GameRules.standard,
   );

@@ -16,6 +16,8 @@ final class GameRules {
     this.bonusOvertimeFouls = 4,
     this.maxEvents = 50000,
     this.maxZeroTimeEvents = 64,
+    this.foulOutLimit = 6,
+    this.substitutionPolicyVersion = 1,
     this.actionDurationModelVersion = gameActionDurationModelVersion,
     List<int> phaseWeights = const [1500, 3000, 5500],
     List<List<int>> phaseDurations = const [
@@ -59,6 +61,12 @@ final class GameRules {
   final int bonusOvertimeFouls;
   final int maxEvents;
   final int maxZeroTimeEvents;
+
+  /// Personal fouls that disqualify a player (M004: fixed at six).
+  final int foulOutLimit;
+
+  /// Version of the deterministic replacement policy (M004: 1).
+  final int substitutionPolicyVersion;
   final int actionDurationModelVersion;
   final List<int> phaseWeights;
   final List<List<int>> phaseDurations;
@@ -163,6 +171,18 @@ final class GameRules {
       'maxZeroTimeEvents must be positive',
     );
     check(
+      foulOutLimit == 6,
+      GameValidationCode.invalidRules,
+      'rules.foulOutLimit',
+      'M004 fixes foulOutLimit at 6, got $foulOutLimit',
+    );
+    check(
+      substitutionPolicyVersion == 1,
+      GameValidationCode.unsupportedRulesVersion,
+      'rules.substitutionPolicyVersion',
+      'unsupported substitution policy $substitutionPolicyVersion',
+    );
+    check(
       actionDurationModelVersion == gameActionDurationModelVersion,
       GameValidationCode.unsupportedRulesVersion,
       'rules.actionDurationModelVersion',
@@ -229,6 +249,8 @@ final class GameRules {
     'bonusOvertimeFouls': bonusOvertimeFouls,
     'maxEvents': maxEvents,
     'maxZeroTimeEvents': maxZeroTimeEvents,
+    'foulOutLimit': foulOutLimit,
+    'substitutionPolicyVersion': substitutionPolicyVersion,
     'gameActionDurationModelVersion': actionDurationModelVersion,
     'phaseWeights': List<int>.of(phaseWeights),
     'phaseDurations': [

@@ -238,8 +238,8 @@ void main(List<String> args) {
       league: league,
       homeTeamId: home.id,
       awayTeamId: away.id,
-      homeLineup: ActiveLineup.defaultFor(home),
-      awayLineup: ActiveLineup.defaultFor(away),
+      homeLineup: CourtLineup.defaultFor(home),
+      awayLineup: CourtLineup.defaultFor(away),
       seed: seed,
       rules: GameRules.standard,
     );
@@ -482,8 +482,8 @@ void main(List<String> args) {
     // Every modelled lineup is the five positional starters; there are no
     // substitutions, so all dressed players are starters for the whole game.
     final starters = <String>{
-      ...ActiveLineup.defaultFor(home).playerIds,
-      ...ActiveLineup.defaultFor(away).playerIds,
+      ...CourtLineup.defaultFor(home).playerIds,
+      ...CourtLineup.defaultFor(away).playerIds,
     };
 
     games.add({

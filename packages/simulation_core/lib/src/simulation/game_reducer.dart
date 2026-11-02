@@ -246,6 +246,12 @@ final class _Replay {
       _deadBall(event);
     } else if (event is Turnover) {
       _turnoverEvent(event);
+    } else if (event is Substitution) {
+      _fail(
+        GameValidationCode.unsupportedEventType,
+        'event ${event.sequence}',
+        'Substitution events are not accepted until T04',
+      );
     } else {
       _fail(
         GameValidationCode.unsupportedEventType,
@@ -1133,7 +1139,7 @@ final class _Replay {
         'unknown team $teamId',
       );
     }
-    if (!input.isActive(team!, _playerId(playerId))) {
+    if (!input.isStartingPlayer(team!, _playerId(playerId))) {
       _fail(
         GameValidationCode.playerNotActive,
         'event $sequence.playerId',

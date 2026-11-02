@@ -4,7 +4,6 @@ import '../generation/deterministic_random.dart';
 import '../models/ids.dart';
 import '../models/player.dart';
 import 'action_intent.dart';
-import 'active_lineup.dart';
 import 'court_lineup.dart';
 import 'game_rules.dart';
 
@@ -106,19 +105,36 @@ import 'game_rules.dart';
 /// read (M003). A defense's assigned defender is the same canonical lineup
 /// index (PG defends PG … C defends C).
 final class BasketballProbabilityModel {
-  // Internal slot views, memoised per lineup/side. T02 exposes no slot API.
-  final Expando<CourtLineup> _lineupCourts = Expando<CourtLineup>();
-  final Expando<CourtLineup> _sideCourts = Expando<CourtLineup>();
-
-  CourtLineup _courtOfLineup(ActiveLineup lineup) =>
-      _lineupCourts[lineup] ??= CourtLineup.fromActiveLineup(lineup);
-
-  CourtLineup _courtOf(TeamOnCourt side) =>
-      _sideCourts[side] ??= _courtOfLineup(side.lineup);
-  BasketballProbabilityModel({GameRules? rules})
-    : rules = rules ?? GameRules.standard;
+  BasketballProbabilityModel({GameRules? rules, Iterable<Player>? players})
+    : rules = rules ?? GameRules.standard,
+      _playersById = {
+        for (final player in players ?? const <Player>[])
+          player.id.value: player,
+      };
 
   final GameRules rules;
+
+  /// Roster lookup used to resolve slot player ids to immutable players.
+  ///
+  /// A lineup's slots carry ids only (the frozen public contract); callers that
+  /// construct the model without the roster will get an [ArgumentError] the
+  /// first time a rating is needed.
+  final Map<String, Player> _playersById;
+
+  Player _playerOf(CourtSlot slot) {
+    final player = slot.player ?? _playersById[slot.playerId.value];
+    if (player == null) {
+      throw ArgumentError.value(
+        slot.playerId.value,
+        'lineup',
+        'unknown player; construct the model with the league roster',
+      );
+    }
+    return player;
+  }
+
+  Player _playerAt(CourtLineup lineup, int slotIndex) =>
+      _playerOf(lineup.slots[slotIndex]);
 
   static const int _maxBasisPoints = 10000;
 
@@ -241,20 +257,20 @@ final class BasketballProbabilityModel {
       );
     }
     if (categoryDraw < turnover + offensiveFoul) {
-      final offender = _pickWeighted(rng, _courtOf(offense), _ballHandlerScore);
+      final offender = _pickWeighted(rng, offense.lineup, _ballHandlerScore);
       final index = _lineupIndex(offense.lineup, offender.id)!;
       return OffensiveFoulAction(
         offenseTeamId: offense.teamId,
         playerId: offender.id,
-        victimId: defense.lineup.players[index].id,
+        victimId: defense.lineup.slots[index].playerId,
       );
     }
     if (categoryDraw < turnover + offensiveFoul + nonShootingFoul) {
-      final drawnBy = _pickWeighted(rng, _courtOf(offense), _ballHandlerScore);
+      final drawnBy = _pickWeighted(rng, offense.lineup, _ballHandlerScore);
       final index = _lineupIndex(offense.lineup, drawnBy.id)!;
       return NonShootingFoulAction(
         offenseTeamId: offense.teamId,
-        committingPlayerId: defense.lineup.players[index].id,
+        committingPlayerId: defense.lineup.slots[index].playerId,
         drawnByPlayerId: drawnBy.id,
       );
     }
@@ -279,11 +295,13 @@ final class BasketballProbabilityModel {
     DeterministicRandom rng,
     List<int> actorWeights,
   ) {
-    final handler =
-        offense.lineup.players[_pickWeightedIndex(rng, actorWeights)];
+    final handler = _playerAt(
+      offense.lineup,
+      _pickWeightedIndex(rng, actorWeights),
+    );
     final share = stealShareBasisPoints(ballhandler: handler, defense: defense);
     if (rng.nextInt(_maxBasisPoints) < share) {
-      final thief = _pickWeighted(rng, _courtOf(defense), _stealScore);
+      final thief = _pickWeighted(rng, defense.lineup, _stealScore);
       return TurnoverAction(
         offenseTeamId: offense.teamId,
         playerId: handler.id,
@@ -304,12 +322,12 @@ final class BasketballProbabilityModel {
     PhaseKind phase,
     DeterministicRandom rng,
   ) {
-    final offenseCourt = _courtOf(offense);
-    final shooter = offenseCourt.playerAtSlotIndex(
+    final shooter = _playerAt(
+      offense.lineup,
       _pickWeightedIndex(rng, shotUsageWeights(offense.lineup)),
     );
-    final slotIndex = offenseCourt.slotIndexForPlayer(shooter.id);
-    final defender = defense.lineup.players[slotIndex];
+    final slotIndex = offense.lineup.slotIndexForPlayer(shooter.id);
+    final defender = _playerAt(defense.lineup, slotIndex);
 
     final zoneWeights = _shotZoneWeightsForSlot(
       shooter: shooter,
@@ -340,7 +358,7 @@ final class BasketballProbabilityModel {
       if (rng.nextInt(_maxBasisPoints) < assistBp) {
         final passer = _pickWeighted(
           rng,
-          _courtOf(offense),
+          offense.lineup,
           _assistScore,
           exclude: shooter.id,
         );
@@ -381,7 +399,7 @@ final class BasketballProbabilityModel {
     );
     PlayerId? blockedById;
     if (rng.nextInt(_maxBasisPoints) < blockBp) {
-      final blocker = _pickWeighted(rng, _courtOf(defense), _blockScore);
+      final blocker = _pickWeighted(rng, defense.lineup, _blockScore);
       blockedById = blocker.id;
     }
     return ShotAttemptAction(
@@ -414,7 +432,7 @@ final class BasketballProbabilityModel {
     );
     final offensive = rng.nextInt(_maxBasisPoints) < share;
     final side = offensive ? offense : defense;
-    final rebounder = _pickWeighted(rng, _courtOf(side), _reboundScore);
+    final rebounder = _pickWeighted(rng, side.lineup, _reboundScore);
     return ReboundIntent(
       teamId: side.teamId,
       playerId: rebounder.id,
@@ -447,7 +465,7 @@ final class BasketballProbabilityModel {
         'shooter must be active in the offense lineup',
       );
     }
-    final activeShooter = offense.lineup.players[index];
+    final activeShooter = _playerAt(offense.lineup, index);
     final madeBp = freeThrowMakeBasisPoints(activeShooter);
     final made = <bool>[
       for (var i = 0; i < attempts; i++) rng.nextInt(_maxBasisPoints) < madeBp,
@@ -472,26 +490,26 @@ final class BasketballProbabilityModel {
   }
 
   /// Normalized shot-usage weights summing to 10000.
-  List<int> shotUsageWeights(ActiveLineup offense) {
+  List<int> shotUsageWeights(CourtLineup offense) {
     final raw = <int>[
-      for (final slot in _courtOfLineup(offense).slots)
+      for (final slot in offense.slots)
         max(
           60,
           _usagePositionBase[slot.slot.index] +
               max(
                     0,
                     max(
-                          slot.player.attributes.insideScoring,
+                          _playerOf(slot).attributes.insideScoring,
                           max(
-                            slot.player.attributes.midrange,
-                            slot.player.attributes.threePoint,
+                            _playerOf(slot).attributes.midrange,
+                            _playerOf(slot).attributes.threePoint,
                           ),
                         ) -
                         50,
                   ) *
                   3 +
-              (slot.player.attributes.ballHandling - 50) * 2 +
-              (slot.player.attributes.basketballIQ - 50),
+              (_playerOf(slot).attributes.ballHandling - 50) * 2 +
+              (_playerOf(slot).attributes.basketballIQ - 50),
         ),
     ];
     return _normalize(raw);
@@ -546,7 +564,7 @@ final class BasketballProbabilityModel {
     required Player shooter,
     required Player defender,
     required ShotZone zone,
-    required ActiveLineup offense,
+    required CourtLineup offense,
   }) {
     final a = shooter.attributes;
     final d = defender.attributes;
@@ -584,14 +602,16 @@ final class BasketballProbabilityModel {
   /// Amendment 002: involvement is a role statement. `ballHandling` is
   /// deliberately excluded; passing and basketballIQ express playmaking and
   /// decision responsibility. Positive min-one largest-remainder allocation.
-  List<int> exposureWeights(ActiveLineup lineup) {
+  List<int> exposureWeights(CourtLineup lineup) {
     final raw = <int>[
-      for (final slot in _courtOfLineup(lineup).slots)
+      for (final slot in lineup.slots)
         max(
           1,
           _exposurePositionBase[slot.slot.index] +
-              _exposurePassingWeight * (slot.player.attributes.passing - 50) +
-              _exposureIqWeight * (slot.player.attributes.basketballIQ - 50),
+              _exposurePassingWeight *
+                  (_playerOf(slot).attributes.passing - 50) +
+              _exposureIqWeight *
+                  (_playerOf(slot).attributes.basketballIQ - 50),
         ),
     ];
     return allocatePositiveWeights(raw, _maxBasisPoints);
@@ -608,12 +628,13 @@ final class BasketballProbabilityModel {
         _hazardPerimeterDefenseSlope * (def.perimeterDefense - 50) +
         _hazardAthleticismSlope * (def.athleticism - 50);
     return [
-      for (final player in offense.lineup.players)
+      for (final slot in offense.lineup.slots)
         clampBasisPoints(
           _turnoverBaseBasisPoints +
-              _hazardBallHandlingSlope * (player.attributes.ballHandling - 50) +
-              _hazardPassingSlope * (player.attributes.passing - 50) +
-              _hazardIqSlope * (player.attributes.basketballIQ - 50) +
+              _hazardBallHandlingSlope *
+                  (_playerOf(slot).attributes.ballHandling - 50) +
+              _hazardPassingSlope * (_playerOf(slot).attributes.passing - 50) +
+              _hazardIqSlope * (_playerOf(slot).attributes.basketballIQ - 50) +
               defenseTerm +
               _turnoverPhaseBonus[phase.index],
           min: _hazardMinBasisPoints,
@@ -748,7 +769,7 @@ final class BasketballProbabilityModel {
   }
 
   /// Probability that a made field goal is assisted.
-  int assistBasisPoints(ActiveLineup offense) {
+  int assistBasisPoints(CourtLineup offense) {
     final team = _lineupAverages(offense);
     return clampBasisPoints(
       5400 + (team.passing - 50) * 12 + (team.basketballIQ - 50) * 8,
@@ -807,7 +828,7 @@ final class BasketballProbabilityModel {
   // --- Weights and helpers ------------------------------------------------
 
   int _ballHandlerScore(CourtSlot slot) {
-    final a = slot.player.attributes;
+    final a = _playerOf(slot).attributes;
     return _handlePositionBase[slot.slot.index] +
         a.ballHandling * 3 +
         a.passing +
@@ -815,36 +836,36 @@ final class BasketballProbabilityModel {
   }
 
   int _stealScore(CourtSlot slot) {
-    final a = slot.player.attributes;
+    final a = _playerOf(slot).attributes;
     return _stealPositionBonus[slot.slot.index] +
         a.perimeterDefense * 3 +
         a.athleticism * 2;
   }
 
   int _assistScore(CourtSlot slot) {
-    final a = slot.player.attributes;
+    final a = _playerOf(slot).attributes;
     return _assistPositionBonus[slot.slot.index] +
         a.passing * 3 +
         a.basketballIQ * 2;
   }
 
   int _blockScore(CourtSlot slot) {
-    final a = slot.player.attributes;
+    final a = _playerOf(slot).attributes;
     return _blockPositionBonus[slot.slot.index] +
         a.interiorDefense * 3 +
         a.athleticism * 2;
   }
 
   int _reboundScore(CourtSlot slot) {
-    final a = slot.player.attributes;
+    final a = _playerOf(slot).attributes;
     return _reboundPositionBonus[slot.slot.index] +
         a.rebounding * 3 +
         a.athleticism;
   }
 
-  static int? _lineupIndex(ActiveLineup lineup, PlayerId playerId) {
-    for (var i = 0; i < lineup.players.length; i++) {
-      if (lineup.players[i].id == playerId) return i;
+  static int? _lineupIndex(CourtLineup lineup, PlayerId playerId) {
+    for (var i = 0; i < lineup.slots.length; i++) {
+      if (lineup.slots[i].playerId.value == playerId.value) return i;
     }
     return null;
   }
@@ -859,9 +880,9 @@ final class BasketballProbabilityModel {
   }) {
     final weights = <int>[
       for (final slot in court.slots)
-        slot.player.id == exclude ? 0 : max(1, weightOf(slot)),
+        slot.playerId == exclude ? 0 : max(1, weightOf(slot)),
     ];
-    return court.playerAtSlotIndex(_pickWeightedIndex(rng, weights));
+    return _playerOf(court.slots[_pickWeightedIndex(rng, weights)]);
   }
 
   static int _pickWeightedIndex(DeterministicRandom rng, List<int> weights) {
@@ -941,14 +962,14 @@ final class BasketballProbabilityModel {
     return [for (final value in extra) value + 1];
   }
 
-  static _LineupAverages _lineupAverages(ActiveLineup lineup) {
+  _LineupAverages _lineupAverages(CourtLineup lineup) {
     var ballHandling = 0;
     var passing = 0;
     var basketballIQ = 0;
     var perimeterDefense = 0;
     var rebounding = 0;
     var athleticism = 0;
-    final players = lineup.players;
+    final players = [for (final slot in lineup.slots) _playerOf(slot)];
     for (final player in players) {
       final a = player.attributes;
       ballHandling += a.ballHandling;

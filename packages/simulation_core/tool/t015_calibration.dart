@@ -103,8 +103,8 @@ void main() {
             league: league,
             homeTeamId: home.id,
             awayTeamId: away.id,
-            homeLineup: ActiveLineup.defaultFor(home),
-            awayLineup: ActiveLineup.defaultFor(away),
+            homeLineup: CourtLineup.defaultFor(home),
+            awayLineup: CourtLineup.defaultFor(away),
             seed: seed,
             rules: GameRules.standard,
           );
@@ -1127,8 +1127,8 @@ String _diagnostics(
     ..writeln('final input = GameInput.create(')
     ..writeln("  gameId: '<gameId>', league: league,")
     ..writeln('  homeTeamId: home.id, awayTeamId: away.id,')
-    ..writeln('  homeLineup: ActiveLineup.defaultFor(home),')
-    ..writeln('  awayLineup: ActiveLineup.defaultFor(away),')
+    ..writeln('  homeLineup: CourtLineup.defaultFor(home),')
+    ..writeln('  awayLineup: CourtLineup.defaultFor(away),')
     ..writeln('  seed: <seed>, rules: GameRules.standard,')
     ..writeln(');')
     ..writeln('final result = GameSimulator().simulate(input);')

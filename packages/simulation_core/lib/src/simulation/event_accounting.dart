@@ -13,9 +13,9 @@ abstract final class EventAccounting {
     final accumulators = <String, _PlayerAccumulator>{};
     for (final teamId in [input.homeTeamId.value, input.awayTeamId.value]) {
       final lineup = input.lineupFor(TeamId(teamId));
-      for (final player in lineup.players) {
-        accumulators[player.id.value] = _PlayerAccumulator(
-          playerId: player.id.value,
+      for (final playerId in lineup.playerIds) {
+        accumulators[playerId] = _PlayerAccumulator(
+          playerId: playerId,
           teamId: teamId,
         );
       }

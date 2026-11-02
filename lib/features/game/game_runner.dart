@@ -38,8 +38,8 @@ GameResult _simulateGame(GameRequest request) {
     league: request.league,
     homeTeamId: request.homeTeamId,
     awayTeamId: request.awayTeamId,
-    homeLineup: ActiveLineup.defaultFor(homeTeam),
-    awayLineup: ActiveLineup.defaultFor(awayTeam),
+    homeLineup: CourtLineup.defaultFor(homeTeam),
+    awayLineup: CourtLineup.defaultFor(awayTeam),
     seed: request.seed,
     rules: GameRules.standard,
   );
