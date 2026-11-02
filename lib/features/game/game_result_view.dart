@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
 
@@ -70,14 +72,14 @@ class GameResultView extends StatelessWidget {
           style: theme.textTheme.titleSmall,
         ),
         const SizedBox(height: 8),
-        _playerTable(theme, away),
+        _playerTable(context, theme, away),
         const SizedBox(height: 16),
         Text(
           '${home.abbreviation} player box score',
           style: theme.textTheme.titleSmall,
         ),
         const SizedBox(height: 8),
-        _playerTable(theme, home),
+        _playerTable(context, theme, home),
         const SizedBox(height: 24),
         _disclosures(context, theme),
         const SizedBox(height: 20),
@@ -331,73 +333,169 @@ class GameResultView extends StatelessWidget {
     );
   }
 
-  Widget _playerTable(ThemeData theme, Team team) {
+  static const double _identityWidth = 168;
+  static const double _rowHeight = 64;
+  static const double _headerHeight = 32;
+
+  Widget _playerTable(BuildContext context, ThemeData theme, Team team) {
     final lineupIds = result.input.lineupFor(team.id).playerIds;
+    final boxes = [for (final id in lineupIds) result.boxScore.players[id]!];
+    final textScaler = MediaQuery.textScalerOf(context);
+    final nameStyle = theme.textTheme.bodySmall ?? const TextStyle();
+    final positionStyle = theme.textTheme.labelSmall ?? const TextStyle();
+
+    /// Height needed to show a full name plus its position without clipping.
+    /// Both panes use the same value, so the rows stay aligned without any
+    /// scroll synchronisation.
+    double rowHeightFor(PlayerBoxScore box) {
+      final player = _player(team, box.playerId);
+      final namePainter = TextPainter(
+        text: TextSpan(text: player.fullName, style: nameStyle),
+        textDirection: TextDirection.ltr,
+        textScaler: textScaler,
+      )..layout(maxWidth: _identityWidth - 8);
+      final positionPainter = TextPainter(
+        text: TextSpan(text: player.position.shortName, style: positionStyle),
+        textDirection: TextDirection.ltr,
+        textScaler: textScaler,
+      )..layout();
+      return math.max(
+        _rowHeight,
+        namePainter.height + positionPainter.height + 8,
+      );
+    }
+
+    final rowHeights = {
+      for (final box in boxes) box.playerId: rowHeightFor(box),
+    };
+    final metrics = <(String, String Function(PlayerBoxScore), double)>[
+      ('PTS', (box) => '${box.points}', 44),
+      ('FG', (box) => '${box.fgm}/${box.fga}', 64),
+      ('3PT', (box) => '${box.threePm}/${box.threePa}', 64),
+      ('FT', (box) => '${box.ftm}/${box.fta}', 64),
+      ('REB', (box) => '${box.rebounds}', 48),
+      ('AST', (box) => '${box.assists}', 48),
+      ('STL', (box) => '${box.steals}', 48),
+      ('BLK', (box) => '${box.blocks}', 48),
+      ('TOV', (box) => '${box.turnovers}', 48),
+      ('PF', (box) => '${box.personalFouls}', 40),
+    ];
+
+    Widget statCell(
+      String text,
+      double width, {
+      Key? key,
+      bool header = false,
+    }) => SizedBox(
+      width: width,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          text,
+          key: key,
+          style: header
+              ? theme.textTheme.labelSmall
+              : theme.textTheme.bodyMedium,
+        ),
+      ),
+    );
+
     return Column(
+      key: ValueKey('player-table-${team.id.value}'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Swipe sideways for FT, REB, AST, STL, BLK, TOV and PF.',
+          'Swipe the statistics sideways; player names stay visible.',
           key: ValueKey('player-table-scroll-hint-${team.id.value}'),
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
         const SizedBox(height: 4),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            key: ValueKey('player-table-${team.id.value}'),
-            columnSpacing: 14,
-            horizontalMargin: 4,
-            headingRowHeight: 36,
-            dataRowMinHeight: 34,
-            dataRowMaxHeight: 40,
-            columns: const [
-              DataColumn(label: Text('Player')),
-              DataColumn(label: Text('POS')),
-              DataColumn(label: Text('PTS')),
-              DataColumn(label: Text('FG')),
-              DataColumn(label: Text('3PT')),
-              DataColumn(label: Text('FT')),
-              DataColumn(label: Text('REB')),
-              DataColumn(label: Text('AST')),
-              DataColumn(label: Text('STL')),
-              DataColumn(label: Text('BLK')),
-              DataColumn(label: Text('TOV')),
-              DataColumn(label: Text('PF')),
-            ],
-            rows: [
-              for (final playerId in lineupIds)
-                _playerRow(theme, team, result.boxScore.players[playerId]!),
-            ],
-          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: _identityWidth,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    height: _headerHeight,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('Player', style: theme.textTheme.labelSmall),
+                    ),
+                  ),
+                  for (final box in boxes)
+                    SizedBox(
+                      key: ValueKey('player-row-${box.playerId}'),
+                      height: rowHeights[box.playerId],
+                      child: _playerIdentity(theme, team, box),
+                    ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      height: _headerHeight,
+                      child: Row(
+                        children: [
+                          for (final metric in metrics)
+                            statCell(metric.$1, metric.$3, header: true),
+                        ],
+                      ),
+                    ),
+                    for (final box in boxes)
+                      SizedBox(
+                        height: rowHeights[box.playerId],
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            for (final metric in metrics)
+                              statCell(
+                                metric.$2(box),
+                                metric.$3,
+                                key: ValueKey(
+                                  'player-stat-${box.playerId}-${metric.$1}',
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 
-  DataRow _playerRow(ThemeData theme, Team team, PlayerBoxScore box) {
+  Widget _playerIdentity(ThemeData theme, Team team, PlayerBoxScore box) {
     final player = _player(team, box.playerId);
-    Widget cell(String keySuffix, String text) =>
-        Text(text, key: ValueKey('player-stat-${box.playerId}-$keySuffix'));
-    return DataRow(
-      key: ValueKey('player-row-${box.playerId}'),
-      cells: [
-        DataCell(
-          Text(player.fullName, key: ValueKey('player-name-${box.playerId}')),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          player.fullName,
+          key: ValueKey('player-name-${box.playerId}'),
+          style: theme.textTheme.bodySmall,
         ),
-        DataCell(cell('POS', player.position.shortName)),
-        DataCell(cell('PTS', '${box.points}')),
-        DataCell(cell('FG', '${box.fgm}/${box.fga}')),
-        DataCell(cell('3PT', '${box.threePm}/${box.threePa}')),
-        DataCell(cell('FT', '${box.ftm}/${box.fta}')),
-        DataCell(cell('REB', '${box.rebounds}')),
-        DataCell(cell('AST', '${box.assists}')),
-        DataCell(cell('STL', '${box.steals}')),
-        DataCell(cell('BLK', '${box.blocks}')),
-        DataCell(cell('TOV', '${box.turnovers}')),
-        DataCell(cell('PF', '${box.personalFouls}')),
+        Text(
+          player.position.shortName,
+          key: ValueKey('player-stat-${box.playerId}-POS'),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
       ],
     );
   }

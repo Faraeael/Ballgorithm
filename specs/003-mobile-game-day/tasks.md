@@ -244,6 +244,25 @@ horizontally clipped player tables.
 **Not measured:** Android frame timing, memory, thermals; release build. **Not captured:** device error
 state and device long-name fixture (not reachable through the shipped UI; widget-tested only).
 
+### T025 UX correction — frozen player identity (2026-11-02)
+
+Human review of the device captures showed that horizontal scrolling moved player names out of
+view, leaving anonymous stat rows. The player tables were rebuilt as a **two-pane layout**: a fixed
+identity pane (full name + position) beside a statistics pane that scrolls horizontally. No scroll
+synchronisation exists — both panes share one row list with the same per-row height, computed from a
+`TextPainter` measurement of the name at the current text scale, so long names stay complete and the
+rows stay aligned. No dependency, no new statistic, no simulation change.
+
+Tests updated: the canonical-order test now asserts vertical order through `player-row-<id>` positions;
+the layout walk asserts the horizontal scroll view is a **descendant** of each table (only statistics
+scroll); the long-name test measures the statistics pane's offset increasing, requires the `PF` cell to
+move from outside the viewport to inside it, and requires the name's screen position to be unchanged.
+`flutter test` 71/71; `flutter analyze` clean; `dart format` 19 files 0 changed.
+
+Device captures: `20-frozen-identity-tables-360.png`, `21-frozen-identity-rightmost-360.png`,
+`22-frozen-identity-rightmost-b-360.png`, `23-frozen-identity-393dp.png`,
+`24-frozen-identity-430dp.png`; names and positions stay visible with `PF`/`TOV`/`BLK` on screen.
+
 M003 is **not accepted** by this task. Owner UX acceptance is pending.
 
 **Scope:** `test/game_mobile_layout_test.dart`, acceptance report

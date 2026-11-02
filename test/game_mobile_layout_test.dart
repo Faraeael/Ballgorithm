@@ -158,9 +158,9 @@ Future<void> _walkResults(
     await _scrollTo(tester, find.byKey(key));
     _expectNoOverflow(tester);
     expect(
-      find.ancestor(of: find.byKey(key), matching: _horizontalScrollable()),
+      find.descendant(of: find.byKey(key), matching: _horizontalScrollable()),
       findsOneWidget,
-      reason: 'player table is the horizontally scrollable element',
+      reason: 'only the statistics pane scrolls horizontally',
     );
   }
 
@@ -385,7 +385,7 @@ void main() {
     expect(name.data, 'Bartholomew Maximilian Fitzgerald-Washington III');
     expect(name.overflow, isNull, reason: 'no forced ellipsis');
 
-    final tableScrollable = find.ancestor(
+    final tableScrollable = find.descendant(
       of: find.byKey(tableKey),
       matching: _horizontalScrollable(),
     );
@@ -406,6 +406,9 @@ void main() {
 
     final pfCell = find.byKey(ValueKey('player-stat-$playerId-PF'));
     final beforeOffset = tableState.position.pixels;
+    final nameBefore = tester.getTopLeft(
+      find.byKey(ValueKey('player-name-$playerId')),
+    );
     expect(
       tester.getRect(pfCell).left,
       greaterThanOrEqualTo(size.width),
@@ -414,9 +417,10 @@ void main() {
 
     // Start the drag inside the visible part of the name cell; the full text
     // is wider than the viewport, so its centre is not hittable.
+    // Drag inside the statistics pane; the identity pane must not move.
     final dragStart =
-        tester.getTopLeft(find.byKey(ValueKey('player-name-$playerId'))) +
-        const Offset(12, 12);
+        tester.getTopLeft(find.byKey(ValueKey('player-stat-$playerId-PTS'))) +
+        const Offset(8, 12);
     for (
       var attempt = 0;
       attempt < 5 && tester.getRect(pfCell).left >= size.width;
@@ -436,6 +440,11 @@ void main() {
       lessThan(size.width),
       reason: 'PF became reachable after scrolling',
     );
+    expect(
+      tester.getTopLeft(find.byKey(ValueKey('player-name-$playerId'))),
+      nameBefore,
+      reason: 'the identity pane did not move while statistics scrolled',
+    );
 
     expect(
       pageState.position.pixels,
@@ -450,11 +459,16 @@ void main() {
 
     // All five rows remain configured in canonical order, and every player
     // name is still rendered.
-    final table = tester.widget<DataTable>(find.byKey(tableKey));
-    expect(
-      [for (final row in table.rows) (row.key! as ValueKey<String>).value],
-      [for (final id in lineupIds) 'player-row-$id'],
-    );
+    final ordered = [...lineupIds]
+      ..sort(
+        (a, b) => tester
+            .getTopLeft(find.byKey(ValueKey('player-row-$a')))
+            .dy
+            .compareTo(
+              tester.getTopLeft(find.byKey(ValueKey('player-row-$b'))).dy,
+            ),
+      );
+    expect(ordered, lineupIds);
     for (final id in lineupIds) {
       expect(find.byKey(ValueKey('player-name-$id')), findsOneWidget);
     }

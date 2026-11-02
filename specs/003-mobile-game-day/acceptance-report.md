@@ -105,9 +105,12 @@ incident disclosure. Path: `E:\ballgorithm-m003-review\screenshots\`.
 | Long-name fixture on device | **NOT CAPTURED** — app generates corpus names only; covered by widget test |
 | Readability, spacing, hierarchy judgement | **PENDING OWNER REVIEW** |
 
-Three defects found in the captures were fixed before the final run: duplicated winner, team-statistics
-column order inconsistent with the scoreboard, and no affordance for the horizontally clipped player
-tables. Widget tests are not screenshots and no capture is presented as a performance measurement.
+Four defects found during review were fixed: duplicated winner, team-statistics column order
+inconsistent with the scoreboard, no affordance for the horizontally clipped player tables, and player
+names scrolling out of view while statistics were read. The last fix rebuilt the player tables as a
+two-pane layout with a frozen identity column (see `tasks.md` T025 UX correction); captures 20–24 show
+the result at 360, ~393 and ~430 dp. Widget tests are not screenshots and no capture is presented as a
+performance measurement.
 
 ## 8. Android validation
 
@@ -135,7 +138,7 @@ No Android performance claim is made, and desktop benchmark results are not extr
 
 1. No end-to-end widget test drives the real worker from setup to a rendered result; the worker is
    proven by direct tests and the screens by injected runners.
-2. Player tables require horizontal scrolling; the team statistics table is dense at 360 dp.
+2. Player statistics require horizontal scrolling, but the player identity pane (name + position) is fixed and always visible; the team statistics table is dense at 360 dp.
 3. Rematch gives no explicit cycle-position counter; wrap is disclosed only when it happens.
 4. No persistence: results vanish on return to the league (DD-MGD-07).
 5. Android performance and release packaging unmeasured.

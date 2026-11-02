@@ -330,14 +330,16 @@ void main() {
     for (final teamId in [baseRequest.homeTeamId, baseRequest.awayTeamId]) {
       final ids = base.input.lineupFor(teamId).playerIds;
       expect(ids, hasLength(5));
-      final table = tester.widget<DataTable>(
-        find.byKey(ValueKey('player-table-${teamId.value}')),
-      );
-      expect(
-        [for (final row in table.rows) (row.key! as ValueKey<String>).value],
-        [for (final id in ids) 'player-row-$id'],
-        reason: 'canonical PG→C order for ${teamId.value}',
-      );
+      final ordered = [...ids]
+        ..sort(
+          (a, b) => tester
+              .getTopLeft(find.byKey(ValueKey('player-row-$a')))
+              .dy
+              .compareTo(
+                tester.getTopLeft(find.byKey(ValueKey('player-row-$b'))).dy,
+              ),
+        );
+      expect(ordered, ids, reason: 'canonical PG→C order for ${teamId.value}');
     }
   });
 

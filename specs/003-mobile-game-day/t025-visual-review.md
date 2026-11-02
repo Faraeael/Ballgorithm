@@ -38,6 +38,10 @@ Widths other than 360 dp were produced by changing display density, so their hei
 | `13-ot-player-table-360x820.png` | Player table, disclosures and both actions | 360 dp | post-fix |
 | `14-result-393dp.png`, `18-result-top-393dp.png` | Result at ~393 dp | ~393 dp | post-fix |
 | `15-result-430dp.png`, `19-result-top-430dp.png` | Result at ~430 dp | ~430 dp | post-fix |
+| `20-frozen-identity-tables-360.png` | Two-pane player tables; identity fixed, stats at PTS/FG/3PT | 360 dp | identity fix |
+| `21-frozen-identity-rightmost-360.png`, `22-frozen-identity-rightmost-b-360.png` | Stats scrolled to BLK/TOV/PF with names and positions still visible | 360 dp | identity fix |
+| `23-frozen-identity-393dp.png` | Same, stats at STL/BLK/TOV/PF | ~393 dp | identity fix |
+| `24-frozen-identity-430dp.png` | Same, stats at AST…PF | ~430 dp | identity fix |
 
 Every file in this table was opened and checked before being listed. Nothing in the directory is
 presented as a state it does not show.
@@ -72,8 +76,9 @@ rebuilt APK.
    widths.
 2. Player tables scroll sideways independently; the page position is unchanged during the drag.
 3. Full player names render (e.g. `Dante Lindqvist`, `Caleb Fairweather`, `Jonas Rasmussen`); no ellipsis.
-4. The cut column at the right edge remains visible mid-cell even with the hint. It reads as
-   "more columns to the right" only after the first swipe; an owner may still consider it awkward.
+4. Right-edge statistics are still cut mid-cell while scrolling, which is inherent to a scrolled
+   numeric pane. The fixed identity column and the hint now make it unambiguous that the pane moves,
+   not the player rows.
 5. Section titles scroll away with the page; there are no sticky headers.
 6. The loading state is real but lasts well under a second on this device. It was captured on a
    rematch attempt (seed `20327846`); earlier rapid captures returned the result screen instead, and
