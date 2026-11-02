@@ -28,12 +28,16 @@ rules, or the PRNG implementation.
    five supplied by input.
 3. A player's primary position is independent of the slot they occupy.
 4. A sixth personal foul disqualifies immediately; the player may still shoot an awarded free-throw
-   group but takes no further live action.
+   group but takes no further live action **unless depleted-roster continuation applies (§6)**. Under
+   continuation the player keeps playing, their foul count keeps rising, and no technical foul is
+   assessed.
 5. Replacement occurs only at a lawful window; missing a mandatory replacement while an eligible bench
    player exists is a validation failure.
 6. Seconds played reconcile exactly to team elapsed time.
 7. Same input, seed and versions ⇒ identical ledger and identical derived totals.
 8. No historical M001/M002/M003 artifact changes meaning.
+9. For default lineups, v5 and v4 follow the same event path up to the first `Substitution`;
+   divergence after that point is intended and is not an equivalence failure.
 
 ## 3. Court lineup contract
 

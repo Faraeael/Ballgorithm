@@ -7,7 +7,7 @@
 |---|---|---|---|
 | AC-M004-01 | Five canonical slots, unique roster players, any slot may hold any eligible player; `defaultFor` maps players to their own positions | Contract tests for size, order, uniqueness, ownership, slot/position mismatch legality | NOT RUN |
 | AC-M004-02 | `CourtLineup` replaces `ActiveLineup`; app runner and tests migrated | Build + full suites green; no `ActiveLineup` references remain | NOT RUN |
-| AC-M004-03 | Default-lineup outcomes unchanged from v4 before substitutions | Event-list identity against v4 on representative seeds; digest equality apart from version metadata | NOT RUN |
+| AC-M004-03 | Default-lineup outcomes unchanged from v4 before substitutions | Full event-list identity for a no-disqualification game; **prefix** identity up to the first `Substitution` for games that contain one; digest equality apart from version metadata where paths are fully equivalent | NOT RUN |
 | AC-M004-04 | `Substitution` round-trips and malformed forms are rejected with typed codes | Serialization tests; unknown type still rejected | NOT RUN |
 | AC-M004-05 | Legal windows W0/W1/W2/W4/W5 accepted; all non-windows rejected | Hand-built ledger acceptance and rejection tests | NOT RUN |
 | AC-M004-06 | No substitution at `gameClock == 0`; horn disqualification defers to W5 | Ledger tests, including made and missed final free throws at 0 | NOT RUN |

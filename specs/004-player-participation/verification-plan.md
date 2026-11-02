@@ -26,7 +26,10 @@
 5. **W1 retained-foul fixture** — substitution during an open possession with a pending ceiling.
 6. **W0 fixture** — disqualified defender replaced between foul and first free throw.
 7. **Horn fixtures** — buzzer shooting foul: made final FT and missed final FT (`DeadBallMiss`).
-8. **v4 equivalence fixture** — same seed/lineups, no disqualification, event lists identical.
+8. **v4 equivalence fixtures** — two forms:
+   - a **no-disqualification** game: the full event list must equal v4's apart from version metadata;
+   - a game **with** substitutions: only the prefix up to the first `Substitution` must equal v4's;
+     after that point divergence is expected and is not an equivalence failure.
 
 ## 3. Reducer rejection list (each needs a typed code)
 
@@ -81,8 +84,10 @@ per-game differences. No filtering on whether a disqualification occurred.
 **Descriptive additions (not gates):** disqualifications per game, substitutions per game, minutes
 distribution by roster rank, first-divergence event index per game.
 
-**Mechanism check:** for games with no disqualification and default lineups, assert event-list identity
-between v4 and v5. Report separately; never used to exclude games from the primary analysis.
+**Mechanism check:** for games with no disqualification and default lineups, assert full event-list
+identity between v4 and v5. For games that do contain substitutions, assert identity only on the
+**prefix up to the first `Substitution`**; divergence thereafter is intended. Report both separately;
+never used to exclude games from the primary analysis.
 
 **Fresh sample:** conditional on owner approval; seeds drawn from an unused range and recorded before
 execution. No AC09/AC10 claims. No NBA realism claim.
@@ -115,6 +120,7 @@ recorded.
 
 ## 8. Stop rules
 
-Stop and report if: a legal ledger is rejected; minutes do not reconcile; a default-lineup game differs
-from v4; the reducer requires rules beyond the documented window/ceiling exemptions; or the cohort
-cannot be pre-registered before execution.
+Stop and report if: a legal ledger is rejected; minutes do not reconcile; the prefix of a
+default-lineup game differs from v4 **before** the first substitution, or a no-disqualification
+mechanism fixture differs at all; the reducer requires rules beyond the documented window/ceiling
+exemptions; or the cohort cannot be pre-registered before execution.
