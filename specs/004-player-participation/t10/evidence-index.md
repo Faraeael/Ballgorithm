@@ -79,7 +79,7 @@ Pinned T07 values: input fingerprint `e9b99720fa77ecd362e05029ebdba80ded67828f66
 | `dart analyze` (core) | PASS, no issues |
 | `dart test` (core, VM) | PASS, 454 passed (final AC-12 snapshot; earlier T10 run was 453) |
 | `dart format --set-exit-if-changed lib test` (core) | PASS, 70 files, 0 changed |
-| `dart test -p chrome test/deterministic_random_test.dart test/generator_test.dart test/validation_test.dart test/simulation` | PASS, 452 passed; exclusion: IO-only `domain_isolation_test.dart` |
+| `dart test -p chrome test/deterministic_random_test.dart test/generator_test.dart test/validation_test.dart test/simulation` | PASS, 453 passed (final AC-12 snapshot; the earlier pre-AC-12 T10 run was 452); exclusion: IO-only `domain_isolation_test.dart` |
 | Historical fixture diff `git diff d29d1ff..HEAD -- '*fixture*'` | only the new T07 fixture; no historical fixture change |
 
 VM/Chrome delta = 1, exactly the excluded IO test.

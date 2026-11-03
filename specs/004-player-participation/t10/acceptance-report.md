@@ -74,7 +74,10 @@ earlier gate claimed.
 Caveats recorded rather than hidden:
 
 - AC-M004-19: frozen fixtures are unchanged (v1–v4 archives and M001 vectors); all 23 pre-M004 core test files still exist. The literal "core suite count unchanged" proxy does not hold because M004 adds tests: pre-M004 baseline `d833dd5` ran 351 VM tests, current snapshot runs 454 (Chrome 453). The increase is additive, not a historical test loss; the count comparison is recorded explicitly rather than treated as a regression.
-- AC-M004-24's zero-second entrant at all three widths was verified by a transient, deleted local test.
+- AC-M004-24: the current PASS rests on committed tests in `test/game_participation_test.dart`
+  (commit `9f5465da89798931f75172e6882ab386f8e5f13b`) covering the validated zero-second
+  entrant at 360×640, 393×852 and 430×932. An earlier transient local attempt existed but is
+  not the supporting evidence.
 - AC-M004-29 cites only T03-era evidence; the seed-15 regression (`ee50aca`) postdates T03 and is not used there.
 - AC-M004-12's passive draw counter adds one integer increment per PRNG draw; no performance benchmark of that overhead exists.
 

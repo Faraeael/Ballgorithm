@@ -64,11 +64,17 @@ equivalence.
   and a 7-player roster fixture exercises the first-eligible roster-order fallback.
   The instrumentation adds one integer increment per PRNG draw and is not
   performance-benchmarked.
-- AC-M004-19 verifies fixture/content preservation; a historical suite-count comparison
-  is not reconstructed.
-- AC-M004-24's zero-second entrant at 360/393/430 was verified with a transient local
-  test that was not committed (file removed); the committed three-width tests cover
-  substitute rows, `MIN`, hidden non-participants and disclosure.
+- AC-M004-19: frozen fixtures and M001 vectors are unchanged and all 23 pre-M004 core
+  test files remain. The historical baseline `d833dd5` ran 351 VM tests; the current
+  integrated snapshot runs 454 VM / 453 Chrome. The increase is additional M004 coverage
+  and contract-migration updates, not removal of historical coverage; there is no claim
+  that the total count is literally unchanged.
+- AC-M004-24 is supported by committed regressions in
+  `test/game_participation_test.dart`, introduced by commit
+  `9f5465da89798931f75172e6882ab386f8e5f13b`. The same validated zero-second entrant is
+  exercised at 360×640, 393×852 and 430×932, including `0:00`, `PF 1`, `SUBSTITUTE`,
+  vertical/horizontal scrolling and no-overflow assertions. An earlier transient attempt
+  existed historically but is not the evidence for this PASS.
 - AC-M004-29 is assessed only on T03-era evidence (`8618550`), not on the seed-15
   regression added later in `ee50aca`.
 - T08 raw evidence lives outside Git at `E:\ballgorithm-t08-artifacts`; if that path is
