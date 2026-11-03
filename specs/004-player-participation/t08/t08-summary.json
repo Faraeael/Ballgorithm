@@ -749,6 +749,137 @@
       }
     }
   },
+  "matchupParticipation": {
+    "matchup0": {
+      "categories": {
+        "A": 1,
+        "B": 49,
+        "C": 0
+      },
+      "gamesWithSubstitutions": 49,
+      "gamesWithDisqualifications": 49,
+      "disqualificationsPerGame": {
+        "total": 119,
+        "gamesWithAtLeastOne": 49,
+        "mean": 2.38,
+        "max": 5
+      },
+      "substitutionsPerGame": {
+        "total": 118,
+        "gamesWithAtLeastOne": 49,
+        "mean": 2.36,
+        "max": 5
+      },
+      "firstDivergence": {
+        "equalGames": 1,
+        "divergedGames": 49,
+        "min": 259,
+        "median": 541.0,
+        "max": 781
+      },
+      "continuationCases": [
+        {
+          "slot": 97,
+          "gameId": "m004-t08-m0-20098",
+          "seed": 20098,
+          "matchup": 0,
+          "playerId": "player-2-1",
+          "foulSequence": 908,
+          "period": 5,
+          "gameClock": 0,
+          "kind": "hornGameEnd",
+          "eventsAfterFoul": 3
+        }
+      ]
+    },
+    "matchup1": {
+      "categories": {
+        "A": 2,
+        "B": 48,
+        "C": 0
+      },
+      "gamesWithSubstitutions": 48,
+      "gamesWithDisqualifications": 48,
+      "disqualificationsPerGame": {
+        "total": 104,
+        "gamesWithAtLeastOne": 48,
+        "mean": 2.08,
+        "max": 5
+      },
+      "substitutionsPerGame": {
+        "total": 104,
+        "gamesWithAtLeastOne": 48,
+        "mean": 2.08,
+        "max": 5
+      },
+      "firstDivergence": {
+        "equalGames": 2,
+        "divergedGames": 48,
+        "min": 290,
+        "median": 532.5,
+        "max": 817
+      },
+      "continuationCases": []
+    },
+    "matchup2": {
+      "categories": {
+        "A": 7,
+        "B": 43,
+        "C": 0
+      },
+      "gamesWithSubstitutions": 43,
+      "gamesWithDisqualifications": 43,
+      "disqualificationsPerGame": {
+        "total": 114,
+        "gamesWithAtLeastOne": 43,
+        "mean": 2.28,
+        "max": 6
+      },
+      "substitutionsPerGame": {
+        "total": 114,
+        "gamesWithAtLeastOne": 43,
+        "mean": 2.28,
+        "max": 6
+      },
+      "firstDivergence": {
+        "equalGames": 7,
+        "divergedGames": 43,
+        "min": 100,
+        "median": 535.0,
+        "max": 853
+      },
+      "continuationCases": []
+    },
+    "matchup3": {
+      "categories": {
+        "A": 1,
+        "B": 49,
+        "C": 0
+      },
+      "gamesWithSubstitutions": 49,
+      "gamesWithDisqualifications": 49,
+      "disqualificationsPerGame": {
+        "total": 127,
+        "gamesWithAtLeastOne": 49,
+        "mean": 2.54,
+        "max": 5
+      },
+      "substitutionsPerGame": {
+        "total": 127,
+        "gamesWithAtLeastOne": 49,
+        "mean": 2.54,
+        "max": 5
+      },
+      "firstDivergence": {
+        "equalGames": 1,
+        "divergedGames": 49,
+        "min": 204,
+        "median": 567.0,
+        "max": 794
+      },
+      "continuationCases": []
+    }
+  },
   "mechanism": {
     "categories": {
       "A": 11,
@@ -789,64 +920,160 @@
     "gamesWithDisqualifications": 189,
     "minutesByRosterRank": {
       "1": {
-        "playerGames": 400,
-        "totalSeconds": 1095185,
-        "meanSeconds": 2737.9625
+        "n": 400,
+        "mean": 2737.9625,
+        "sd": 368.4299630702837,
+        "min": 792.0,
+        "q05": 1846.65,
+        "q25": 2880.0,
+        "median": 2880.0,
+        "q75": 2880.0,
+        "q95": 2880.0,
+        "max": 3180.0,
+        "zeros": 0
       },
       "2": {
-        "playerGames": 400,
-        "totalSeconds": 1078121,
-        "meanSeconds": 2695.3025
+        "n": 400,
+        "mean": 2695.3025,
+        "sd": 396.5037566863862,
+        "min": 1044.0,
+        "q05": 1738.65,
+        "q25": 2793.75,
+        "median": 2880.0,
+        "q75": 2880.0,
+        "q95": 2880.0,
+        "max": 3180.0,
+        "zeros": 0
       },
       "3": {
-        "playerGames": 400,
-        "totalSeconds": 562139,
-        "meanSeconds": 1405.3475
+        "n": 400,
+        "mean": 1405.3475,
+        "sd": 1323.7816895726708,
+        "min": 0.0,
+        "q05": 0.0,
+        "q25": 0.0,
+        "median": 1390.0,
+        "q75": 2880.0,
+        "q95": 2880.0,
+        "max": 3180.0,
+        "zeros": 159
       },
       "4": {
-        "playerGames": 400,
-        "totalSeconds": 700046,
-        "meanSeconds": 1750.115
+        "n": 400,
+        "mean": 1750.115,
+        "sd": 1265.0585459125846,
+        "min": 0.0,
+        "q05": 0.0,
+        "q25": 21.0,
+        "median": 2437.0,
+        "q75": 2880.0,
+        "q95": 2880.0,
+        "max": 3180.0,
+        "zeros": 100
       },
       "5": {
-        "playerGames": 400,
-        "totalSeconds": 721502,
-        "meanSeconds": 1803.755
+        "n": 400,
+        "mean": 1803.755,
+        "sd": 1309.7097307885833,
+        "min": 0.0,
+        "q05": 0.0,
+        "q25": 0.0,
+        "median": 2880.0,
+        "q75": 2880.0,
+        "q95": 2880.0,
+        "max": 3180.0,
+        "zeros": 116
       },
       "6": {
-        "playerGames": 400,
-        "totalSeconds": 429710,
-        "meanSeconds": 1074.275
+        "n": 400,
+        "mean": 1074.275,
+        "sd": 1282.142899763333,
+        "min": 0.0,
+        "q05": 0.0,
+        "q25": 0.0,
+        "median": 0.0,
+        "q75": 2880.0,
+        "q95": 2880.0,
+        "max": 3180.0,
+        "zeros": 204
       },
       "7": {
-        "playerGames": 400,
-        "totalSeconds": 455862,
-        "meanSeconds": 1139.655
+        "n": 400,
+        "mean": 1139.655,
+        "sd": 1327.747100120992,
+        "min": 0.0,
+        "q05": 0.0,
+        "q25": 0.0,
+        "median": 32.0,
+        "q75": 2880.0,
+        "q95": 2880.0,
+        "max": 2880.0,
+        "zeros": 197
       },
       "8": {
-        "playerGames": 400,
-        "totalSeconds": 337779,
-        "meanSeconds": 844.4475
+        "n": 400,
+        "mean": 844.4475,
+        "sd": 1200.830557286091,
+        "min": 0.0,
+        "q05": 0.0,
+        "q25": 0.0,
+        "median": 0.0,
+        "q75": 1783.0,
+        "q95": 2880.0,
+        "max": 3180.0,
+        "zeros": 226
       },
       "9": {
-        "playerGames": 400,
-        "totalSeconds": 299871,
-        "meanSeconds": 749.6775
+        "n": 400,
+        "mean": 749.6775,
+        "sd": 1182.7322763786049,
+        "min": 0.0,
+        "q05": 0.0,
+        "q25": 0.0,
+        "median": 0.0,
+        "q75": 1478.0,
+        "q95": 2880.0,
+        "max": 3180.0,
+        "zeros": 255
       },
       "10": {
-        "playerGames": 400,
-        "totalSeconds": 40088,
-        "meanSeconds": 100.22
+        "n": 400,
+        "mean": 100.22,
+        "sd": 322.88805853711034,
+        "min": 0.0,
+        "q05": 0.0,
+        "q25": 0.0,
+        "median": 0.0,
+        "q75": 0.0,
+        "q95": 846.4999999999995,
+        "max": 2498.0,
+        "zeros": 344
       },
       "11": {
-        "playerGames": 400,
-        "totalSeconds": 27550,
-        "meanSeconds": 68.875
+        "n": 400,
+        "mean": 68.875,
+        "sd": 265.59251275606437,
+        "min": 0.0,
+        "q05": 0.0,
+        "q25": 0.0,
+        "median": 0.0,
+        "q75": 0.0,
+        "q95": 666.1999999999989,
+        "max": 1722.0,
+        "zeros": 367
       },
       "12": {
-        "playerGames": 400,
-        "totalSeconds": 21147,
-        "meanSeconds": 52.8675
+        "n": 400,
+        "mean": 52.8675,
+        "sd": 230.66612689989134,
+        "min": 0.0,
+        "q05": 0.0,
+        "q25": 0.0,
+        "median": 0.0,
+        "q75": 0.0,
+        "q95": 310.59999999999764,
+        "max": 1829.0,
+        "zeros": 369
       }
     },
     "firstDivergence": {

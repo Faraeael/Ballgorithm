@@ -1,17 +1,19 @@
 M004 T08 artifact checksums (SHA-256)
 Generated after the single authorized 400-simulation execution.
+Updated after the analysis-only correction that added full minutes distributions and
+per-matchup participation breakdowns; no simulation was re-run.
 
 repository files
 65f40465917e3293c00e9c2fd2e862a46294d881b13ea4c426faf9d7fd4c075c  specs/004-player-participation/t08/t08-seeds.csv
 16c4eb1fef9f6cac9512a6f882c9afbd1dbd057bfe763c777e37dfa9717378cf  specs/004-player-participation/t08/runner-v4.dart.txt
 ef0c5c7f13eb379cd4082ce418eb31dae4a2b98d74c88b3bd8f5a8705a8d088c  specs/004-player-participation/t08/t08-paired.csv
-f4a2443375e6cc60e510b07c4dfdb817186bf2133fd1c6d53de59b362c5ba523  specs/004-player-participation/t08/t08-summary.json
+c609d754119c11e152ae5246b0bd0c9834d97c43b164a95168c7705a5afffd0e  specs/004-player-participation/t08/t08-summary.json
 b5a5925ae9938fe2edd784676bd9dc6fd9027e1c0bbe71c5e145dfe820f316ff  specs/004-player-participation/t08/t08-mechanism-report.json
-792a2494690b3ef7dd588604612798971e8aca3dc11114577e3f5919fbce399f  packages/simulation_core/tool/t08_common.dart
+f26d69ee5d4dff993030e6d7c0bdfd864416a725fb769f332154f1693b1103cc  packages/simulation_core/tool/t08_common.dart
 731fcc5649f0b520bdaafca9880721c0ea4a9569d194f83791ec3a80e7495957  packages/simulation_core/tool/t08_manifest.dart
 31ea264e73e5ee901804da93d22dea369829c2cbbad78745da7984285d827cf0  packages/simulation_core/tool/t08_runner_v5.dart
-7d42cba1e669336e464f04bc116bb060e477c1b8f96dcf3358311bf67a8a8e88  packages/simulation_core/tool/t08_analyze.dart
-e011dfd0b82ed5df16775922aa1bd66a9d46c451085aff7b512d8a97c2e6c390  packages/simulation_core/test/simulation/t08_tooling_test.dart
+66ceb20539677e9ae99020a94d33f1f2bbe0e96bb2d62a5cf917dbb437163e6d  packages/simulation_core/tool/t08_analyze.dart
+1f42405121eb7001a7116ca2c85765ee4e810efbc9b77936b8c2939f69e349ad  packages/simulation_core/test/simulation/t08_tooling_test.dart
 
 raw evidence (not committed; retention path E:\ballgorithm-t08-artifacts\)
 6a1a1c574bc2e373883aca6e5c0e9c69985f9e4ef8d30b3440678c0aac87d033  t08-raw-v4.jsonl (28,768,349 bytes)

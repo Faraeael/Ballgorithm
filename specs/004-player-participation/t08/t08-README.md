@@ -88,10 +88,27 @@ True depleted-roster continuation: **0**.
 
 - Disqualifications: 464 total, 189 games with at least one, mean 2.32/game, max 6.
 - Substitutions: 463 total, 189 games with at least one, mean 2.315/game, max 6.
-- Mean `secondsPlayed` by canonical roster rank (400 player-games per rank):
-  rank 1 2738.0, rank 2 2695.3, rank 3 1405.3, rank 4 1750.1, rank 5 1803.8, rank 6 1074.3,
-  rank 7 1139.7, rank 8 844.4, rank 9 749.7, rank 10 100.2, rank 11 68.9, rank 12 52.9.
-- Matchup breakdown: `t08-summary.json` → `matchupBreakdown` (n = 50 each, descriptive).
+- `secondsPlayed` distribution by canonical roster rank (400 player-games per rank; full quantiles
+  q05/q25/q75/q95 and SD in `t08-summary.json` -> `participation.minutesByRosterRank`):
+
+| Rank | n | Mean | SD | Median | q95 | Max | Zero-second rows |
+|---|---|---|---|---|---|---|---|
+| 1 | 400 | 2738.0 | 368.4 | 2880.0 | 2880.0 | 3180.0 | 0 |
+| 2 | 400 | 2695.3 | 396.5 | 2880.0 | 2880.0 | 3180.0 | 0 |
+| 3 | 400 | 1405.3 | 1323.8 | 1390.0 | 2880.0 | 3180.0 | 159 |
+| 4 | 400 | 1750.1 | 1265.1 | 2437.0 | 2880.0 | 3180.0 | 100 |
+| 5 | 400 | 1803.8 | 1309.7 | 2880.0 | 2880.0 | 3180.0 | 116 |
+| 6 | 400 | 1074.3 | 1282.1 | 0.0 | 2880.0 | 3180.0 | 204 |
+| 7 | 400 | 1139.7 | 1327.7 | 32.0 | 2880.0 | 2880.0 | 197 |
+| 8 | 400 | 844.4 | 1200.8 | 0.0 | 2880.0 | 3180.0 | 226 |
+| 9 | 400 | 749.7 | 1182.7 | 0.0 | 2880.0 | 3180.0 | 255 |
+| 10 | 400 | 100.2 | 322.9 | 0.0 | 846.5 | 2498.0 | 344 |
+| 11 | 400 | 68.9 | 265.6 | 0.0 | 666.2 | 1722.0 | 367 |
+| 12 | 400 | 52.9 | 230.7 | 0.0 | 310.6 | 1829.0 | 369 |
+- Primary matchup breakdown: `t08-summary.json` -> `matchupBreakdown` (n = 50 each, descriptive).
+- Participation matchup breakdown: `t08-summary.json` -> `matchupParticipation` (50 games each):
+  categories A/B/C, games with substitutions/disqualifications, disqualification and substitution
+  frequency summaries, first-divergence distribution and continuation cases per matchup.
 
 ## Integrity
 

@@ -49,8 +49,20 @@ void main(List<String> args) {
   final firstDivergence = <int>[];
   final disqualificationsPerGame = <int>[];
   final substitutionsPerGame = <int>[];
-  final depletedContinuation = <Map<String, Object?>>[];
-  final minutesByRank = <int, Map<String, num>>{};
+  final continuationCases = <Map<String, Object?>>[];
+  final minutesSecondsByRank = <int, List<double>>{};
+  final matchupCategories = {
+    for (var m = 0; m < t08MatchupCount; m++) m: {'A': 0, 'B': 0, 'C': 0},
+  };
+  final matchupDisqualifications = {
+    for (var m = 0; m < t08MatchupCount; m++) m: <int>[],
+  };
+  final matchupSubstitutions = {
+    for (var m = 0; m < t08MatchupCount; m++) m: <int>[],
+  };
+  final matchupDivergence = {
+    for (var m = 0; m < t08MatchupCount; m++) m: <int>[],
+  };
 
   for (var slot = 0; slot < t08PairCount; slot++) {
     final v4 = v4BySlot[slot]!;
@@ -83,17 +95,25 @@ void main(List<String> args) {
     }
     final equalArrays = shared == v4Events.length && shared == v5Events.length;
     final divergence = equalArrays ? null : shared + 1;
-    if (divergence != null) firstDivergence.add(divergence);
+    if (divergence != null) {
+      firstDivergence.add(divergence);
+      matchupDivergence[v4['matchup']! as int]!.add(divergence);
+    }
 
     final subs = (v5['substitutions']! as List).cast<Object?>();
     final disq = (v5['disqualified']! as List).cast<Object?>();
     final category = disq.isEmpty ? 'A' : (subs.isEmpty ? 'C' : 'B');
     categoryCounts[category] = categoryCounts[category]! + 1;
+    final matchupIndex = v4['matchup']! as int;
+    matchupCategories[matchupIndex]![category] =
+        matchupCategories[matchupIndex]![category]! + 1;
     disqualificationsPerGame.add(disq.length);
     substitutionsPerGame.add(subs.length);
+    matchupDisqualifications[matchupIndex]!.add(disq.length);
+    matchupSubstitutions[matchupIndex]!.add(subs.length);
 
-    _collectMinutes(v5, minutesByRank);
-    depletedContinuation.addAll(t08ContinuationCases(v5));
+    _collectMinutes(v5, minutesSecondsByRank);
+    continuationCases.addAll(t08ContinuationCases(v5));
 
     final record = <String, Object?>{
       'slot': slot,
@@ -189,6 +209,36 @@ void main(List<String> args) {
             metric: t08Describe(perMatchup[m]![metric]!),
         },
     },
+    'matchupParticipation': {
+      for (var m = 0; m < t08MatchupCount; m++)
+        'matchup$m': {
+          'categories': matchupCategories[m],
+          'gamesWithSubstitutions': matchupSubstitutions[m]!
+              .where((count) => count > 0)
+              .length,
+          'gamesWithDisqualifications': matchupDisqualifications[m]!
+              .where((count) => count > 0)
+              .length,
+          'disqualificationsPerGame': t08CountSummary(
+            matchupDisqualifications[m]!,
+          ),
+          'substitutionsPerGame': t08CountSummary(matchupSubstitutions[m]!),
+          'firstDivergence': {
+            'equalGames': 50 - matchupDivergence[m]!.length,
+            'divergedGames': matchupDivergence[m]!.length,
+            if (matchupDivergence[m]!.isNotEmpty) ...{
+              'min': matchupDivergence[m]!.reduce((a, b) => a < b ? a : b),
+              'median': t08Quantile([
+                for (final v in matchupDivergence[m]!) v.toDouble(),
+              ], 0.5),
+              'max': matchupDivergence[m]!.reduce((a, b) => a > b ? a : b),
+            },
+          },
+          'continuationCases': continuationCases
+              .where((c) => c['matchup'] == m)
+              .toList(),
+        },
+    },
     'mechanism': {
       'categories': categoryCounts,
       'categoryA': {
@@ -227,13 +277,8 @@ void main(List<String> args) {
           .where((count) => count > 0)
           .length,
       'minutesByRosterRank': {
-        for (final entry in minutesByRank.entries)
-          '${entry.key}': {
-            'playerGames': entry.value['playerGames'],
-            'totalSeconds': entry.value['totalSeconds'],
-            'meanSeconds':
-                entry.value['totalSeconds']! / entry.value['playerGames']!,
-          },
+        for (final entry in minutesSecondsByRank.entries)
+          '${entry.key}': t08Distribution(entry.value),
       },
       'firstDivergence': {
         'equalGames': paired.length - firstDivergence.length,
@@ -246,8 +291,8 @@ void main(List<String> args) {
           'max': firstDivergence.reduce((a, b) => a > b ? a : b),
         },
       },
-      'continuationCases': depletedContinuation,
-      'depletedContinuationCases': depletedContinuation
+      'continuationCases': continuationCases,
+      'depletedContinuationCases': continuationCases
           .where((c) => c['kind'] == 'continuedPlay')
           .toList(),
     },
@@ -317,19 +362,14 @@ void _checkRows(List<Map<String, Object?>> rows, String arm) {
   }
 }
 
-void _collectMinutes(Map<String, Object?> v5, Map<int, Map<String, num>> acc) {
+void _collectMinutes(Map<String, Object?> v5, Map<int, List<double>> acc) {
   final players = v5['players'];
   if (players is! Map) return;
   for (final value in players.values) {
     final player = value! as Map;
     final rank = player['rosterRank']! as int;
-    final seconds = player['secondsPlayed']! as num;
-    final entry = acc.putIfAbsent(
-      rank,
-      () => {'playerGames': 0, 'totalSeconds': 0},
-    );
-    entry['playerGames'] = entry['playerGames']! + 1;
-    entry['totalSeconds'] = entry['totalSeconds']! + seconds;
+    final seconds = (player['secondsPlayed']! as num).toDouble();
+    acc.putIfAbsent(rank, () => <double>[]).add(seconds);
   }
 }
 

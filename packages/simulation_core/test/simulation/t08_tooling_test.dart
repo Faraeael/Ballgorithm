@@ -62,6 +62,18 @@ void main() {
       expect(summary['median'], 0.0);
     });
 
+    test('distribution helper reports shape without a CI', () {
+      final values = [for (var i = 0; i < 10; i++) i.toDouble()];
+      final summary = t08Distribution(values);
+      expect(summary['n'], 10);
+      expect(summary['mean'], 4.5);
+      expect(summary['min'], 0.0);
+      expect(summary['median'], 4.5);
+      expect(summary['max'], 9.0);
+      expect(summary['zeros'], 1);
+      expect(summary.containsKey('ci95Low'), isFalse);
+    });
+
     test('type-7 quantiles match the repository convention', () {
       final values = [1.0, 2.0, 3.0, 4.0];
       expect(t08Quantile(values, 0.0), 1.0);

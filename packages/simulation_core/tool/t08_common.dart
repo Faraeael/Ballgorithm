@@ -177,6 +177,27 @@ double t08Quantile(List<double> values, double q) {
   return sorted[lower] * (1 - weight) + sorted[upper] * weight;
 }
 
+/// Descriptive distribution without a confidence interval. Used for minutes by
+/// roster rank and per-matchup frequency summaries where no t critical value is
+/// pre-registered.
+Map<String, Object?> t08Distribution(List<double> values) {
+  final mean = t08Mean(values);
+  final sd = values.length > 1 ? t08SampleSd(values) : 0.0;
+  return {
+    'n': values.length,
+    'mean': mean,
+    'sd': sd,
+    'min': values.reduce((a, b) => a < b ? a : b),
+    'q05': t08Quantile(values, 0.05),
+    'q25': t08Quantile(values, 0.25),
+    'median': t08Quantile(values, 0.5),
+    'q75': t08Quantile(values, 0.75),
+    'q95': t08Quantile(values, 0.95),
+    'max': values.reduce((a, b) => a > b ? a : b),
+    'zeros': values.where((v) => v == 0).length,
+  };
+}
+
 Map<String, Object?> t08Describe(List<double> values) {
   final mean = t08Mean(values);
   final sd = values.length > 1 ? t08SampleSd(values) : 0.0;
