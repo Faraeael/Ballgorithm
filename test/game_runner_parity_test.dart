@@ -57,6 +57,7 @@ List<Object?> _playerFields(PlayerBoxScore p) => [
   p.steals,
   p.blocks,
   p.personalFouls,
+  p.secondsPlayed,
 ];
 
 List<Object?> _teamFields(TeamBoxScore t) => [
@@ -143,6 +144,34 @@ void _expectTotalsMatchPlayerRows(GameBoxScore box) {
   }
 }
 
+/// Asserts each team's playing time equals five players x every period played.
+void _expectConservation(GameResult result) {
+  final box = result.boxScore;
+  final total = [
+    for (var period = 1; period <= result.periodsPlayed; period++)
+      result.input.rules.periodLength(period),
+  ].fold<int>(0, (sum, seconds) => sum + seconds);
+  for (final teamId in box.teams.keys) {
+    final teamSeconds = box.players.values
+        .where((player) => player.teamId == teamId)
+        .fold<int>(0, (sum, player) => sum + player.secondsPlayed);
+    expect(teamSeconds, 5 * total, reason: 'playing-time conservation $teamId');
+  }
+}
+
+List<Object?> _substitutionIdentity(GameResult result) => [
+  for (final event in result.events.whereType<Substitution>())
+    [
+      event.sequence,
+      event.period,
+      event.gameClock,
+      event.teamId,
+      event.playerOutId,
+      event.playerInId,
+      event.reason.name,
+    ],
+];
+
 void main() {
   late League league;
   late GameRequest request;
@@ -196,9 +225,19 @@ void main() {
     expect(_ledgerJson(worker), _ledgerJson(direct));
     expect(_ledgerDigest(worker), _ledgerDigest(direct));
 
+    final workerSubs = _substitutionIdentity(worker);
+    expect(
+      workerSubs,
+      isNotEmpty,
+      reason: 'the fixture request must contain foul-out substitutions',
+    );
+    expect(workerSubs, _substitutionIdentity(direct));
+
     _expectSameBoxScore(worker.boxScore, direct.boxScore);
     _expectTotalsMatchPlayerRows(worker.boxScore);
     _expectTotalsMatchPlayerRows(direct.boxScore);
+    _expectConservation(worker);
+    _expectConservation(direct);
   });
 
   test('repeated worker runs reproduce identical results', () async {
