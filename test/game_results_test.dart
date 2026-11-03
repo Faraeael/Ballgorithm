@@ -319,7 +319,7 @@ void main() {
     }
   });
 
-  testWidgets('player box scores list five players per team in lineup order', (
+  testWidgets('participants list starters then entrants, without duplicates', (
     tester,
   ) async {
     final controlled = _ControlledRunner();
@@ -327,10 +327,30 @@ void main() {
     controlled.pending.single.complete(base);
     await tester.pump();
 
-    for (final teamId in [baseRequest.homeTeamId, baseRequest.awayTeamId]) {
-      final ids = base.input.lineupFor(teamId).playerIds;
-      expect(ids, hasLength(5));
-      final ordered = [...ids]
+    List<String> participants(TeamId teamId) {
+      final starters = base.input.lineupFor(teamId).playerIds;
+      final entrants = <String>[];
+      final seen = {...starters};
+      for (final event in base.events) {
+        if (event is Substitution &&
+            event.teamId == teamId.value &&
+            seen.add(event.playerInId)) {
+          entrants.add(event.playerInId);
+        }
+      }
+      return [...starters, ...entrants];
+    }
+
+    final totalEntrants = [
+      for (final team in [league.teams[_awayIndex], league.teams[_homeIndex]])
+        participants(team.id).length - 5,
+    ].fold<int>(0, (sum, count) => sum + count);
+    expect(totalEntrants, greaterThan(0), reason: 'fixture has substitutes');
+
+    for (final team in [league.teams[_awayIndex], league.teams[_homeIndex]]) {
+      final expected = participants(team.id);
+      expect(expected.length, greaterThanOrEqualTo(5));
+      final ordered = [...expected]
         ..sort(
           (a, b) => tester
               .getTopLeft(find.byKey(ValueKey('player-row-$a')))
@@ -339,7 +359,28 @@ void main() {
                 tester.getTopLeft(find.byKey(ValueKey('player-row-$b'))).dy,
               ),
         );
-      expect(ordered, ids, reason: 'canonical PG→C order for ${teamId.value}');
+      expect(ordered, expected, reason: 'entry order for ${team.id.value}');
+      expect(expected.toSet(), hasLength(expected.length));
+
+      for (final (index, id) in expected.indexed) {
+        expect(
+          _text(tester, ValueKey('player-role-$id')),
+          index < 5 ? 'STARTER' : 'SUBSTITUTE',
+        );
+        expect(
+          _text(tester, ValueKey('player-stat-$id-MIN')),
+          allOf(matches(RegExp(r'^\d+:\d{2}$'))),
+        );
+      }
+
+      final nonParticipant = team.players
+          .map((player) => player.id.value)
+          .firstWhere((id) => !expected.contains(id));
+      expect(
+        find.byKey(ValueKey('player-row-$nonParticipant')),
+        findsNothing,
+        reason: 'non-participants are hidden for ${team.id.value}',
+      );
     }
   });
 
@@ -351,10 +392,19 @@ void main() {
       controlled.pending.single.complete(base);
       await tester.pump();
 
-      final participants = [league.teams[_homeIndex], league.teams[_awayIndex]];
-      for (final team in participants) {
-        final lineups = base.input.lineupFor(team.id).playerIds;
-        for (final playerId in lineups) {
+      final teams = [league.teams[_homeIndex], league.teams[_awayIndex]];
+      for (final team in teams) {
+        final lineup = base.input.lineupFor(team.id).playerIds;
+        final shown = <String>[...lineup];
+        final seen = {...lineup};
+        for (final event in base.events) {
+          if (event is Substitution &&
+              event.teamId == team.id.value &&
+              seen.add(event.playerInId)) {
+            shown.add(event.playerInId);
+          }
+        }
+        for (final playerId in shown) {
           final player = team.players.singleWhere(
             (candidate) => candidate.id.value == playerId,
           );
@@ -407,6 +457,10 @@ void main() {
             _text(tester, ValueKey('player-stat-$playerId-PF')),
             '${box.personalFouls}',
           );
+          expect(
+            _text(tester, ValueKey('player-stat-$playerId-MIN')),
+            _minutes(box.secondsPlayed),
+          );
         }
       }
     },
@@ -456,18 +510,35 @@ void main() {
     controlled.pending.single.complete(base);
     await tester.pump();
 
-    expect(find.byKey(const ValueKey('disclosure-lineup')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('disclosure-participation')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey('disclosure-rematch-cycle')),
       findsOneWidget,
     );
     expect(find.byKey(const ValueKey('disclosure-zero-seed')), findsNothing);
+    final disclosure = _text(
+      tester,
+      const ValueKey('disclosure-participation'),
+    );
     expect(
-      _text(tester, const ValueKey('disclosure-lineup')),
+      disclosure,
       allOf(
-        contains('fixed five-player lineup'),
+        contains('Minutes are derived from recorded game events'),
+        contains('substituted after disqualification'),
+        contains('no eligible bench player remains'),
+        contains('Technical-foul penalties'),
+      ),
+    );
+    expect(
+      disclosure,
+      allOf(
         contains('not modelled'),
-        contains('not a realism claim'),
+        contains('never entered'),
+        contains('full box model'),
+        contains('not a claim of NBA realism'),
       ),
     );
 
@@ -654,3 +725,6 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+
+String _minutes(int seconds) =>
+    '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';

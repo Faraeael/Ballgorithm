@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
 
 import 'game_runner.dart';
+import 'participation_view.dart';
 import 'game_seed.dart';
 
 /// Read-only results presentation for one completed game.
@@ -31,9 +32,6 @@ class GameResultView extends StatelessWidget {
 
   Team _team(TeamId id) =>
       request.league.teams.singleWhere((team) => team.id.value == id.value);
-
-  Player _player(Team team, String playerId) =>
-      team.players.singleWhere((player) => player.id.value == playerId);
 
   String _periodLabel(int period) =>
       period <= result.input.rules.periods ? 'Q$period' : 'OT${period - 4}';
@@ -338,37 +336,48 @@ class GameResultView extends StatelessWidget {
   static const double _headerHeight = 32;
 
   Widget _playerTable(BuildContext context, ThemeData theme, Team team) {
-    final lineupIds = result.input.lineupFor(team.id).playerIds;
-    final boxes = [for (final id in lineupIds) result.boxScore.players[id]!];
+    final rows = participationRows(result, team);
     final textScaler = MediaQuery.textScalerOf(context);
     final nameStyle = theme.textTheme.bodySmall ?? const TextStyle();
-    final positionStyle = theme.textTheme.labelSmall ?? const TextStyle();
+    final metaStyle = theme.textTheme.labelSmall ?? const TextStyle();
 
-    /// Height needed to show a full name plus its position without clipping.
-    /// Both panes use the same value, so the rows stay aligned without any
-    /// scroll synchronisation.
-    double rowHeightFor(PlayerBoxScore box) {
-      final player = _player(team, box.playerId);
+    /// Height needed to show the name, the position/role line and any status
+    /// line without clipping. Both panes use the same value, so the rows stay
+    /// aligned without scroll synchronisation.
+    double rowHeightFor(ParticipantRow row) {
       final namePainter = TextPainter(
-        text: TextSpan(text: player.fullName, style: nameStyle),
+        text: TextSpan(text: row.player.fullName, style: nameStyle),
         textDirection: TextDirection.ltr,
         textScaler: textScaler,
       )..layout(maxWidth: _identityWidth - 8);
-      final positionPainter = TextPainter(
-        text: TextSpan(text: player.position.shortName, style: positionStyle),
+      final metaPainter = TextPainter(
+        text: TextSpan(
+          text: '${row.player.position.shortName} · ${roleLabel(row.role)}',
+          style: metaStyle,
+        ),
         textDirection: TextDirection.ltr,
         textScaler: textScaler,
-      )..layout();
+      )..layout(maxWidth: _identityWidth - 8);
+      final status = statusLabel(row.status);
+      double statusHeight = 0;
+      if (status != null) {
+        statusHeight = (TextPainter(
+          text: TextSpan(text: status, style: metaStyle),
+          textDirection: TextDirection.ltr,
+          textScaler: textScaler,
+        )..layout(maxWidth: _identityWidth - 8)).height;
+      }
       return math.max(
         _rowHeight,
-        namePainter.height + positionPainter.height + 8,
+        namePainter.height + metaPainter.height + statusHeight + 8,
       );
     }
 
     final rowHeights = {
-      for (final box in boxes) box.playerId: rowHeightFor(box),
+      for (final row in rows) row.box.playerId: rowHeightFor(row),
     };
     final metrics = <(String, String Function(PlayerBoxScore), double)>[
+      ('MIN', (box) => formatMinutes(box.secondsPlayed), 56),
       ('PTS', (box) => '${box.points}', 44),
       ('FG', (box) => '${box.fgm}/${box.fga}', 64),
       ('3PT', (box) => '${box.threePm}/${box.threePa}', 64),
@@ -427,11 +436,11 @@ class GameResultView extends StatelessWidget {
                       child: Text('Player', style: theme.textTheme.labelSmall),
                     ),
                   ),
-                  for (final box in boxes)
+                  for (final row in rows)
                     SizedBox(
-                      key: ValueKey('player-row-${box.playerId}'),
-                      height: rowHeights[box.playerId],
-                      child: _playerIdentity(theme, team, box),
+                      key: ValueKey('player-row-${row.box.playerId}'),
+                      height: rowHeights[row.box.playerId],
+                      child: _playerIdentity(theme, row),
                     ),
                 ],
               ),
@@ -451,18 +460,18 @@ class GameResultView extends StatelessWidget {
                         ],
                       ),
                     ),
-                    for (final box in boxes)
+                    for (final row in rows)
                       SizedBox(
-                        height: rowHeights[box.playerId],
+                        height: rowHeights[row.box.playerId],
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             for (final metric in metrics)
                               statCell(
-                                metric.$2(box),
+                                metric.$2(row.box),
                                 metric.$3,
                                 key: ValueKey(
-                                  'player-stat-${box.playerId}-${metric.$1}',
+                                  'player-stat-${row.box.playerId}-${metric.$1}',
                                 ),
                               ),
                           ],
@@ -478,24 +487,41 @@ class GameResultView extends StatelessWidget {
     );
   }
 
-  Widget _playerIdentity(ThemeData theme, Team team, PlayerBoxScore box) {
-    final player = _player(team, box.playerId);
+  Widget _playerIdentity(ThemeData theme, ParticipantRow row) {
+    final status = statusLabel(row.status);
+    final metaStyle = theme.textTheme.labelSmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
-          player.fullName,
-          key: ValueKey('player-name-${box.playerId}'),
+          row.player.fullName,
+          key: ValueKey('player-name-${row.box.playerId}'),
           style: theme.textTheme.bodySmall,
         ),
-        Text(
-          player.position.shortName,
-          key: ValueKey('player-stat-${box.playerId}-POS'),
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+        Row(
+          children: [
+            Text(
+              row.player.position.shortName,
+              key: ValueKey('player-stat-${row.box.playerId}-POS'),
+              style: metaStyle,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              roleLabel(row.role),
+              key: ValueKey('player-role-${row.box.playerId}'),
+              style: metaStyle,
+            ),
+          ],
         ),
+        if (status != null)
+          Text(
+            status,
+            key: ValueKey('player-status-${row.box.playerId}'),
+            style: metaStyle,
+          ),
       ],
     );
   }
@@ -508,11 +534,15 @@ class GameResultView extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Each team fields one fixed five-player lineup for the whole game. '
-          'Minutes, substitutions, fatigue and foul-outs are not modelled, so '
-          'per-player totals are whole-game totals, not per-minute rates. '
-          'These results are a deterministic simulation, not a realism claim.',
-          key: const ValueKey('disclosure-lineup'),
+          'Minutes are derived from recorded game events. Players may be '
+          'substituted after disqualification; foul-outs are modelled. If no '
+          'eligible bench player remains, a disqualified player may continue. '
+          'Technical-foul penalties for that continuation are not modelled, a '
+          'deliberate departure from the referenced NBA rule. Regular '
+          'rotations and fatigue are not modelled. Players who never entered '
+          'are excluded from these tables but remain in the full box model. '
+          'These results are simulated, not a claim of NBA realism.',
+          key: const ValueKey('disclosure-participation'),
           style: muted,
         ),
         const SizedBox(height: 8),

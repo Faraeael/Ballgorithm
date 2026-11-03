@@ -173,13 +173,29 @@ Future<void> _walkResults(
     );
   }
 
-  await _scrollTo(tester, find.byKey(const ValueKey('disclosure-lineup')));
+  await _scrollTo(
+    tester,
+    find.byKey(const ValueKey('disclosure-participation')),
+  );
   _expectNoOverflow(tester);
+  final disclosure = tester
+      .widget<Text>(find.byKey(const ValueKey('disclosure-participation')))
+      .data!;
   expect(
-    tester.widget<Text>(find.byKey(const ValueKey('disclosure-lineup'))).data,
+    disclosure,
     allOf(
-      contains('fixed five-player lineup'),
-      contains('not a realism claim'),
+      contains('Minutes are derived from recorded game events'),
+      contains('substituted after disqualification'),
+      contains('no eligible bench player remains'),
+      contains('not a claim of NBA realism'),
+    ),
+  );
+  expect(
+    disclosure,
+    allOf(
+      contains('Technical-foul penalties'),
+      contains('never entered'),
+      contains('full box model'),
     ),
   );
   expect(
@@ -195,6 +211,21 @@ Future<void> _walkResults(
   _expectNoOverflow(tester);
 }
 
+/// Starters in canonical slot order, then entrants in first-entry order.
+List<String> _participantIds(GameResult result, TeamId teamId) {
+  final starters = result.input.lineupFor(teamId).playerIds;
+  final entrantIds = <String>[];
+  final seen = {...starters};
+  for (final event in result.events) {
+    if (event is Substitution &&
+        event.teamId == teamId.value &&
+        seen.add(event.playerInId)) {
+      entrantIds.add(event.playerInId);
+    }
+  }
+  return [...starters, ...entrantIds];
+}
+
 /// At the given width, scrolls each team's statistics pane to its right edge and
 /// asserts that every player identity stays visible and unmoved while all ten
 /// statistics remain reachable.
@@ -208,8 +239,8 @@ Future<void> _verifyFrozenIdentityAtRightmost(
   for (final teamId in [request.awayTeamId, request.homeTeamId]) {
     final tableKey = ValueKey('player-table-${teamId.value}');
     await _scrollTo(tester, find.byKey(tableKey));
-    final ids = result.input.lineupFor(teamId).playerIds;
-    expect(ids, hasLength(5));
+    final ids = _participantIds(result, teamId);
+    expect(ids.length, greaterThanOrEqualTo(5));
 
     final namesBefore = {
       for (final id in ids)
@@ -257,6 +288,7 @@ Future<void> _verifyFrozenIdentityAtRightmost(
         reason: 'identity of $id did not move with the statistics',
       );
       for (final metric in [
+        'MIN',
         'PTS',
         'FG',
         '3PT',
