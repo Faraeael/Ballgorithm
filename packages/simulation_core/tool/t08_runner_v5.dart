@@ -1,0 +1,215 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:simulation_core/simulation_core.dart';
+
+import 't08_common.dart';
+
+/// Runs the frozen T08 v5 arm once. Writes one JSON row per registered game.
+///
+/// Usage: `dart run tool/t08_runner_v5.dart --manifest=<csv> --out=<jsonl>`
+/// `--engine=<sha> [--expectManifestSha=<sha>]`
+void main(List<String> args) {
+  final manifestPath = _required(args, 'manifest');
+  final outPath = _required(args, 'out');
+  final engineSha = _required(args, 'engine');
+  final expectSha = _arg(args, 'expectManifestSha');
+
+  final csv = File(manifestPath).readAsStringSync();
+  final manifestSha = sha256Hex(csv);
+  if (expectSha != null && expectSha != manifestSha) {
+    stderr.writeln('manifest SHA mismatch: $manifestSha != $expectSha');
+    exit(2);
+  }
+  final slots = parseT08Manifest(csv);
+  validateT08Slots(slots);
+
+  final league = const LeagueGenerator().generate(
+    const GenerationConfig(seed: 20261028),
+  );
+
+  final out = File(outPath);
+  out.parent.createSync(recursive: true);
+  final sink = out.openWrite();
+
+  var written = 0;
+  for (final slot in slots) {
+    final home = _team(league, slot.homeTeamId);
+    final away = _team(league, slot.awayTeamId);
+    final input = GameInput.create(
+      gameId: slot.gameId,
+      league: league,
+      homeTeamId: home.id,
+      awayTeamId: away.id,
+      homeLineup: CourtLineup.defaultFor(home),
+      awayLineup: CourtLineup.defaultFor(away),
+      seed: slot.seed,
+      rules: GameRules.standard,
+    );
+    final result = GameSimulator().simulate(input);
+    if (result.events.isEmpty || result.events.last is! GameEnded) {
+      throw StateError('game ${slot.gameId} did not reach GameEnded');
+    }
+    final events = [for (final event in result.events) event.toJson()];
+    final box = result.boxScore;
+    final fouls = <String, int>{};
+    for (final event in result.events.whereType<PersonalFoul>()) {
+      fouls[event.committingPlayerId] =
+          (fouls[event.committingPlayerId] ?? 0) + 1;
+    }
+    final limit = input.rules.foulOutLimit;
+    final teams = league.teams
+        .where(
+          (team) =>
+              team.id.value == slot.homeTeamId ||
+              team.id.value == slot.awayTeamId,
+        )
+        .toList();
+    final players = <String, Object?>{};
+    final rosterRank = <String, int>{};
+    for (final team in teams) {
+      for (var i = 0; i < team.players.length; i++) {
+        rosterRank[team.players[i].id.value] = i + 1;
+      }
+    }
+    for (final entry in box.players.entries) {
+      final p = entry.value;
+      players[entry.key] = {
+        'playerId': p.playerId,
+        'teamId': p.teamId,
+        'rosterRank': rosterRank[p.playerId],
+        'secondsPlayed': p.secondsPlayed,
+        'points': p.points,
+        'fgm': p.fgm,
+        'fga': p.fga,
+        'twoPm': p.twoPm,
+        'twoPa': p.twoPa,
+        'threePm': p.threePm,
+        'threePa': p.threePa,
+        'ftm': p.ftm,
+        'fta': p.fta,
+        'assists': p.assists,
+        'oreb': p.oreb,
+        'dreb': p.dreb,
+        'rebounds': p.rebounds,
+        'turnovers': p.turnovers,
+        'steals': p.steals,
+        'blocks': p.blocks,
+        'personalFouls': p.personalFouls,
+      };
+    }
+    final row = {
+      'slot': slot.slot,
+      'seed': slot.seed,
+      'matchup': slot.matchup,
+      'gameId': slot.gameId,
+      'homeTeamId': slot.homeTeamId,
+      'awayTeamId': slot.awayTeamId,
+      'startingTeamId': input.startingTeamId.value,
+      'engineSha': engineSha,
+      'simulationVersion': result.simulationVersion,
+      'eventSchemaVersion': result.eventSchemaVersion,
+      'rulesVersion': result.rulesVersion,
+      'prngImplementationId': result.prngImplementationId,
+      'eventCount': events.length,
+      'events': events,
+      'eventDigest': sha256Hex(jsonEncode(events)),
+      'metrics': {
+        'homePoints': result.homeScore,
+        'awayPoints': result.awayScore,
+        'possessions': result.possessions,
+        'turnovers': _sum(box, (t) => t.turnovers),
+        'fga': _sum(box, (t) => t.fga),
+        'threePa': _sum(box, (t) => t.threePa),
+        'fta': _sum(box, (t) => t.fta),
+        'personalFouls': _sum(box, (t) => t.personalFouls),
+      },
+      'teams': {
+        for (final entry in box.teams.entries)
+          entry.key: {
+            'teamId': entry.value.teamId,
+            'points': entry.value.points,
+            'fgm': entry.value.fgm,
+            'fga': entry.value.fga,
+            'twoPm': entry.value.twoPm,
+            'twoPa': entry.value.twoPa,
+            'threePm': entry.value.threePm,
+            'threePa': entry.value.threePa,
+            'ftm': entry.value.ftm,
+            'fta': entry.value.fta,
+            'assists': entry.value.assists,
+            'oreb': entry.value.oreb,
+            'dreb': entry.value.dreb,
+            'rebounds': entry.value.rebounds,
+            'turnovers': entry.value.turnovers,
+            'steals': entry.value.steals,
+            'blocks': entry.value.blocks,
+            'personalFouls': entry.value.personalFouls,
+          },
+      },
+      'players': players,
+      'foulsByPlayer': fouls,
+      'substitutions': [
+        for (final sub in result.events.whereType<Substitution>())
+          {
+            'sequence': sub.sequence,
+            'period': sub.period,
+            'gameClock': sub.gameClock,
+            'teamId': sub.teamId,
+            'playerOutId': sub.playerOutId,
+            'playerInId': sub.playerInId,
+            'reason': sub.reason.name,
+          },
+      ],
+      'disqualified': [
+        for (final entry in fouls.entries)
+          if (entry.value >= limit)
+            {
+              'playerId': entry.key,
+              'fouls': entry.value,
+              'teamId': players[entry.key] == null
+                  ? null
+                  : (players[entry.key]! as Map<String, Object?>)['teamId'],
+            },
+      ],
+      'periodPoints': {
+        for (final entry in box.periodPoints.entries)
+          entry.key: {
+            for (final period in entry.value.entries)
+              '${period.key}': period.value,
+          },
+      },
+    };
+    sink.writeln(jsonEncode(row));
+    written++;
+  }
+  sink.close();
+  print(
+    jsonEncode({
+      'arm': 'v5',
+      'engineSha': engineSha,
+      'manifestSha256': manifestSha,
+      'rows': written,
+      'out': out.absolute.path,
+    }),
+  );
+}
+
+int _sum(GameBoxScore box, int Function(TeamBoxScore) field) =>
+    box.teams.values.fold(0, (acc, team) => acc + field(team));
+
+Team _team(League league, String id) =>
+    league.teams.singleWhere((team) => team.id.value == id);
+
+String _required(List<String> args, String name) {
+  final value = _arg(args, name);
+  if (value == null) throw ArgumentError('missing --$name');
+  return value;
+}
+
+String? _arg(List<String> args, String name) {
+  for (final arg in args) {
+    if (arg.startsWith('--$name=')) return arg.substring(name.length + 3);
+  }
+  return null;
+}

@@ -1,0 +1,23 @@
+{
+  "categories": {
+    "A": 11,
+    "B": 189,
+    "C": 0
+  },
+  "categoryA": {
+    "checked": 11,
+    "failed": 0,
+    "failures": []
+  },
+  "categoryB": {
+    "checked": 189,
+    "prefixFailed": 0,
+    "failures": []
+  },
+  "categoryC": {
+    "cases": 0,
+    "details": [],
+    "status": "no observations"
+  },
+  "verdict": "PASS"
+}
