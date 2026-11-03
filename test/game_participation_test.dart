@@ -348,6 +348,239 @@ GameResult _hornShootingResult(League league, {required bool madeFinalFt}) {
   );
 }
 
+/// Valid ledger: starter A is tactically removed in an early W5 window,
+/// re-admitted in the period-4 W5 window, then reaches the sixth foul at the
+/// final horn with no removal afterwards. A's early removal must not be read
+/// as the disqualification replacement.
+GameResult _reentryHornResult(League league) {
+  final home = league.teams[testHomeIndex];
+  final away = league.teams[testAwayIndex];
+  final input = GameInput.create(
+    gameId: 't09-reentry-horn',
+    league: league,
+    homeTeamId: home.id,
+    awayTeamId: away.id,
+    homeLineup: CourtLineup.defaultFor(home),
+    awayLineup: CourtLineup.defaultFor(away),
+    seed: 1,
+    rules: GameRules(bonusRegulationFouls: 10, bonusOvertimeFouls: 10),
+  );
+  final homePg = input.lineupFor(home.id).playerIdAt(Position.pg).value;
+  final awayPg = input.lineupFor(away.id).playerIdAt(Position.pg).value;
+  final bench = home.players
+      .firstWhere(
+        (player) => !input.lineupFor(home.id).containsPlayer(player.id),
+      )
+      .id
+      .value;
+  expect(input.startingTeamId, away.id);
+
+  final events = <GameEvent>[];
+  var sequence = 0;
+  void add(GameEvent event) => events.add(event);
+  PeriodStarted periodStart(int period, TeamId starter) => PeriodStarted(
+    sequence: ++sequence,
+    period: period,
+    gameClock: 720,
+    shotClock: null,
+    startingTeamId: starter.value,
+  );
+  PeriodEnded periodEnd(int period) => PeriodEnded(
+    sequence: ++sequence,
+    period: period,
+    gameClock: 0,
+    shotClock: null,
+  );
+  Substitution sub(String outId, String inId) => Substitution(
+    sequence: ++sequence,
+    period: 1,
+    gameClock: 720,
+    shotClock: null,
+    teamId: home.id.value,
+    playerOutId: outId,
+    playerInId: inId,
+    reason: SubstitutionReason.tactical,
+  );
+
+  add(
+    GameStarted(
+      sequence: ++sequence,
+      period: 1,
+      gameClock: 720,
+      shotClock: null,
+      homeTeamId: input.homeTeamId.value,
+      awayTeamId: input.awayTeamId.value,
+      startingTeamId: input.startingTeamId.value,
+    ),
+  );
+  add(periodStart(1, away.id));
+  add(sub(homePg, bench));
+  add(periodEnd(1));
+  add(periodStart(2, home.id));
+  add(periodEnd(2));
+  add(periodStart(3, away.id));
+  add(periodEnd(3));
+  add(periodStart(4, home.id));
+  final reentry = Substitution(
+    sequence: ++sequence,
+    period: 4,
+    gameClock: 720,
+    shotClock: null,
+    teamId: home.id.value,
+    playerOutId: bench,
+    playerInId: homePg,
+    reason: SubstitutionReason.tactical,
+  );
+  add(reentry);
+  add(
+    PossessionStarted(
+      sequence: ++sequence,
+      period: 4,
+      gameClock: 2,
+      shotClock: 24,
+      possessionId: 'p1',
+      offenseTeamId: home.id.value,
+    ),
+  );
+  add(
+    Turnover(
+      sequence: ++sequence,
+      period: 4,
+      gameClock: 1,
+      shotClock: 23,
+      teamId: home.id.value,
+      playerId: homePg,
+      reason: TurnoverReason.nonSteal,
+      stolenById: null,
+    ),
+  );
+  add(
+    PossessionEnded(
+      sequence: ++sequence,
+      period: 4,
+      gameClock: 1,
+      shotClock: 23,
+      possessionId: 'p1',
+      offenseTeamId: home.id.value,
+      reason: PossessionEndReason.turnover,
+    ),
+  );
+  add(
+    PossessionStarted(
+      sequence: ++sequence,
+      period: 4,
+      gameClock: 1,
+      shotClock: 24,
+      possessionId: 'p2',
+      offenseTeamId: away.id.value,
+    ),
+  );
+  for (var i = 0; i < 5; i++) {
+    add(
+      PersonalFoul(
+        sequence: ++sequence,
+        period: 4,
+        gameClock: 0,
+        shotClock: 23,
+        committingTeamId: home.id.value,
+        committingPlayerId: homePg,
+        drawnByPlayerId: awayPg,
+        kind: FoulKind.nonShooting,
+        freeThrowsAwarded: 0,
+        bonus: false,
+      ),
+    );
+  }
+  add(
+    PersonalFoul(
+      sequence: ++sequence,
+      period: 4,
+      gameClock: 0,
+      shotClock: 23,
+      committingTeamId: home.id.value,
+      committingPlayerId: homePg,
+      drawnByPlayerId: awayPg,
+      kind: FoulKind.shooting,
+      freeThrowsAwarded: 2,
+      bonus: false,
+    ),
+  );
+  add(
+    FreeThrowAttempt(
+      sequence: ++sequence,
+      period: 4,
+      gameClock: 0,
+      shotClock: 23,
+      teamId: away.id.value,
+      shooterId: awayPg,
+      groupId: 'g',
+      attemptIndex: 1,
+      attemptsInGroup: 2,
+      made: true,
+      lastOfGroup: false,
+    ),
+  );
+  add(
+    FreeThrowAttempt(
+      sequence: ++sequence,
+      period: 4,
+      gameClock: 0,
+      shotClock: 23,
+      teamId: away.id.value,
+      shooterId: awayPg,
+      groupId: 'g',
+      attemptIndex: 2,
+      attemptsInGroup: 2,
+      made: true,
+      lastOfGroup: true,
+    ),
+  );
+  add(
+    PossessionEnded(
+      sequence: ++sequence,
+      period: 4,
+      gameClock: 0,
+      shotClock: 23,
+      possessionId: 'p2',
+      offenseTeamId: away.id.value,
+      reason: PossessionEndReason.madeFinalFreeThrow,
+    ),
+  );
+  add(periodEnd(4));
+  add(
+    GameEnded(
+      sequence: ++sequence,
+      period: 4,
+      gameClock: 0,
+      shotClock: null,
+      finalPeriod: 4,
+    ),
+  );
+
+  final ledger = GameEventLedger(
+    gameId: input.gameId,
+    inputFingerprint: GameFingerprint.of(input),
+    events: events,
+  );
+  final validated = GameEventReducer.validate(input, ledger);
+  final box = EventAccounting.aggregate(validated);
+  return GameResult(
+    input: input,
+    inputFingerprint: GameFingerprint.of(input),
+    ledger: ledger,
+    state: validated.state,
+    boxScore: box,
+    homeScore: box.teams[input.homeTeamId.value]!.points,
+    awayScore: box.teams[input.awayTeamId.value]!.points,
+    periodsPlayed: validated.state.period,
+    possessions: validated.events.whereType<PossessionStarted>().length,
+    simulationVersion: gameSimulationVersion,
+    rulesVersion: gameRulesVersion,
+    eventSchemaVersion: gameEventSchemaVersion,
+    prngImplementationId: 'xorshift32-v1',
+  );
+}
+
 Future<void> _pumpView(
   WidgetTester tester,
   GameRequest request,
@@ -521,6 +754,27 @@ void main() {
       expect(
         _text(tester, ValueKey('player-status-$homePg')),
         isNot(contains('continued')),
+      );
+    },
+  );
+
+  testWidgets(
+    're-entry after a tactical removal is not treated as foul-out replacement',
+    (tester) async {
+      final result = _reentryHornResult(league);
+      final homePg = result.input
+          .lineupFor(result.input.homeTeamId)
+          .playerIdAt(Position.pg)
+          .value;
+      expect(result.events.whereType<Substitution>(), hasLength(2));
+      await _pumpView(tester, baseRequest, result);
+      expect(
+        _text(tester, ValueKey('player-status-$homePg')),
+        'Fouled out at the horn',
+      );
+      expect(
+        _text(tester, ValueKey('player-status-$homePg')),
+        isNot('Fouled out'),
       );
     },
   );

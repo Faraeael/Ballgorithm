@@ -49,7 +49,7 @@ List<ParticipantRow> participationRows(GameResult result, Team team) {
   final fouls = <String, int>{};
   final sixthFoulIndex = <String, int>{};
   final activeAtSixth = <String, Set<String>>{};
-  final replaced = <String>{};
+  final replacedAt = <String, int>{};
   final active = [...starters];
 
   for (var index = 0; index < result.events.length; index++) {
@@ -63,7 +63,7 @@ List<ParticipantRow> participationRows(GameResult result, Team team) {
         activeAtSixth[playerId] = {...active};
       }
     } else if (event is Substitution && event.teamId == team.id.value) {
-      replaced.add(event.playerOutId);
+      replacedAt[event.playerOutId] = index;
       final slot = active.indexOf(event.playerOutId);
       if (slot != -1) active[slot] = event.playerInId;
       if (seen.add(event.playerInId)) entrantOrder.add(event.playerInId);
@@ -73,7 +73,7 @@ List<ParticipantRow> participationRows(GameResult result, Team team) {
   DisqualificationStatus statusOf(String playerId) {
     final sixth = sixthFoulIndex[playerId];
     if (sixth == null) return DisqualificationStatus.none;
-    if (replaced.contains(playerId)) {
+    if ((replacedAt[playerId] ?? -1) > sixth) {
       return DisqualificationStatus.fouledOut;
     }
     final sixthEvent = result.events[sixth];
