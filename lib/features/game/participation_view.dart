@@ -76,6 +76,23 @@ List<ParticipantRow> participationRows(GameResult result, Team team) {
     if (replaced.contains(playerId)) {
       return DisqualificationStatus.fouledOut;
     }
+    final sixthEvent = result.events[sixth];
+    final gameEnd = result.events.indexWhere(
+      (event) => event is GameEnded,
+      sixth + 1,
+    );
+    final resumed = gameEnd == -1
+        ? false
+        : result.events
+              .skip(sixth + 1)
+              .take(gameEnd - sixth - 1)
+              .any((event) => event is PeriodStarted);
+    // Final horn: the foul is at game clock 0 and the game ends without the
+    // period resuming. Free throws and a dead-ball miss may intervene.
+    if (sixthEvent.gameClock == 0 && gameEnd != -1 && !resumed) {
+      return DisqualificationStatus.fouledOutAtHorn;
+    }
+    // Partial ledgers without GameEnded: no live play may follow.
     final tail = result.events.skip(sixth + 1);
     final onlyGameEnd = tail.every(
       (event) =>
