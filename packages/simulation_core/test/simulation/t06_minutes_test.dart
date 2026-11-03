@@ -348,4 +348,174 @@ void main() {
     }
     expect(box.players, hasLength(10));
   });
+
+  test('a substitute keeps the points, rebounds and fouls they record', () {
+    final team = input.startingTeamId;
+    final opponent = input.opponentOf(team);
+    final starter = _id(input, team, Position.pg);
+    final incoming = _bench(input, team);
+    final script = GameScript(input)
+      ..startGame()
+      ..startPeriod(1, team, clock: 720);
+    script.substitution(
+      team: team,
+      playerOut: starter,
+      playerIn: incoming,
+      reason: SubstitutionReason.tactical,
+    );
+    script.startPossession('p1', team, clock: 700);
+    final miss = script.fga(team: team, shooter: incoming, made: false);
+    script.rebound(
+      team: team,
+      player: incoming,
+      offensive: true,
+      missedEventSequence: miss.sequence,
+      clock: 690,
+      shotClock: 14,
+    );
+    script.fga(
+      team: team,
+      shooter: incoming,
+      made: true,
+      clock: 680,
+      shotClock: 4,
+    );
+    script.endPossession(
+      possessionId: 'p1',
+      team: team,
+      reason: PossessionEndReason.madeFieldGoal,
+      clock: 680,
+      shotClock: 4,
+    );
+    script.startPossession('p2', opponent, clock: 680);
+    script.foul(
+      team: team,
+      player: incoming,
+      kind: FoulKind.nonShooting,
+      drawnBy: _id(input, opponent, Position.pg),
+      clock: 670,
+      shotClock: 14,
+    );
+    script.turnover(
+      team: opponent,
+      player: _id(input, opponent, Position.pg),
+      reason: TurnoverReason.nonSteal,
+      clock: 660,
+      shotClock: 4,
+    );
+    script.endPossession(
+      possessionId: 'p2',
+      team: opponent,
+      reason: PossessionEndReason.turnover,
+      clock: 660,
+      shotClock: 4,
+    );
+    script.endPeriod(1);
+    for (var period = 2; period <= 4; period++) {
+      script.startPeriod(period, period.isOdd ? team : opponent, clock: 720);
+      script.endPeriod(period);
+    }
+    script.endGame(4);
+
+    final box = account(input, script.events);
+    final substitute = box.players[incoming]!;
+    expect(substitute.points, 2);
+    expect(substitute.rebounds, 1);
+    expect(substitute.personalFouls, 1);
+    expect(substitute.secondsPlayed, 4 * 720);
+    final departed = box.players[starter]!;
+    expect(departed.points, 0);
+    expect(departed.rebounds, 0);
+    expect(departed.personalFouls, 0);
+    expect(departed.secondsPlayed, 0);
+
+    // Every roster player keeps a row; unused bench stays fully zero.
+    expect(box.players, hasLength(24));
+    for (final teamId in [input.homeTeamId, input.awayTeamId]) {
+      final roster = input.league.teams
+          .firstWhere((candidate) => candidate.id == teamId)
+          .players;
+      for (final player in roster) {
+        expect(box.players[player.id.value], isNotNull);
+      }
+    }
+    final unused = input.league.teams
+        .firstWhere((candidate) => candidate.id == team)
+        .players
+        .firstWhere(
+          (player) =>
+              !input.lineupFor(team).containsPlayer(player.id) &&
+              player.id.value != incoming,
+        );
+    final unusedBox = box.players[unused.id.value]!;
+    expect(unusedBox.secondsPlayed, 0);
+    expect(unusedBox.points, 0);
+    expect(unusedBox.rebounds, 0);
+    expect(unusedBox.personalFouls, 0);
+
+    // Completed-game conservation: 5 players x four full periods per team.
+    for (final teamId in [input.homeTeamId, input.awayTeamId]) {
+      final teamSeconds = box.players.values
+          .where((player) => player.teamId == teamId.value)
+          .fold<int>(0, (sum, player) => sum + player.secondsPlayed);
+      expect(teamSeconds, 5 * 4 * 720);
+    }
+  });
+
+  test('a player can enter and leave at one clock with zero seconds', () {
+    final team = input.startingTeamId;
+    final defense = input.opponentOf(team);
+    final defender = _id(input, defense, Position.pg);
+    final incoming = _bench(input, defense);
+    final script = GameScript(input)
+      ..startGame()
+      ..startPeriod(1, team, clock: 720)
+      ..startPossession('p1', team, clock: 700);
+    script.foul(
+      team: defense,
+      player: defender,
+      kind: FoulKind.nonShooting,
+      drawnBy: _id(input, team, Position.pg),
+      clock: 690,
+      shotClock: 14,
+    );
+    script.substitution(
+      team: defense,
+      playerOut: defender,
+      playerIn: incoming,
+      reason: SubstitutionReason.tactical,
+    );
+    script.foul(
+      team: defense,
+      player: incoming,
+      kind: FoulKind.nonShooting,
+      drawnBy: _id(input, team, Position.sg),
+      clock: 690,
+      shotClock: 14,
+    );
+    script.substitution(
+      team: defense,
+      playerOut: incoming,
+      playerIn: defender,
+      reason: SubstitutionReason.tactical,
+    );
+
+    final box = account(input, script.events);
+    final row = box.players[incoming]!;
+    expect(row.secondsPlayed, 0);
+    expect(row.personalFouls, 1);
+    expect(row.points, 0);
+    expect(row.rebounds, 0);
+    // Each foul stays with its own committer; nothing is re-attributed.
+    expect(row.personalFouls, 1);
+    expect(box.players[defender]!.personalFouls, 1);
+    expect(box.players[defender]!.secondsPlayed, 30);
+    expect(
+      box.players.values.fold<int>(
+        0,
+        (sum, player) => sum + player.personalFouls,
+      ),
+      2,
+    );
+  });
 }
