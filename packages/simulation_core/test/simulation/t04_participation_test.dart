@@ -154,6 +154,57 @@ void main() {
       );
       _expectCode(script.ledger(), input, GameValidationCode.playerNotActive);
     });
+
+    test('rejects an incoming player who is already active', () {
+      final script = GameScript(input)
+        ..startGame()
+        ..startPeriod(1, input.startingTeamId, clock: 720);
+      script.substitution(
+        team: home,
+        playerOut: _starter(input, home, Position.pg),
+        playerIn: _starter(input, home, Position.sg),
+        reason: SubstitutionReason.tactical,
+      );
+      _expectCode(
+        script.ledger(),
+        input,
+        GameValidationCode.duplicateLineupPlayer,
+      );
+    });
+
+    test('rejects a player replacing themselves', () {
+      final script = GameScript(input)
+        ..startGame()
+        ..startPeriod(1, input.startingTeamId, clock: 720);
+      final player = _starter(input, home, Position.pg);
+      script.substitution(
+        team: home,
+        playerOut: player,
+        playerIn: player,
+        reason: SubstitutionReason.tactical,
+      );
+      _expectCode(script.ledger(), input, GameValidationCode.playerNotActive);
+    });
+
+    test('accepts a live event by the entering substitute', () {
+      final team = input.startingTeamId;
+      final script = GameScript(input)
+        ..startGame()
+        ..startPeriod(1, team, clock: 720);
+      final incoming = _bench(input, team);
+      script.substitution(
+        team: team,
+        playerOut: _starter(input, team, Position.pg),
+        playerIn: incoming,
+        reason: SubstitutionReason.tactical,
+      );
+      script.startPossession('p1', team, clock: 700);
+      script.fga(team: team, shooter: incoming, made: true);
+      expect(
+        () => GameEventReducer.validate(input, script.ledger()),
+        returnsNormally,
+      );
+    });
   });
 
   group('W1 after a retained non-bonus foul', () {
@@ -230,6 +281,18 @@ void main() {
         input,
         GameValidationCode.deadBallClockAdvanced,
       );
+    });
+
+    test('rejects a substitution that changes the shot clock', () {
+      final script = scriptWithRetainedFoul();
+      script.substitution(
+        team: defense,
+        playerOut: _starter(input, defense, Position.pg),
+        playerIn: _bench(input, defense),
+        reason: SubstitutionReason.tactical,
+        shotClock: 15,
+      );
+      _expectCode(script.ledger(), input, GameValidationCode.invalidShotClock);
     });
   });
 
@@ -772,6 +835,38 @@ void main() {
       );
       _expectCode(script.ledger(), custom, GameValidationCode.deadBallInvalid);
     });
+
+    test(
+      'rejects a mismatched possession end while horn replacement pending',
+      () {
+        final custom = _input(rules: _customRules);
+        final script = hornFoul(
+          withInput: custom,
+          retainedFoul: false,
+          madeFinalFt: true,
+          substitute: false,
+          nextPossession: false,
+          startNextPeriod: false,
+        );
+        final events = script.events;
+        final index = events.length - 2;
+        final end = events[index] as PossessionEnded;
+        events[index] = PossessionEnded(
+          sequence: end.sequence,
+          period: end.period,
+          gameClock: end.gameClock,
+          shotClock: end.shotClock,
+          possessionId: end.possessionId,
+          offenseTeamId: end.offenseTeamId,
+          reason: PossessionEndReason.turnover,
+        );
+        _expectCode(
+          script.ledger(),
+          custom,
+          GameValidationCode.possessionEndReasonInvalid,
+        );
+      },
+    );
   });
 
   group('additional frozen rejection cases', () {
