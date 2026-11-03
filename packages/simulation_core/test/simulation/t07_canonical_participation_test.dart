@@ -73,6 +73,66 @@ String sha256Hex(String value) => sha256.convert(utf8.encode(value)).toString();
 String eventsJson(List<GameEvent> events) =>
     jsonEncode([for (final event in events) event.toJson()]);
 
+/// Complete player box projection; every field is compared by name so a
+/// mismatch reports the run, player and field values.
+Map<String, Object?> playerProjection(PlayerBoxScore p) => {
+  'playerId': p.playerId,
+  'teamId': p.teamId,
+  'points': p.points,
+  'fgm': p.fgm,
+  'fga': p.fga,
+  'twoPm': p.twoPm,
+  'twoPa': p.twoPa,
+  'threePm': p.threePm,
+  'threePa': p.threePa,
+  'ftm': p.ftm,
+  'fta': p.fta,
+  'assists': p.assists,
+  'oreb': p.oreb,
+  'dreb': p.dreb,
+  'rebounds': p.rebounds,
+  'turnovers': p.turnovers,
+  'steals': p.steals,
+  'blocks': p.blocks,
+  'personalFouls': p.personalFouls,
+  'secondsPlayed': p.secondsPlayed,
+};
+
+/// Complete team box projection, including every non-point total.
+Map<String, Object?> teamProjection(TeamBoxScore t) => {
+  'teamId': t.teamId,
+  'points': t.points,
+  'fgm': t.fgm,
+  'fga': t.fga,
+  'twoPm': t.twoPm,
+  'twoPa': t.twoPa,
+  'threePm': t.threePm,
+  'threePa': t.threePa,
+  'ftm': t.ftm,
+  'fta': t.fta,
+  'assists': t.assists,
+  'oreb': t.oreb,
+  'dreb': t.dreb,
+  'rebounds': t.rebounds,
+  'turnovers': t.turnovers,
+  'steals': t.steals,
+  'blocks': t.blocks,
+  'personalFouls': t.personalFouls,
+};
+
+List<Object?> substitutionIdentities(List<GameEvent> events) => [
+  for (final sub in events.whereType<Substitution>())
+    [
+      sub.sequence,
+      sub.period,
+      sub.gameClock,
+      sub.teamId,
+      sub.playerOutId,
+      sub.playerInId,
+      sub.reason.name,
+    ],
+];
+
 Matcher throwsCode(GameValidationCode code) => throwsA(
   isA<GameValidationException>().having(
     (error) => error.codes,
@@ -194,10 +254,12 @@ void main() {
 
     test('20 repeated simulations reproduce the committed fixture', () {
       final fixture = t07CanonicalParticipationLedgerJson;
-      final replayedBox = account(
+      final replayed = GameEventReducer.validate(
         input,
-        GameEventLedger.fromJson(fixtureJson()).events,
+        GameEventLedger.fromJson(fixtureJson()),
       );
+      final replayedBox = EventAccounting.aggregate(replayed);
+      final replayedSubstitutions = substitutionIdentities(replayed.events);
       for (var run = 0; run < 20; run++) {
         final result = GameSimulator().simulate(input);
         final canonical = jsonEncode(result.ledger.toJson());
@@ -208,6 +270,11 @@ void main() {
         expect(
           result.events.whereType<Substitution>().length,
           pinnedSubstitutionCount,
+        );
+        expect(
+          substitutionIdentities(result.events),
+          replayedSubstitutions,
+          reason: 'substitution identities, run $run',
         );
         expect(result.homeScore, pinnedHomeScore);
         expect(result.awayScore, pinnedAwayScore);
@@ -227,42 +294,28 @@ void main() {
             reason: 'secondsPlayed ${entry.key}, run $run',
           );
         }
-        for (final id in result.boxScore.players.keys) {
-          final fresh = result.boxScore.players[id]!;
-          final replay = replayedBox.players[id]!;
+        expect(
+          result.boxScore.players.keys.toSet(),
+          replayedBox.players.keys.toSet(),
+          reason: 'player rows, run $run',
+        );
+        for (final id in replayedBox.players.keys) {
           expect(
-            [
-              fresh.points,
-              fresh.fgm,
-              fresh.fga,
-              fresh.rebounds,
-              fresh.assists,
-              fresh.turnovers,
-              fresh.steals,
-              fresh.blocks,
-              fresh.personalFouls,
-              fresh.secondsPlayed,
-            ],
-            [
-              replay.points,
-              replay.fgm,
-              replay.fga,
-              replay.rebounds,
-              replay.assists,
-              replay.turnovers,
-              replay.steals,
-              replay.blocks,
-              replay.personalFouls,
-              replay.secondsPlayed,
-            ],
+            playerProjection(result.boxScore.players[id]!),
+            playerProjection(replayedBox.players[id]!),
             reason: 'player statistics $id, run $run',
           );
         }
-        for (final teamId in result.boxScore.teams.keys) {
+        expect(
+          result.boxScore.teams.keys.toSet(),
+          replayedBox.teams.keys.toSet(),
+          reason: 'team rows, run $run',
+        );
+        for (final id in replayedBox.teams.keys) {
           expect(
-            result.boxScore.teams[teamId]!.points,
-            replayedBox.teams[teamId]!.points,
-            reason: 'team points $teamId, run $run',
+            teamProjection(result.boxScore.teams[id]!),
+            teamProjection(replayedBox.teams[id]!),
+            reason: 'team statistics $id, run $run',
           );
         }
       }
