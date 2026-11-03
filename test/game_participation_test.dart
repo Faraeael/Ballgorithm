@@ -674,6 +674,97 @@ void main() {
     );
   });
 
+  for (final size in const [
+    (label: '360x640', size: Size(360, 640)),
+    (label: '393x852', size: Size(393, 852)),
+    (label: '430x932', size: Size(430, 932)),
+  ]) {
+    testWidgets(
+      '${size.label}: zero-second entrant is reachable and readable',
+      (tester) async {
+        final result = _zeroSecondEntrantResult(league);
+        final entrant = result.boxScore.players.values.singleWhere(
+          (box) => box.secondsPlayed == 0 && box.personalFouls == 1,
+        );
+        await _pumpView(tester, baseRequest, result, size: size.size);
+
+        final list = find.byKey(const ValueKey('game-success'));
+        await tester.scrollUntilVisible(
+          find.byKey(ValueKey('player-row-${entrant.playerId}')),
+          250,
+          scrollable: find
+              .descendant(of: list, matching: find.byType(Scrollable))
+              .first,
+        );
+        expect(
+          find.byKey(ValueKey('player-row-${entrant.playerId}')),
+          findsOneWidget,
+        );
+        expect(entrant.secondsPlayed, 0);
+        expect(entrant.personalFouls, 1);
+        expect(
+          tester
+              .widget<Text>(
+                find.byKey(ValueKey('player-stat-${entrant.playerId}-MIN')),
+              )
+              .data,
+          '0:00',
+        );
+        expect(
+          tester
+              .widget<Text>(
+                find.byKey(ValueKey('player-stat-${entrant.playerId}-PF')),
+              )
+              .data,
+          '1',
+        );
+        expect(
+          tester
+              .widget<Text>(
+                find.byKey(ValueKey('player-role-${entrant.playerId}')),
+              )
+              .data,
+          'SUBSTITUTE',
+        );
+        expect(tester.takeException(), isNull, reason: 'no layout overflow');
+
+        final pts = find.byKey(ValueKey('player-stat-${entrant.playerId}-PTS'));
+        await tester.ensureVisible(pts);
+        await tester.pumpAndSettle();
+        final identityBefore = tester.getTopLeft(
+          find.byKey(ValueKey('player-name-${entrant.playerId}')),
+        );
+        await tester.dragFrom(tester.getCenter(pts), const Offset(-420, 0));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(ValueKey('player-name-${entrant.playerId}')),
+          findsOneWidget,
+        );
+        expect(
+          tester.getTopLeft(
+            find.byKey(ValueKey('player-name-${entrant.playerId}')),
+          ),
+          identityBefore,
+          reason: 'identity stays fixed while statistics scroll',
+        );
+        expect(
+          tester
+              .getRect(
+                find.byKey(ValueKey('player-stat-${entrant.playerId}-PF')),
+              )
+              .left,
+          lessThan(size.size.width),
+          reason: 'PF reachable at ${size.label}',
+        );
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: 'no overflow after scroll',
+        );
+      },
+    );
+  }
+
   testWidgets('replaced foul-outs are labelled as fouled out', (tester) async {
     final substituted = base.events
         .whereType<Substitution>()
