@@ -15,7 +15,7 @@ Repository: `Faraeael/Ballgorithm`. Workspace: `E:\ballgorithm-dev`.
 | T04 tests | `47ec03b`, `98eeb80`, `db77953`, `139f9cb`, `7e64539` | rejection checklist and boundary coverage |
 | T05 | `071457b` | feat(m004-t05): emit lawful foul-out substitutions |
 | T06 | `ef1bbb4` | feat(m004-t06): derive player minutes for the full roster |
-| T06 tests | `ee50aca`, `7251b58` | baseline equivalence, substitute attribution |
+| T06 tests | `ee50aca`, `7251b58` | baseline equivalence (post-T03), substitute attribution |
 | T07 | `11ec63d` | test(m004-t07): pin canonical participation ledger and replay parity |
 | T07 | `24cc608` | test(m004-t07): assert complete box-score determinism |
 | T08 | `40cc669` | feat(m004-t08): execute frozen matched-seed cohort |

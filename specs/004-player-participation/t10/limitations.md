@@ -59,13 +59,16 @@ equivalence.
 
 ## 5. Verification caveats
 
-- AC-M004-12 ("no PRNG draw") is supported by source inspection of
-  `_replacementFor`; no instrumented draw counter exists.
+- AC-M004-12 is NOT MEASURED: the required draw-count assertion does not exist. The
+  existing test only proves double-run equality, and source inspection of
+  `_replacementFor` is not a substitute. This is the single blocking acceptance gap.
 - AC-M004-19 verifies fixture/content preservation; a historical suite-count comparison
   is not reconstructed.
 - AC-M004-24's zero-second entrant at 360/393/430 was verified with a transient local
   test that was not committed (file removed); the committed three-width tests cover
   substitute rows, `MIN`, hidden non-participants and disclosure.
+- AC-M004-29 is assessed only on T03-era evidence (`8618550`), not on the seed-15
+  regression added later in `ee50aca`.
 - T08 raw evidence lives outside Git at `E:\ballgorithm-t08-artifacts`; if that path is
   lost, checksums cannot be re-verified from the repository alone.
 

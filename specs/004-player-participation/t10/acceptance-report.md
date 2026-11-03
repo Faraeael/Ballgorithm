@@ -3,9 +3,9 @@
 > **Date:** 2026-11-03. **Baseline:** `c609c3d60cdb00dac1e2951b26729872b54ff621`
 > (`develop/m002`). **Scope:** documentation-only acceptance audit; no simulation,
 > calibration, fixture, UI or specification change.
-> **Decision:** ACCEPTANCE READY — all 29 AC-M004 criteria have identified PASS
-> evidence within the approved M004 scope. See `limitations.md` for explicit
-> non-claims.
+> **Decision:** ACCEPTANCE BLOCKED — AC-M004-12 lacks the required draw-count
+> assertion. 28 of 29 criteria have PASS evidence; one is NOT MEASURED. See
+> `limitations.md` for explicit non-claims and the required correction.
 
 ## Status legend
 
@@ -32,7 +32,7 @@ earlier gate claimed.
 | AC-M004-09 | Sixth foul disqualifies immediately; mandatory replacement enforced when bench exists | PASS | `t04_participation_test.dart` "sixth foul awarding free throws opens W0", "mandatory foul-out replacement is accepted at W0", "rejects a missing mandatory replacement", "rejects replay while a disqualified player remains active"; `t05_emission_test.dart` "substitutions are foul-out only, lawful and positional". |
 | AC-M004-10 | Continuation only with no eligible inactive roster player; five-player rosters continue on first disqualification | PASS | `t05_emission_test.dart` "a depleted roster continues without substitutions"; `t04_participation_test.dart` "allows depleted continuation with no eligible bench"; `t06_minutes_test.dart` "a depleted five-player roster plays every interval"; T09 "depleted continuation is distinguished from a foul-out". |
 | AC-M004-11 | Continuing disqualified players accumulate fouls with no technical foul; disclosure present | PASS | Reducer has no technical-foul event or penalty (`grep -rni "technicalFoul" packages/simulation_core/lib` → none); depleted ledgers validate with further play in `t04`; disclosure asserts "Technical-foul penalties … are not modelled" — `game_results_test.dart` disclosure test and `game_mobile_layout_test.dart`. |
-| AC-M004-12 | Replacement ranking deterministic: same-slot preference, roster-order tiebreak, no PRNG draw | PASS (source-inspected draw) | `t05_emission_test.dart` "substitutions are foul-out only, lawful and positional" asserts same-slot preference and roster membership; `game_simulator.dart` `_replacementFor` iterates `_eligibleBench` (roster order) with no `DeterministicRandom` reference. No draw-counter assertion exists; draw freedom is established by source inspection, not instrumentation. Repeated-run identity: `t05` "replacement selection consumes no PRNG draws" (double-run byte equality). |
+| AC-M004-12 | Replacement ranking deterministic: same-slot preference, roster-order tiebreak, no PRNG draw | NOT MEASURED | Same-slot preference and roster-order selection are covered by `t05_emission_test.dart` "substitutions are foul-out only, lawful and positional". The cited "replacement selection consumes no PRNG draws" test only compares two identical seeded runs (determinism), not a draw count. `_replacementFor` in `game_simulator.dart` contains no `DeterministicRandom` reference by inspection, but the frozen matrix explicitly requires a draw-count assertion; source inspection and double-run equality do not satisfy it. |
 | AC-M004-13 | Tactical substitutions ledger-valid but never emitted | PASS | `t03_contract_test.dart` "accepts the tactical reason" and "simulator emits only foul-out substitutions and they validate"; `t05_emission_test.dart` reason scan. |
 | AC-M004-14 | Administrative loop bound per window | PASS | `t04_participation_test.dart` "rejects a second appearance by the same player in one window". |
 | AC-M004-15 | Minutes conservation exact for regulation, overtime, W1 splits, continuation, 5-player rosters | PASS | `t06_minutes_test.dart`: full game W5 substitution, W1 split, two same-clock substitutions, overtime 300 s, horn boundary, depleted five-player roster; `t07_canonical_participation_test.dart` replay seconds and per-team conservation. |
@@ -49,19 +49,31 @@ earlier gate claimed.
 | AC-M004-26 | Atomic public-contract transition: adoption, payload, four version bumps in one commit; no old-version capability | PASS | Commit `8618550`: `ActiveLineup` deleted, `CourtLineup` payload adopted, `GameInput`/runner migrated, `gameSimulationVersion 4→5`, `gameRulesVersion 2→3`, `gameEventSchemaVersion 2→3`, `gameFingerprintVersion 2→3` in the same commit; v4 header rejected by v5 reader. |
 | AC-M004-27 | `GameInput` holds starting lineups only; eligibility follows the reconstructed current five | PASS | `game_input.dart` exposes starting lineups; reducer maintains current five from events (`t04` "rejects an event crediting a departed starter after substitution", "accepts a live event by the entering substitute"); `isActive` has starting-lineup semantics only (grep). |
 | AC-M004-28 | Horn obligation survives `PeriodEnded`, satisfies only at W5, voids after `GameEnded`; phase-aware P1/P2/P3 only | PASS | `t04_participation_test.dart` horn group: made final FT, missed final FT, retained foul, negatives (live event before W5, substitution outside W5, mismatched possession end); `test/game_participation_test.dart` made/missed FT horn fixtures and re-entry regression. |
-| AC-M004-29 | T03 gate: compiles, no-substitution determinism, event JSON contract, no feature claim, unsupported paths fail | PASS (historical gate) | T03 commit `8618550` and `t03_contract_test.dart` at that gate: substitution JSON contract, version constants, v4 rejection, seed-15 no-substitution baseline; T03 evidence stated a limited contract gate, not participation functionality. |
+| AC-M004-29 | T03 gate: compiles, no-substitution determinism, event JSON contract, no feature claim, unsupported paths fail | PASS (historical gate, T03-era evidence only) | At `8618550` (T03): build and targeted tests green; `t013_adversarial_game_test.dart` already contained "20 identical simulations of the pinned input are byte-identical" (no-substitution era); `t012_canonical_ledger_test.dart` "seed 42 reproduces the committed golden bytes and digest" reproduced the pinned v5 ledger; `t03_contract_test.dart` covered the substitution JSON contract, version constants, v4 rejection and unsupported paths; T03 evidence described a limited contract gate. The seed-15 full-equality test was added later in `ee50aca` (T04–T06 period) and is **not** used as T03-era evidence. |
 
 ## Totals
 
-- **PASS: 29**
+- **PASS: 28**
 - **FAIL: 0**
-- **NOT MEASURED: 0**
+- **NOT MEASURED: 1** (AC-M004-12)
 
-Caveats recorded rather than hidden:
+## Blocking gap and required correction
 
-- AC-M004-12 relies on source inspection for "no PRNG draw" (no draw counter).
+AC-M004-12 mandates a draw-count assertion for replacement selection. No instrumented
+count exists: `t05_emission_test.dart` "replacement selection consumes no PRNG draws"
+only simulates the same input twice and compares ledgers. Source inspection of
+`_replacementFor` shows no RNG call, but that is not the required evidence.
+
+Required correction (outside T10, requires separate authorization and test-only change):
+add an assertion that the PRNG draw position/count is unchanged across foul-out
+replacement selection, or expose a deterministic draw counter from the core and assert
+zero draws for the replacement path. Until then, M004 cannot be accepted.
+
+Other caveats recorded rather than hidden:
+
 - AC-M004-19 verifies fixture/content preservation; a historical suite-count comparison is not reconstructed.
 - AC-M004-24's zero-second entrant at all three widths was verified by a transient, deleted local test.
+- AC-M004-29 cites only T03-era evidence; the seed-15 regression (`ee50aca`) postdates T03 and is not used there.
 
 ## Verification executed for this report (2026-11-03)
 
