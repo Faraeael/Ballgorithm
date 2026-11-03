@@ -3,9 +3,10 @@
 > **Date:** 2026-11-03. **Baseline:** `3db63c7102a0c69befd8953a549600d3996ea615`
 > (`develop/m002`, after AC-12 integration). **Scope:** documentation-only acceptance
 > audit; no simulation, calibration, fixture, UI or specification change.
-> **Decision:** ACCEPTANCE READY — all 29 AC-M004 criteria have identified PASS
-> evidence. Final milestone acceptance still requires independent review and owner
-> confirmation. See `limitations.md` for explicit non-claims.
+> **Decision:** ACCEPTANCE BLOCKED — 27 of 29 criteria have PASS evidence.
+> AC-M004-15 (mutated-totals typed failure) and AC-M004-24 (zero-second entrant at
+> 360/393/430) are NOT MEASURED. Final milestone acceptance cannot be claimed. See
+> `limitations.md` for the required corrections and non-claims.
 
 ## Status legend
 
@@ -35,7 +36,7 @@ earlier gate claimed.
 | AC-M004-12 | Replacement ranking deterministic: same-slot preference, roster-order tiebreak, no PRNG draw | PASS | `t05_emission_test.dart` "replacement selection consumes zero PRNG draws": real `GameSimulator` path with `ReplacementDrawTrace`; 4 seed-42 substitutions, 8 selections, every delta `0`; independent event-based oracle asserts the first same-position candidate in roster order (two cases with two same-slot candidates); sensitivity mutation (extra draw) failed with `Expected 0 / Actual 1`. "roster-order fallback selects the first eligible candidate": pinned 7-player-roster fixture (league seed 20261028, game seed 3, `ac12-fallback-3`), vacated SF, eligible bench `player-2-6`, `player-2-7`, no same-slot candidate, selected `player-2-6` (first roster order), observer matched, draw delta 0; sensitivity mutation (last candidate) failed as expected. Commits `f8371a805f9a3a86663a40897292d8540bc5dd6e`, `3db63c7102a0c69befd8953a549600d3996ea615`. Instrumentation is passive: one integer increment per PRNG draw; pinned ledgers, digests, version constants and PRNG identity unchanged. Not performance-benchmarked. |
 | AC-M004-13 | Tactical substitutions ledger-valid but never emitted | PASS | `t03_contract_test.dart` "accepts the tactical reason" and "simulator emits only foul-out substitutions and they validate"; `t05_emission_test.dart` reason scan. |
 | AC-M004-14 | Administrative loop bound per window | PASS | `t04_participation_test.dart` "rejects a second appearance by the same player in one window". |
-| AC-M004-15 | Minutes conservation exact for regulation, overtime, W1 splits, continuation, 5-player rosters | PASS | `t06_minutes_test.dart`: full game W5 substitution, W1 split, two same-clock substitutions, overtime 300 s, horn boundary, depleted five-player roster; `t07_canonical_participation_test.dart` replay seconds and per-team conservation. |
+| AC-M004-15 | Minutes conservation exact for regulation, overtime, W1 splits, continuation, 5-player rosters | NOT MEASURED | Positive conservation evidence passes: `t06_minutes_test.dart` (regulation, W1 split, same-clock, overtime, horn, depleted), `t07_canonical_participation_test.dart` replay seconds/team totals. The frozen evidence requirement also demands a "typed failure on mutated totals"; no committed test provides it. Feasibility analysis finds this unreachable through the public validated-ledger API: `GameStarted` fixes period 1 at `periodSeconds`; `PeriodStarted` requires the full `periodLength`, no open possession and resets the accounting anchor; clocks are monotonic and bounded; `PeriodEnded` requires clock 0; substitutions cannot move the clock and preserve five active players; `GameEnded` requires a closed final period. Accounting accrues each interval delta to exactly five active players, so the team total telescopes to `5 × Σ periodLengths` for every validated completed ledger. `EventAccounting` contains the `periodEndInvalid` `secondsPlayed` guard, but it is defence-in-depth and unreachable from the validated public entrypoint. No honest negative test can be written, and the frozen evidence requirement cannot be silently reinterpreted. |
 | AC-M004-16 | Per-input determinism and worker parity in v5 | PASS | `t07_canonical_participation_test.dart` "20 repeated simulations reproduce the committed fixture" (full player/team projections, bytes and digest); `test/game_runner_parity_test.dart` 6/6 including fingerprint, ledger bytes, substitution identity, `secondsPlayed`, team stats, period points, conservation. |
 | AC-M004-17 | Matched-seed primary analysis over all games, no post-treatment filtering, descriptive divergence | PASS | T08 pre-registration and execution: 200 pairs, seeds 20001–20200, four matchups; `specs/004-player-participation/t08/t08-summary.json`; independent review of the 4,312,412-byte archive. Descriptive only; see limitations. |
 | AC-M004-18 | Versions: sim 5, rules 3, schema 3, fingerprint 3; duration 2 and PRNG unchanged | PASS | `t03_contract_test.dart` "version identifiers are the frozen T03 values"; `t07_canonical_participation_test.dart` header assertions; `game_versions.dart` constants; `prngImplementationId = xorshift32-v1`. |
@@ -44,7 +45,7 @@ earlier gate claimed.
 | AC-M004-21 | Scope compliance: no rotations, fatigue, technical fouls, user lineups, persistence | PASS | Source/API review on baseline: `grep -rniE "fatigue|rotation|technicalFoul|persistence|userLineup" packages/simulation_core/lib lib/features` returns only the disclosure sentence; simulator emits no tactical substitutions; no persistence dependency. |
 | AC-M004-22 | Bench production attributed to the substitute; no credit to replaced player | PASS | `t06_minutes_test.dart` "a substitute keeps the points, rebounds and fouls they record" (points 2, rebounds 1, fouls 1; departed starter 0). |
 | AC-M004-23 | Every roster player has a box row; non-participants zero; team totals reconcile | PASS | `t06_minutes_test.dart` all-roster rows, unused-bench zero assertions, per-team conservation; `t07` replay all 24 rows. |
-| AC-M004-24 | Results list starters then entrants, tagged, with minutes; zero-second entrant visible; non-participants hidden and disclosed | PASS | `test/game_results_test.dart` "participants list starters then entrants, without duplicates"; `test/game_participation_test.dart` "zero-second entrant with production stays visible"; `test/game_mobile_layout_test.dart` at 360/393/430. A transient local check (file created, run, deleted) rendered the zero-second entrant at 360×640, 393×852 and 430×932 with `MIN 0:00` and no exception; it is not committed. |
+| AC-M004-24 | Results list starters then entrants, tagged, with minutes; zero-second entrant visible; non-participants hidden and disclosed | NOT MEASURED | Committed evidence covers parts: `game_results_test.dart` "participants list starters then entrants, without duplicates"; `game_participation_test.dart` "zero-second entrant with production stays visible" (tall 430×4000 test surface); `game_mobile_layout_test.dart` at 360×640, 393×852, 430×932 using the ordinary simulated participation fixture. The frozen evidence requires the same zero-second entrant at all three mobile widths; no committed test combines them. The earlier combined check was transient and deleted, so it cannot count. Required permanent regression: pump the validated zero-second ledger at each of the three viewports and assert the row, `MIN 0:00`, the substitute label and no overflow. |
 | AC-M004-25 | v5 rejects v4 ledgers with `unsupportedEventSchemaVersion`; pinned v1–v4 evidence; comparison via two pinned builds | PASS | `t03_contract_test.dart` "a v4 ledger header is rejected by the v5 reader"; historical fixture tests; T07 comparison against build `c7f1d7a` with normalized league/team/seed/rules (event arrays only; fingerprints never compared across versions); T08 same normalization. |
 | AC-M004-26 | Atomic public-contract transition: adoption, payload, four version bumps in one commit; no old-version capability | PASS | Commit `8618550`: `ActiveLineup` deleted, `CourtLineup` payload adopted, `GameInput`/runner migrated, `gameSimulationVersion 4→5`, `gameRulesVersion 2→3`, `gameEventSchemaVersion 2→3`, `gameFingerprintVersion 2→3` in the same commit; v4 header rejected by v5 reader. |
 | AC-M004-27 | `GameInput` holds starting lineups only; eligibility follows the reconstructed current five | PASS | `game_input.dart` exposes starting lineups; reducer maintains current five from events (`t04` "rejects an event crediting a departed starter after substitution", "accepts a live event by the entering substitute"); `isActive` has starting-lineup semantics only (grep). |
@@ -53,22 +54,25 @@ earlier gate claimed.
 
 ## Totals
 
-- **PASS: 29**
+- **PASS: 27**
 - **FAIL: 0**
-- **NOT MEASURED: 0**
+- **NOT MEASURED: 2** (AC-M004-15, AC-M004-24)
 
-## Previously blocking gap — resolved
+## Gap history
 
-The earlier blocked audit (`b389b9d6333dd97253dc6c4d2d44d724e5829962`) recorded
-AC-M004-12 as NOT MEASURED because the old test compared two identical runs instead of
-observing draw consumption. That gap is closed by the integrated AC-12 branch:
-instrumented zero-draw assertion, same-slot first-candidate tie-break, and the
-seven-player roster-order fallback fixture. The blocked audit is preserved unchanged as
-historical evidence.
+- Resolved: AC-M004-12. The earlier blocked audit (`b389b9d6333dd97253dc6c4d2d44d724e5829962`)
+  recorded it NOT MEASURED because the old test compared two identical runs. The integrated
+  AC-12 branch adds the passive draw observer, the same-slot first-candidate tie-break and the
+  seven-player roster-order fallback fixture. AC-12 is PASS.
+- Open: AC-M004-15. The required typed failure on mutated minute totals is unreachable through
+  the validated public API; the derivation is recorded above and in `limitations.md`. The
+  frozen contract would need owner-approved amendment to accept an impossibility proof.
+- Open: AC-M004-24. The combined zero-second-entrant-at-three-widths test is missing; the
+  proposed permanent test is recorded above and in `limitations.md`.
 
 Caveats recorded rather than hidden:
 
-- AC-M004-19 verifies fixture/content preservation; a historical suite-count comparison is not reconstructed.
+- AC-M004-19: frozen fixtures are unchanged (v1–v4 archives and M001 vectors); all 23 pre-M004 core test files still exist. The literal "core suite count unchanged" proxy does not hold because M004 adds tests: pre-M004 baseline `d833dd5` ran 351 VM tests, current snapshot runs 454 (Chrome 453). The increase is additive, not a historical test loss; the count comparison is recorded explicitly rather than treated as a regression.
 - AC-M004-24's zero-second entrant at all three widths was verified by a transient, deleted local test.
 - AC-M004-29 cites only T03-era evidence; the seed-15 regression (`ee50aca`) postdates T03 and is not used there.
 - AC-M004-12's passive draw counter adds one integer increment per PRNG draw; no performance benchmark of that overhead exists.

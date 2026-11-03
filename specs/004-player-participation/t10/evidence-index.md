@@ -56,7 +56,16 @@ Pinned T07 values: input fingerprint `e9b99720fa77ecd362e05029ebdba80ded67828f66
 | Participation UI | `test/game_participation_test.dart` | 7 tests: zero-second entrant, replaced foul-out, depleted label, FT-made/FT-missed horn, re-entry correction, slot-97 horn |
 | Mobile layout | `test/game_mobile_layout_test.dart` | 13 tests at 360×640, 393×852, 430×932 |
 
-## Command results (2026-11-03, baseline HEAD)
+## Historical baseline comparison
+
+- Pre-M004 baseline `d833dd5fd65f958498baff2178b40dab3c5193f2` (T01 erratum, no M004 implementation).
+- Temporary worktree run: `dart test` → **351 VM tests PASS**.
+- Current snapshot: **454 VM / 453 Chrome**; all 23 pre-M004 core test files still present.
+- Historical fixtures v1–v4 and M001 vectors unchanged; only the version-constant assertions in
+  `m001_regression_test.dart` moved with the v5 contract.
+- The total-count difference is additive M004 coverage, not historical test loss.
+
+## Command results (2026-11-03, final AC-12 snapshot)
 
 | Command | Result |
 |---|---|

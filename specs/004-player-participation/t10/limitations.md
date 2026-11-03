@@ -74,6 +74,20 @@ equivalence.
 - T08 raw evidence lives outside Git at `E:\ballgorithm-t08-artifacts`; if that path is
   lost, checksums cannot be re-verified from the repository alone.
 
+## 5a. Open acceptance gaps
+
+- **AC-M004-15 (NOT MEASURED).** The frozen matrix requires a typed failure on mutated
+  minute totals. Positive conservation is proven, but the negative case is unreachable:
+  validated ledgers fix five active players and telescope each period from its full
+  length to zero, so team seconds always equal `5 × Σ periodLengths`. The
+  `periodEndInvalid` `secondsPlayed` guard exists only as defence-in-depth. Closing this
+  honestly needs either an owner-approved contract amendment accepting the impossibility
+  proof or a different, explicitly authorized evidence form.
+- **AC-M004-24 (NOT MEASURED).** The zero-second entrant is committed only on a tall
+  430-wide test surface, while the three mobile-width tests use the ordinary simulated
+  fixture. A permanent test pumping the validated zero-second ledger at 360×640,
+  393×852 and 430×932 is required.
+
 ## 6. Explicit non-claims
 
 - No NBA realism claim.
