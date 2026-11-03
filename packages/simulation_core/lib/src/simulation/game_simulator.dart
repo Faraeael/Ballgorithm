@@ -65,10 +65,32 @@ import 'probability_model.dart';
 /// its A1 configuration must agree with `input.rules` or the simulation is
 /// rejected before any PRNG draw with
 /// `GameValidationCode.invalidRules`.
+/// Passive observation of one foul-out replacement selection.
+///
+/// [draws] is the number of underlying PRNG draws consumed while choosing the
+/// replacement (`0` for the deterministic ranking path). The observer cannot
+/// draw randomness, mutate state or change the ledger.
+final class ReplacementDrawTrace {
+  const ReplacementDrawTrace({
+    required this.teamId,
+    required this.playerOutId,
+    required this.playerInId,
+    required this.draws,
+  });
+
+  final String teamId;
+  final String playerOutId;
+
+  /// `null` when no eligible bench player exists.
+  final String? playerInId;
+  final int draws;
+}
+
 final class GameSimulator {
   GameSimulator({
     BasketballProbabilityModel? probabilityModel,
     this.onPhaseTrace,
+    this.onReplacementDraw,
   }) : _injectedModel = probabilityModel;
 
   final BasketballProbabilityModel? _injectedModel;
@@ -76,6 +98,10 @@ final class GameSimulator {
   /// Optional passive A1 phase observer (default disabled). It cannot draw
   /// randomness, mutate state or change the ledger.
   final void Function(PhaseTraceRecord record)? onPhaseTrace;
+
+  /// Optional passive replacement-selection observer (default disabled). It
+  /// runs after the ranking decision and only reads the PRNG draw counter.
+  final void Function(ReplacementDrawTrace trace)? onReplacementDraw;
 
   /// Simulates and validates one game. Throws [GameValidationException] on any
   /// illegal state, incompatible injected model or bound; never returns a
@@ -93,11 +119,12 @@ final class GameSimulator {
           ],
         ),
         onPhaseTrace,
+        onReplacementDraw,
       ).run();
     }
     _requireCompatibleA1(injected.rules, input.rules);
     _requireCanonicalRoster(injected, input);
-    return _GameRun(input, injected, onPhaseTrace).run();
+    return _GameRun(input, injected, onPhaseTrace, onReplacementDraw).run();
   }
 
   /// Rejects an injected model whose roster disagrees with the input league.
@@ -240,7 +267,7 @@ final class GameSimulator {
 }
 
 final class _GameRun {
-  _GameRun(this.input, this._model, [this._trace])
+  _GameRun(this.input, this._model, [this._trace, this._replacementDraw])
     : rules = input.rules,
       rng = DeterministicRandom(input.normalizedSeed),
       fingerprint = GameFingerprint.of(input) {
@@ -251,6 +278,7 @@ final class _GameRun {
   final GameInput input;
   final BasketballProbabilityModel _model;
   final void Function(PhaseTraceRecord record)? _trace;
+  final void Function(ReplacementDrawTrace trace)? _replacementDraw;
   final GameRules rules;
 
   int _traceSequence = 0;
@@ -927,14 +955,29 @@ final class _GameRun {
 
   /// Deterministic replacement: same slot position first, then roster order.
   Player? _replacementFor(String teamId, PlayerId outId) {
+    final observer = _replacementDraw;
+    final drawsBefore = observer == null ? 0 : rng.drawCount;
     final lineup = _onCourt(TeamId(teamId)).lineup;
     final candidates = _eligibleBench(teamId, lineup);
-    if (candidates.isEmpty) return null;
-    final slot = lineup.slotOf(outId);
-    for (final player in candidates) {
-      if (player.position == slot) return player;
+    Player? selected;
+    if (candidates.isNotEmpty) {
+      final slot = lineup.slotOf(outId);
+      selected = candidates.firstWhere(
+        (player) => player.position == slot,
+        orElse: () => candidates.first,
+      );
     }
-    return candidates.first;
+    if (observer != null) {
+      observer(
+        ReplacementDrawTrace(
+          teamId: teamId,
+          playerOutId: outId.value,
+          playerInId: selected?.id.value,
+          draws: rng.drawCount - drawsBefore,
+        ),
+      );
+    }
+    return selected;
   }
 
   void _applySubstitution({

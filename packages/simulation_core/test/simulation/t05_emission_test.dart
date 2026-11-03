@@ -91,13 +91,45 @@ void main() {
     expect(result.homeScore, isNot(result.awayScore));
   });
 
-  test('replacement selection consumes no PRNG draws', () {
+  test('replacement selection consumes zero PRNG draws', () {
     final input = buildInput(seed: 42);
-    final first = GameSimulator().simulate(input);
+    final traces = <ReplacementDrawTrace>[];
+    final result = GameSimulator(onReplacementDraw: traces.add).simulate(input);
+    final substitutions = result.events.whereType<Substitution>().toList();
+    expect(substitutions, isNotEmpty, reason: 'real replacement required');
+    expect(traces, isNotEmpty, reason: 'the observer must see real selections');
+
+    // Every emitted foul-out substitution was chosen by an observed selection.
+    final observed = [
+      for (final trace in traces)
+        if (trace.playerInId != null)
+          '${trace.playerOutId}->${trace.playerInId}',
+    ];
+    for (final substitution in substitutions) {
+      expect(
+        observed,
+        contains('${substitution.playerOutId}->${substitution.playerInId}'),
+        reason: 'selection for ${substitution.playerOutId} was observed',
+      );
+    }
+
+    // The actual ranking path consumed no underlying PRNG draws.
+    expect(traces, hasLength(greaterThanOrEqualTo(substitutions.length)));
+    for (final trace in traces) {
+      expect(
+        trace.draws,
+        0,
+        reason:
+            'selection ${trace.playerOutId} -> ${trace.playerInId} drew '
+            '${trace.draws} values',
+      );
+    }
+
+    // Behavioural determinism is retained alongside the draw-count evidence.
     final second = GameSimulator().simulate(input);
     expect(
-      jsonEncode(first.ledger.toJson()),
       jsonEncode(second.ledger.toJson()),
+      jsonEncode(result.ledger.toJson()),
     );
   });
 }

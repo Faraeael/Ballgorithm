@@ -19,6 +19,12 @@ final class DeterministicRandom {
 
   int _state;
 
+  int _draws = 0;
+
+  /// Monotonic count of underlying [nextUint32] draws, including rejection
+  /// sampling attempts. Read-only diagnostic; it never affects output.
+  int get drawCount => _draws;
+
   static int _normalizeSeed(int seed) {
     final state = seed & _mask32;
     return state == 0 ? _zeroSeedFallback : state;
@@ -26,6 +32,7 @@ final class DeterministicRandom {
 
   /// Uniform 32-bit value in `0..2^32-1`.
   int nextUint32() {
+    _draws++;
     var x = _state;
     x ^= (x << 13) & _mask32;
     x ^= x >>> 17;
