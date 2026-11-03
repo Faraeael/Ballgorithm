@@ -267,6 +267,22 @@ void main() {
       );
     });
 
+    test('rejects a possession start above the pending ceiling', () {
+      final script = scriptWithRetainedFoul();
+      script.substitution(
+        team: defense,
+        playerOut: _starter(input, defense, Position.pg),
+        playerIn: _bench(input, defense),
+        reason: SubstitutionReason.tactical,
+      );
+      script.startPossession('p2', offense, clock: 689, shotClock: 24);
+      _expectCode(
+        script.ledger(),
+        input,
+        GameValidationCode.illegalShotClockIncrease,
+      );
+    });
+
     test('rejects a substitution that moves the clock', () {
       final script = scriptWithRetainedFoul();
       script.substitution(
