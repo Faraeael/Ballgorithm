@@ -476,6 +476,36 @@ void main() {
       expect(input.rotationPlan!.home.preset, RotationPreset.custom);
     });
 
+    test('five-player leagues validate both team plans', () {
+      final league = const LeagueGenerator().generate(
+        const GenerationConfig(seed: 7, teamCount: 2, playersPerTeam: 5),
+      );
+      final fiveHome = league.teams.first;
+      final fiveAway = league.teams[1];
+      const cap = 2880;
+      TeamRotationPlan full(Team team) => TeamRotationPlan.create(
+        team: team,
+        preset: RotationPreset.balanced,
+        targets: [
+          for (final player in team.players)
+            RotationTarget(playerId: player.id, seconds: cap),
+        ],
+      );
+      final input = GameInput.create(
+        gameId: 'five-a-side',
+        league: league,
+        homeTeamId: fiveHome.id,
+        awayTeamId: fiveAway.id,
+        homeLineup: CourtLineup.defaultFor(fiveHome),
+        awayLineup: CourtLineup.defaultFor(fiveAway),
+        seed: 42,
+        rules: GameRules.standard,
+        rotationPlan: RotationPlan(home: full(fiveHome), away: full(fiveAway)),
+      );
+      expect(input.rotationPlan!.home.targetSeconds.values, everyElement(cap));
+      expect(input.rotationPlan!.away.targetSeconds.values, everyElement(cap));
+    });
+
     test('rejects missing, over-cap, wrong-total and zero-starter plans', () {
       final valid = planFor(
         base,
