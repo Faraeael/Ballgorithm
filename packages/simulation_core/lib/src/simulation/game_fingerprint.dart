@@ -17,6 +17,8 @@ abstract final class GameFingerprint {
     'gameSeed': input.seed,
     'normalizedSeed': input.normalizedSeed,
     'rules': input.rules.toJson(),
+    if (input.rotationPlan != null)
+      'rotationPlan': input.rotationPlan!.toJson(),
     'versions': {
       'simulation': gameSimulationVersion,
       'rules': gameRulesVersion,

@@ -4,6 +4,7 @@ import '../models/team.dart';
 import 'court_lineup.dart';
 import 'game_rules.dart';
 import 'game_validation.dart';
+import 'rotation_plan.dart';
 
 /// Validated inputs for one deterministic game.
 final class GameInput {
@@ -16,6 +17,7 @@ final class GameInput {
     required this.awayLineup,
     required this.seed,
     required this.rules,
+    this.rotationPlan,
   });
 
   factory GameInput.create({
@@ -27,6 +29,7 @@ final class GameInput {
     required CourtLineup awayLineup,
     required int seed,
     required GameRules rules,
+    RotationPlan? rotationPlan,
   }) {
     final issues = <GameValidationIssue>[];
     if (gameId.trim().isEmpty) {
@@ -84,10 +87,33 @@ final class GameInput {
         ),
       );
     }
+    var rulesValid = true;
     try {
       rules.validate();
     } on GameValidationException catch (error) {
+      rulesValid = false;
       issues.addAll(error.issues);
+    }
+    if (rulesValid &&
+        rotationPlan != null &&
+        homeTeam != null &&
+        awayTeam != null) {
+      _checkTeamPlan(
+        rotationPlan.home,
+        homeTeam,
+        homeLineup,
+        'rotationPlan.home',
+        rules,
+        issues,
+      );
+      _checkTeamPlan(
+        rotationPlan.away,
+        awayTeam,
+        awayLineup,
+        'rotationPlan.away',
+        rules,
+        issues,
+      );
     }
     if (issues.isNotEmpty) throw GameValidationException(issues);
     return GameInput._(
@@ -99,6 +125,12 @@ final class GameInput {
       awayLineup: _canonicalLineup(league, awayTeam!, awayLineup),
       seed: seed,
       rules: rules,
+      rotationPlan: rotationPlan == null
+          ? null
+          : RotationPlan(
+              home: rotationPlan.home.canonicalizeFor(homeTeam),
+              away: rotationPlan.away.canonicalizeFor(awayTeam),
+            ),
     );
   }
 
@@ -110,6 +142,9 @@ final class GameInput {
   final CourtLineup awayLineup;
   final int seed;
   final GameRules rules;
+
+  /// Optional playing-time plan. `null` preserves legacy no-rotation behavior.
+  final RotationPlan? rotationPlan;
 
   Team get homeTeam => _team(league, homeTeamId)!;
   Team get awayTeam => _team(league, awayTeamId)!;
@@ -152,6 +187,120 @@ final class GameInput {
         for (final playerId in supplied.playerIds) rosterById[playerId]!,
       ],
     );
+  }
+
+  static void _checkTeamPlan(
+    TeamRotationPlan plan,
+    Team team,
+    CourtLineup lineup,
+    String path,
+    GameRules rules,
+    List<GameValidationIssue> issues,
+  ) {
+    final rosterSize = team.players.length;
+    if (rosterSize < 5) {
+      issues.add(
+        GameValidationIssue(
+          code: GameValidationCode.invalidRosterSizeForRotation,
+          path: path,
+          message: 'rotation requires at least five players, got $rosterSize',
+        ),
+      );
+      return;
+    }
+
+    final cap = RotationPlan.regulationCap(rules);
+    final total = RotationPlan.regulationTeamTotal(rules);
+    final rosterIds = {for (final player in team.players) player.id.value};
+    final targetIds = {
+      for (final playerId in plan.targetSeconds.keys) playerId.value,
+    };
+    for (final playerId in targetIds) {
+      if (!rosterIds.contains(playerId)) {
+        issues.add(
+          GameValidationIssue(
+            code: GameValidationCode.foreignRotationPlayer,
+            path: path,
+            message: 'player $playerId does not belong to ${team.id.value}',
+          ),
+        );
+      }
+    }
+    for (final playerId in rosterIds) {
+      if (!targetIds.contains(playerId)) {
+        issues.add(
+          GameValidationIssue(
+            code: GameValidationCode.missingRotationPlayer,
+            path: path,
+            message: 'missing rotation target for $playerId',
+          ),
+        );
+      }
+    }
+
+    var sum = 0;
+    for (final entry in plan.targetSeconds.entries) {
+      if (entry.value < 0 || entry.value > cap) {
+        issues.add(
+          GameValidationIssue(
+            code: GameValidationCode.invalidRotationSeconds,
+            path: path,
+            message:
+                'player ${entry.key.value} target ${entry.value} is outside '
+                '0..$cap',
+          ),
+        );
+      }
+      sum += entry.value;
+    }
+    if (sum != total) {
+      issues.add(
+        GameValidationIssue(
+          code: GameValidationCode.invalidRotationTotal,
+          path: path,
+          message: 'targets sum to $sum, expected $total',
+        ),
+      );
+    }
+
+    for (final playerId in lineup.playerIds) {
+      if (plan.secondsFor(PlayerId(playerId)) <= 0) {
+        issues.add(
+          GameValidationIssue(
+            code: GameValidationCode.starterTargetNotPositive,
+            path: path,
+            message: 'starter $playerId must have a positive target',
+          ),
+        );
+      }
+    }
+
+    if (plan.preset != RotationPreset.custom) {
+      final expanded = RotationPlan.expandPreset(
+        preset: plan.preset,
+        team: team,
+        lineup: lineup,
+        rules: rules,
+      );
+      var matches = expanded.length == plan.targetSeconds.length;
+      if (matches) {
+        for (final entry in expanded.entries) {
+          if (plan.targetSeconds[entry.key] != entry.value) {
+            matches = false;
+            break;
+          }
+        }
+      }
+      if (!matches) {
+        issues.add(
+          GameValidationIssue(
+            code: GameValidationCode.rotationPresetMismatch,
+            path: path,
+            message: 'targets do not match the ${plan.preset.jsonValue} preset',
+          ),
+        );
+      }
+    }
   }
 
   static Team? _team(League league, TeamId id) {

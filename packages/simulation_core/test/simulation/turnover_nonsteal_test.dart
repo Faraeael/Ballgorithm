@@ -369,7 +369,7 @@ void main() {
     expect(GameFingerprint.canonicalJson(input), contains('"eventSchema":3'));
     expect(
       GameFingerprint.of(input),
-      'e9b99720fa77ecd362e05029ebdba80ded67828f662f8b5f09e1edf8581ed3ed',
+      '05e56d1154cbc695a84e248efbbba408c70cdd589da3b5b94c1458e1a636e520',
     );
     expect(
       GameFingerprint.of(input),
