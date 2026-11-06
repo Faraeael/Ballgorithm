@@ -44,8 +44,8 @@ final class RotationPolicyInput {
     this.disqualified = const {},
     this.mandatoryReplacementPending = false,
     this.swappedThisWindow = false,
-    this.previousSwap,
-    this.previousSwapGameSeconds,
+    this.previousWindowSwap,
+    this.lastTacticalSwapGameSeconds,
   });
 
   final Team team;
@@ -64,8 +64,16 @@ final class RotationPolicyInput {
   final Set<PlayerId> disqualified;
   final bool mandatoryReplacementPending;
   final bool swappedThisWindow;
-  final RotationSwapProposal? previousSwap;
-  final int? previousSwapGameSeconds;
+
+  /// The immediately previous substitution window's tactical swap, or `null`
+  /// when that window had no tactical swap. Used only for exact-reverse
+  /// suppression, independently of [lastTacticalSwapGameSeconds]. A caller
+  /// must clear it after a swap-free window.
+  final RotationSwapProposal? previousWindowSwap;
+
+  /// Cumulative game seconds of the team's most recent tactical swap, used
+  /// only for the cooldown. It is independent of [previousWindowSwap].
+  final int? lastTacticalSwapGameSeconds;
 }
 
 /// Pure deterministic playing-time policy. Consumes no randomness and holds no
@@ -87,9 +95,9 @@ abstract final class RotationPolicy {
     if (input.horizonSeconds <= 0) return null;
 
     final limits = thresholds(input.activePeriodSeconds);
-    final previousAt = input.previousSwapGameSeconds;
-    if (previousAt != null &&
-        input.gameSecondsElapsed - previousAt < limits.cooldown) {
+    final lastSwapAt = input.lastTacticalSwapGameSeconds;
+    if (lastSwapAt != null &&
+        input.gameSecondsElapsed - lastSwapAt < limits.cooldown) {
       return null;
     }
 
@@ -167,10 +175,10 @@ abstract final class RotationPolicy {
     incomingPool.sort(compareRoster);
     final incoming = incomingPool.first;
 
-    final previous = input.previousSwap;
-    if (previous != null &&
-        previous.playerInId == outgoing.id &&
-        previous.playerOutId == incoming.id) {
+    final previousWindow = input.previousWindowSwap;
+    if (previousWindow != null &&
+        previousWindow.playerInId == outgoing.id &&
+        previousWindow.playerOutId == incoming.id) {
       return null;
     }
 

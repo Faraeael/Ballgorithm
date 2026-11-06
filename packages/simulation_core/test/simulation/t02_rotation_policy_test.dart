@@ -69,8 +69,8 @@ RotationPolicyInput inputFor(
   Set<PlayerId> disqualified = const {},
   bool mandatoryReplacementPending = false,
   bool swappedThisWindow = false,
-  RotationSwapProposal? previousSwap,
-  int? previousSwapGameSeconds,
+  RotationSwapProposal? previousWindowSwap,
+  int? lastTacticalSwapGameSeconds,
 }) => RotationPolicyInput(
   team: data.team,
   activeLineup: lineup ?? data.lineup,
@@ -83,8 +83,8 @@ RotationPolicyInput inputFor(
   disqualified: disqualified,
   mandatoryReplacementPending: mandatoryReplacementPending,
   swappedThisWindow: swappedThisWindow,
-  previousSwap: previousSwap,
-  previousSwapGameSeconds: previousSwapGameSeconds,
+  previousWindowSwap: previousWindowSwap,
+  lastTacticalSwapGameSeconds: lastTacticalSwapGameSeconds,
 );
 
 Map<PlayerId, int> actualsWith(
@@ -283,7 +283,7 @@ void main() {
             data,
             actuals: actuals,
             gameSecondsElapsed: 1119,
-            previousSwapGameSeconds: 1000,
+            lastTacticalSwapGameSeconds: 1000,
           ),
         ),
         isNull,
@@ -294,7 +294,7 @@ void main() {
             data,
             actuals: actuals,
             gameSecondsElapsed: 1120,
-            previousSwapGameSeconds: 1000,
+            lastTacticalSwapGameSeconds: 1000,
           ),
         ),
         isNotNull,
@@ -310,7 +310,7 @@ void main() {
             data,
             actuals: actuals,
             gameSecondsElapsed: 2910,
-            previousSwapGameSeconds: 2800,
+            lastTacticalSwapGameSeconds: 2800,
           ),
         ),
         isNull,
@@ -321,7 +321,7 @@ void main() {
             data,
             actuals: actuals,
             gameSecondsElapsed: 2920,
-            previousSwapGameSeconds: 2800,
+            lastTacticalSwapGameSeconds: 2800,
           ),
         ),
         isNotNull,
@@ -355,12 +355,41 @@ void main() {
             for (final player in data.team.players)
               player.id: player.id.value == 'p5' ? 900 : 0,
           },
-          previousSwap: previous,
-          previousSwapGameSeconds: 500,
+          previousWindowSwap: previous,
+          lastTacticalSwapGameSeconds: 500,
           gameSecondsElapsed: 1000,
         ),
       );
       expect(proposal, isNull);
+    });
+
+    test('an older swap is not suppressed after an empty window', () {
+      final data = fixture();
+      final benchLineup = CourtLineup.create(
+        team: data.team,
+        slotOrderedPlayers: [
+          data.team.players[5],
+          data.team.players[1],
+          data.team.players[2],
+          data.team.players[3],
+          data.team.players[4],
+        ],
+      );
+      final proposal = RotationPolicy.propose(
+        inputFor(
+          data,
+          lineup: benchLineup,
+          actuals: {
+            for (final player in data.team.players)
+              player.id: player.id.value == 'p5' ? 900 : 0,
+          },
+          lastTacticalSwapGameSeconds: 500,
+          gameSecondsElapsed: 1000,
+        ),
+      );
+      expect(proposal, isNotNull);
+      expect(proposal!.playerOutId, idOf(data, 'p5'));
+      expect(proposal.playerInId, idOf(data, 'p0'));
     });
 
     test('mandatory replacement or an existing window swap suppresses', () {
