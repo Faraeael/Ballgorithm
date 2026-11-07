@@ -631,12 +631,30 @@ void main() {
     final home = league.teams[_homeIndex];
     final away = league.teams[_awayIndex];
     final homeLineup = nonDefaultLineup(home);
+    final balancedPlan = managedPlan(
+      league: league,
+      homeIndex: _homeIndex,
+      awayIndex: _awayIndex,
+      manageHome: true,
+      managedLineup: homeLineup,
+    );
+    // Edited custom allocation so the preserved targets are non-round values.
+    final editedTargets = <String, int>{
+      for (final entry in balancedPlan.home.targetSeconds.entries)
+        entry.key.value: entry.value,
+    };
+    editedTargets[homeLineup.playerIds.first] =
+        editedTargets[homeLineup.playerIds.first]! - 30;
+    editedTargets[homeLineup.playerIds.last] =
+        editedTargets[homeLineup.playerIds.last]! + 30;
     final plan = managedPlan(
       league: league,
       homeIndex: _homeIndex,
       awayIndex: _awayIndex,
       manageHome: true,
       managedLineup: homeLineup,
+      preset: RotationPreset.custom,
+      customTargets: editedTargets,
     );
     final planned = GameRequest(
       league: league,

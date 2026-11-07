@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
 
@@ -27,8 +29,7 @@ class GameSetupScreen extends StatefulWidget {
 }
 
 class _GameSetupScreenState extends State<GameSetupScreen> {
-  static const int _quickSeconds = 10;
-  static const int _largeSeconds = 60;
+  static const int _fineSeconds = 10;
 
   Team? _homeTeam;
   Team? _awayTeam;
@@ -175,6 +176,8 @@ class _GameSetupScreenState extends State<GameSetupScreen> {
         seed == null) {
       return;
     }
+    _refreshBudgetMessage();
+    if (_planError != null) return;
     try {
       GameInput.create(
         gameId: '${home.id.value}-${away.id.value}-$seed',
@@ -282,18 +285,78 @@ class _GameSetupScreenState extends State<GameSetupScreen> {
     });
   }
 
-  void _adjustCustom(String playerId, int delta) {
+  int get _customTotal =>
+      _customTargets.values.fold<int>(0, (sum, value) => sum + value);
+
+  int get _managedTotal =>
+      _managedTargets().values.fold<int>(0, (sum, value) => sum + value);
+
+  /// Highest value this player may take: the per-player cap and whatever the
+  /// team budget still allows after the other players are counted.
+  int _maximumAllowed(String playerId) {
     final current = _customTargets[playerId] ?? 0;
-    final next = current + delta;
-    if (next < 0 || next > _cap) return;
+    final others = _customTotal - current;
+    return math.min(_cap, _teamTotal - others);
+  }
+
+  /// Applies one exact integer-second value, rejecting any increase that would
+  /// exceed the per-player cap or the team budget. The rejected proposal leaves
+  /// the allocation untouched; no other player is adjusted.
+  bool _setCustomTarget(String playerId, int seconds) {
+    if (_preset != RotationPreset.custom) return false;
+    final current = _customTargets[playerId] ?? 0;
+    if (seconds == current) return false;
+    final allowed = _maximumAllowed(playerId);
+    if (seconds < 0 || seconds > allowed) return false;
     setState(() {
-      _customTargets[playerId] = next;
-      _revalidate();
+      _customTargets[playerId] = seconds;
+      _refreshBudgetMessage();
     });
+    return true;
+  }
+
+  /// Cheap budget/validation message refresh used on every slider tick, so a
+  /// rapid drag or an interrupted gesture never leaves a stale error behind.
+  /// Full core validation still runs on drag end and on fine adjustments.
+  void _refreshBudgetMessage() {
+    final team = _managedTeam;
+    final lineup = _managedLineup;
+    if (team == null || lineup == null) return;
+    final targets = _managedTargets();
+    final zeroStarters = [
+      for (final slot in lineup.slots)
+        if ((targets[slot.playerId.value] ?? 0) <= 0)
+          team.players
+              .firstWhere((player) => player.id.value == slot.playerId.value)
+              .fullName,
+    ];
+    if (zeroStarters.isNotEmpty) {
+      _planError =
+          '${zeroStarters.join(', ')} '
+          '${zeroStarters.length == 1 ? 'is a starter' : 'are starters'} '
+          'and needs minutes. To give this player minutes, reduce another '
+          "player's allocation first.";
+      return;
+    }
+    final total = targets.values.fold<int>(0, (sum, value) => sum + value);
+    _planError = total == _teamTotal
+        ? null
+        : 'Assign every minute before confirming. '
+              '${formatMinutes(_teamTotal - total)} still available.';
+  }
+
+  void _fineAdjust(String playerId, int delta) {
+    final current = _customTargets[playerId] ?? 0;
+    if (_setCustomTarget(playerId, current + delta)) {
+      _revalidate();
+    }
   }
 
   bool get _canConfirm =>
-      _seed != null && _managedLineup != null && _planError == null;
+      _seed != null &&
+      _managedLineup != null &&
+      _planError == null &&
+      _managedTotal == _teamTotal;
 
   void _confirm() {
     final home = _homeTeam;
@@ -577,36 +640,30 @@ class _GameSetupScreenState extends State<GameSetupScreen> {
           onSelectionChanged: (selection) => _selectPreset(selection.first),
         ),
         const SizedBox(height: 8),
-        Text(
-          'Team total: $total / $_teamTotal player-seconds',
-          key: const ValueKey('target-total'),
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: total == _teamTotal
-                ? theme.colorScheme.onSurface
-                : theme.colorScheme.error,
-          ),
-        ),
-        const SizedBox(height: 8),
-        for (final player in participants)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    player.fullName,
-                    style: theme.textTheme.bodySmall,
-                    overflow: TextOverflow.ellipsis,
+        _budgetPanel(theme, total),
+        if (_preset != RotationPreset.custom) ...[
+          const SizedBox(height: 8),
+          for (final player in participants)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      player.fullName,
+                      style: theme.textTheme.bodySmall,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-                Text(
-                  formatMinutes(targets[player.id.value] ?? 0),
-                  key: ValueKey('target-preview-${player.id.value}'),
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
+                  Text(
+                    formatMinutes(targets[player.id.value] ?? 0),
+                    key: ValueKey('target-preview-${player.id.value}'),
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
             ),
-          ),
+        ],
         if (_preset == RotationPreset.custom)
           Theme(
             data: theme.copyWith(dividerColor: Colors.transparent),
@@ -614,9 +671,13 @@ class _GameSetupScreenState extends State<GameSetupScreen> {
               key: const ValueKey('custom-editor'),
               tilePadding: EdgeInsets.zero,
               childrenPadding: EdgeInsets.zero,
-              title: Text('Edit targets', style: theme.textTheme.bodyMedium),
+              title: Text(
+                'Minute allocation',
+                style: theme.textTheme.bodyMedium,
+              ),
               subtitle: Text(
-                'Adjust in seconds; the total must stay $_teamTotal.',
+                'Drag a slider to move minutes. The team budget is a hard '
+                'limit of ${formatMinutes(_teamTotal)}.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -644,6 +705,60 @@ class _GameSetupScreenState extends State<GameSetupScreen> {
     return ordered;
   }
 
+  String _budgetLabel(int seconds) {
+    final whole = seconds < 0 ? 0 : seconds;
+    return '${(whole ~/ 60).toString().padLeft(2, '0')}:'
+        '${(whole % 60).toString().padLeft(2, '0')}';
+  }
+
+  Widget _budgetPanel(ThemeData theme, int total) {
+    final available = _teamTotal - total;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Allocated: ${_budgetLabel(total)} / '
+                '${_budgetLabel(_teamTotal)}',
+                key: const ValueKey('budget-allocated'),
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+            Text(
+              'Available: ${_budgetLabel(available)}',
+              key: const ValueKey('budget-available'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: available == 0
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        LinearProgressIndicator(
+          key: const ValueKey('budget-progress'),
+          value: (total / _teamTotal).clamp(0.0, 1.0),
+          minHeight: 6,
+          borderRadius: BorderRadius.circular(3),
+        ),
+        if (available == 0) ...[
+          const SizedBox(height: 6),
+          Text(
+            'No minutes remain. To give a player more minutes, reduce '
+            "another player's allocation first.",
+            key: const ValueKey('budget-full'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _customRow(
     ThemeData theme,
     Team team,
@@ -654,52 +769,83 @@ class _GameSetupScreenState extends State<GameSetupScreen> {
     final playerId = player.id.value;
     final seconds = targets[playerId] ?? 0;
     final starter = lineup.containsPlayer(player.id);
-    final label = starter
-        ? '${player.fullName} · ${player.position.shortName}'
-        : '${player.fullName} · ${player.position.shortName} (reserve)';
-    Widget adjust(int delta, String text) => Padding(
-      padding: const EdgeInsets.only(left: 4),
-      child: SizedBox(
-        height: 32,
-        child: OutlinedButton(
-          key: ValueKey('custom-adjust-$playerId-$delta'),
-          onPressed: seconds + delta < 0 || seconds + delta > _cap
-              ? null
-              : () => _adjustCustom(playerId, delta),
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            minimumSize: const Size(34, 32),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-          child: Text(text, style: theme.textTheme.labelSmall),
+    final allowed = _maximumAllowed(playerId);
+    final sliderMax = math.max(allowed, seconds);
+    final sliderValue = seconds.clamp(0, sliderMax);
+
+    Widget fine(String key, String label, int delta, bool enabled) => SizedBox(
+      width: 44,
+      height: 32,
+      child: TextButton(
+        key: ValueKey(key),
+        onPressed: enabled ? () => _fineAdjust(playerId, delta) : null,
+        style: TextButton.styleFrom(
+          padding: EdgeInsets.zero,
+          minimumSize: const Size(44, 32),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
+        child: Text(label, style: theme.textTheme.labelSmall),
       ),
     );
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Text(
-              label,
-              style: theme.textTheme.bodySmall,
-              overflow: TextOverflow.ellipsis,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  player.fullName,
+                  key: ValueKey('target-name-$playerId'),
+                  style: theme.textTheme.bodyMedium,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '${player.position.shortName} · '
+                '${starter ? 'STARTER' : 'RESERVE'}',
+                key: ValueKey('target-role-$playerId'),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                formatMinutes(seconds),
+                key: ValueKey('target-seconds-$playerId'),
+                style: theme.textTheme.bodyMedium,
+              ),
+            ],
           ),
-          SizedBox(
-            width: 44,
-            child: Text(
-              formatMinutes(seconds),
-              key: ValueKey('target-seconds-$playerId'),
-              textAlign: TextAlign.right,
-              style: theme.textTheme.bodySmall,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Slider(
+                  key: ValueKey('target-slider-$playerId'),
+                  value: sliderValue.toDouble(),
+                  min: 0,
+                  max: sliderMax.toDouble(),
+                  divisions: sliderMax > 0 ? sliderMax : null,
+                  label: formatMinutes(seconds),
+                  onChanged: sliderMax > 0
+                      ? (value) => _setCustomTarget(playerId, value.round())
+                      : null,
+                  onChangeEnd: (_) => _revalidate(),
+                ),
+              ),
+              fine('fine-minus-$playerId', '-10s', -_fineSeconds, seconds > 0),
+              fine(
+                'fine-plus-$playerId',
+                '+10s',
+                _fineSeconds,
+                seconds + _fineSeconds <= allowed,
+              ),
+            ],
           ),
-          adjust(-_largeSeconds, '-1m'),
-          adjust(-_quickSeconds, '-10s'),
-          adjust(_quickSeconds, '+10s'),
-          adjust(_largeSeconds, '+1m'),
         ],
       ),
     );

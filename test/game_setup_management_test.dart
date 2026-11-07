@@ -52,6 +52,13 @@ Future<void> _scrollToTop(WidgetTester tester) async {
   }
 }
 
+Future<String> _budgetText(WidgetTester tester, String key) async {
+  final finder = find.byKey(ValueKey(key));
+  await _scrollToTop(tester);
+  await _scrollTo(tester, finder);
+  return tester.widget<Text>(finder).data!;
+}
+
 Future<void> _confirm(WidgetTester tester) async {
   await _scrollTo(tester, find.byKey(const ValueKey('confirm-matchup')));
   await tester.tap(find.byKey(const ValueKey('confirm-matchup')));
@@ -294,8 +301,8 @@ void main() {
 
     await _openCustomEditor(tester);
     expect(
-      tester.widget<Text>(find.byKey(const ValueKey('target-total'))).data,
-      'Team total: 14400 / 14400 player-seconds',
+      await _budgetText(tester, 'budget-allocated'),
+      'Allocated: 240:00 / 240:00',
     );
     await _expectCustomTargets(tester, home, starterHeavy);
 
@@ -319,8 +326,8 @@ void main() {
 
     await _openCustomEditor(tester);
     expect(
-      tester.widget<Text>(find.byKey(const ValueKey('target-total'))).data,
-      'Team total: 14400 / 14400 player-seconds',
+      await _budgetText(tester, 'budget-allocated'),
+      'Allocated: 240:00 / 240:00',
     );
     await _expectCustomTargets(tester, home, balanced);
 
@@ -339,8 +346,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      tester.widget<Text>(find.byKey(const ValueKey('target-total'))).data,
-      'Team total: 14400 / 14400 player-seconds',
+      await _budgetText(tester, 'budget-allocated'),
+      'Allocated: 240:00 / 240:00',
     );
 
     final base = CourtLineup.defaultFor(home);
@@ -352,16 +359,17 @@ void main() {
     await _scrollTo(tester, find.byKey(const ValueKey('custom-editor')));
     await tester.tap(find.byKey(const ValueKey('custom-editor')));
     await tester.pumpAndSettle();
-    await _scrollTo(tester, find.byKey(ValueKey('custom-adjust-$donor--60')));
-    await tester.tap(find.byKey(ValueKey('custom-adjust-$donor--60')));
+    await _scrollTo(tester, find.byKey(ValueKey('fine-minus-$donor')));
+    await tester.tap(find.byKey(ValueKey('fine-minus-$donor')));
     await tester.pumpAndSettle();
-    await _scrollTo(tester, find.byKey(ValueKey('custom-adjust-$receiver-60')));
-    await tester.tap(find.byKey(ValueKey('custom-adjust-$receiver-60')));
+    expect(await _budgetText(tester, 'budget-available'), 'Available: 00:10');
+    await _scrollTo(tester, find.byKey(ValueKey('fine-plus-$receiver')));
+    await tester.tap(find.byKey(ValueKey('fine-plus-$receiver')));
     await tester.pumpAndSettle();
 
     expect(
-      tester.widget<Text>(find.byKey(const ValueKey('target-total'))).data,
-      'Team total: 14400 / 14400 player-seconds',
+      await _budgetText(tester, 'budget-allocated'),
+      'Allocated: 240:00 / 240:00',
     );
     await _confirm(tester);
     final plan = confirmed.single.rotationPlan!;
@@ -378,15 +386,15 @@ void main() {
     );
     expect(
       plan.home.targetSeconds[PlayerId(donor)],
-      balanced[PlayerId(donor)]! - 60,
+      balanced[PlayerId(donor)]! - 10,
     );
     expect(
       plan.home.targetSeconds[PlayerId(receiver)],
-      balanced[PlayerId(receiver)]! + 60,
+      balanced[PlayerId(receiver)]! + 10,
     );
   });
 
-  testWidgets('an unbalanced custom total blocks confirmation', (tester) async {
+  testWidgets('an unallocated budget blocks confirmation', (tester) async {
     await _pumpSetup(tester, league, onConfirm: confirmed.add);
     await _pickTeam(tester, 'home', home);
     await _pickTeam(tester, 'away', away);
@@ -398,8 +406,8 @@ void main() {
     await tester.pumpAndSettle();
 
     final starter = CourtLineup.defaultFor(home).slots.first.playerId.value;
-    await _scrollTo(tester, find.byKey(ValueKey('custom-adjust-$starter-60')));
-    await tester.tap(find.byKey(ValueKey('custom-adjust-$starter-60')));
+    await _scrollTo(tester, find.byKey(ValueKey('fine-minus-$starter')));
+    await tester.tap(find.byKey(ValueKey('fine-minus-$starter')));
     await tester.pumpAndSettle();
 
     await _scrollTo(tester, find.byKey(const ValueKey('confirm-matchup')));
@@ -407,8 +415,278 @@ void main() {
     expect(find.byKey(const ValueKey('plan-error')), findsOneWidget);
     expect(
       tester.widget<Text>(find.byKey(const ValueKey('plan-error'))).data,
-      contains('14400'),
+      contains('still available'),
     );
+    expect(await _budgetText(tester, 'budget-available'), 'Available: 00:10');
+  });
+
+  testWidgets('a single slider drag frees several minutes', (tester) async {
+    await _pumpSetup(tester, league, onConfirm: confirmed.add);
+    await _pickTeam(tester, 'home', home);
+    await _pickTeam(tester, 'away', away);
+    await _openCustomEditor(tester);
+
+    final donor = CourtLineup.defaultFor(home).slots.first.playerId.value;
+    final sliderFinder = find.byKey(ValueKey('target-slider-$donor'));
+    await _scrollTo(tester, sliderFinder);
+    final before = tester.widget<Slider>(sliderFinder).value;
+
+    await tester.drag(sliderFinder, const Offset(-90, 0));
+    await tester.pumpAndSettle();
+
+    final after = tester.widget<Slider>(sliderFinder).value;
+    expect(after, lessThan(before - 60), reason: 'several minutes per drag');
+    expect(
+      await _budgetText(tester, 'budget-available'),
+      isNot('Available: 00:00'),
+    );
+    expect(
+      await _budgetText(tester, 'budget-allocated'),
+      startsWith('Allocated: '),
+    );
+    expect(await _budgetText(tester, 'budget-allocated'), endsWith('/ 240:00'));
+  });
+
+  testWidgets('an increase beyond the available budget is rejected', (
+    tester,
+  ) async {
+    await _pumpSetup(tester, league, onConfirm: confirmed.add);
+    await _pickTeam(tester, 'home', home);
+    await _pickTeam(tester, 'away', away);
+    await _openCustomEditor(tester);
+
+    final base = CourtLineup.defaultFor(home);
+    final donorId = base.slots.first.playerId.value;
+    final receiverId = base.slots[1].playerId.value;
+
+    final donorSlider = find.byKey(ValueKey('target-slider-$donorId'));
+    await _scrollTo(tester, donorSlider);
+    final donorValue = tester.widget<Slider>(donorSlider).value.round();
+
+    // Fully allocated: any increase is rejected outright.
+    tester.widget<Slider>(donorSlider).onChanged!(donorValue + 1.0);
+    await tester.pumpAndSettle();
+    expect(tester.widget<Slider>(donorSlider).value.round(), donorValue);
+    expect(await _budgetText(tester, 'budget-available'), 'Available: 00:00');
+
+    // Free 60 seconds from another player. The handler is invoked directly:
+    // layout shifts from the new validation text must not turn this into a
+    // hit-testing test.
+    final receiverMinus = find.byKey(ValueKey('fine-minus-$receiverId'));
+    await _scrollTo(tester, receiverMinus);
+    for (var tap = 0; tap < 6; tap++) {
+      tester.widget<TextButton>(receiverMinus).onPressed!();
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(await _budgetText(tester, 'budget-available'), 'Available: 01:00');
+
+    // One second past the freed budget is rejected; the exact amount applies.
+    tester.widget<Slider>(donorSlider).onChanged!(donorValue + 61.0);
+    await tester.pumpAndSettle();
+    expect(tester.widget<Slider>(donorSlider).value.round(), donorValue);
+
+    tester.widget<Slider>(donorSlider).onChanged!(donorValue + 60.0);
+    await tester.pumpAndSettle();
+    expect(tester.widget<Slider>(donorSlider).value.round(), donorValue + 60);
+    expect(await _budgetText(tester, 'budget-available'), 'Available: 00:00');
+  });
+
+  testWidgets('rapid slider changes never exceed the team budget', (
+    tester,
+  ) async {
+    await _pumpSetup(tester, league, onConfirm: confirmed.add);
+    await _pickTeam(tester, 'home', home);
+    await _pickTeam(tester, 'away', away);
+    await _openCustomEditor(tester);
+
+    final base = CourtLineup.defaultFor(home);
+    final first = base.slots.first.playerId.value;
+    final second = base.slots[1].playerId.value;
+    final firstSlider = find.byKey(ValueKey('target-slider-$first'));
+    await _scrollTo(tester, firstSlider);
+
+    for (var step = 0; step < 20; step++) {
+      final finder = step.isEven
+          ? firstSlider
+          : find.byKey(ValueKey('target-slider-$second'));
+      if (finder.evaluate().isEmpty) continue;
+      final slider = tester.widget<Slider>(finder);
+      slider.onChanged!(slider.value + (step.isEven ? 400 : 900));
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    final allocated = await _budgetText(tester, 'budget-allocated');
+    expect(allocated, endsWith('/ 240:00'));
+    final available = await _budgetText(tester, 'budget-available');
+    expect(available, isNot(contains('-')));
+    expect(
+      tester
+          .widget<LinearProgressIndicator>(
+            find.byKey(const ValueKey('budget-progress')),
+          )
+          .value,
+      lessThanOrEqualTo(1.0),
+    );
+  });
+
+  testWidgets('the per-player cap is enforced at 2,880 seconds', (
+    tester,
+  ) async {
+    await _pumpSetup(tester, league, onConfirm: confirmed.add);
+    await _pickTeam(tester, 'home', home);
+    await _pickTeam(tester, 'away', away);
+    await _openCustomEditor(tester);
+
+    final base = CourtLineup.defaultFor(home);
+    final capped = base.slots.first.playerId.value;
+    final donor = base.slots[1].playerId.value;
+
+    final donorSlider = find.byKey(ValueKey('target-slider-$donor'));
+    await _scrollTo(tester, donorSlider);
+    await tester.drag(donorSlider, const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Slider>(donorSlider).value.round(), 0);
+
+    final cappedSlider = find.byKey(ValueKey('target-slider-$capped'));
+    await _scrollTo(tester, cappedSlider);
+    tester.widget<Slider>(cappedSlider).onChanged!(2880);
+    await tester.pumpAndSettle();
+    expect(tester.widget<Slider>(cappedSlider).value.round(), 2880);
+    expect(tester.widget<Slider>(cappedSlider).max, lessThanOrEqualTo(2880));
+
+    tester.widget<Slider>(cappedSlider).onChanged!(2881);
+    await tester.pumpAndSettle();
+    expect(tester.widget<Slider>(cappedSlider).value.round(), 2880);
+    final available = await _budgetText(tester, 'budget-available');
+    expect(available, isNot(contains('-')));
+  });
+
+  testWidgets('unallocated minutes are shown and gate confirmation', (
+    tester,
+  ) async {
+    await _pumpSetup(tester, league, onConfirm: confirmed.add);
+    await _pickTeam(tester, 'home', home);
+    await _pickTeam(tester, 'away', away);
+    await _openCustomEditor(tester);
+
+    final base = CourtLineup.defaultFor(home);
+    final donorId = base.slots.first.playerId.value;
+    final receiverId = base.slots[1].playerId.value;
+
+    final donorMinus = find.byKey(ValueKey('fine-minus-$donorId'));
+    await _scrollTo(tester, donorMinus);
+    for (var tap = 0; tap < 3; tap++) {
+      tester.widget<TextButton>(donorMinus).onPressed!();
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    expect(await _budgetText(tester, 'budget-available'), 'Available: 00:30');
+    await _scrollTo(tester, find.byKey(const ValueKey('confirm-matchup')));
+    expect(_confirmEnabled(tester), isFalse);
+    expect(find.byKey(const ValueKey('plan-error')), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('plan-error'))).data,
+      contains('still available'),
+    );
+
+    final receiverPlus = find.byKey(ValueKey('fine-plus-$receiverId'));
+    await _scrollTo(tester, receiverPlus);
+    for (var tap = 0; tap < 3; tap++) {
+      tester.widget<TextButton>(receiverPlus).onPressed!();
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    await _scrollTo(tester, find.byKey(const ValueKey('confirm-matchup')));
+    expect(_confirmEnabled(tester), isTrue);
+    expect(await _budgetText(tester, 'budget-available'), 'Available: 00:00');
+
+    await _confirm(tester);
+    final plan = confirmed.single.rotationPlan!;
+    expect(plan.home.preset, RotationPreset.custom);
+    expect(
+      plan.home.targetSeconds[PlayerId(donorId)],
+      _expanded(home, base, RotationPreset.balanced)[PlayerId(donorId)]! - 30,
+    );
+    expect(
+      plan.home.targetSeconds[PlayerId(receiverId)],
+      _expanded(home, base, RotationPreset.balanced)[PlayerId(receiverId)]! +
+          30,
+    );
+  });
+
+  testWidgets('a completed drag re-enables confirmation without a drag end', (
+    tester,
+  ) async {
+    await _pumpSetup(tester, league, onConfirm: confirmed.add);
+    await _pickTeam(tester, 'home', home);
+    await _pickTeam(tester, 'away', away);
+    await _openCustomEditor(tester);
+
+    final base = CourtLineup.defaultFor(home);
+    final donorId = base.slots.first.playerId.value;
+    final receiverId = base.slots[1].playerId.value;
+    final donorSlider = find.byKey(ValueKey('target-slider-$donorId'));
+    await _scrollTo(tester, donorSlider);
+    int valueOf(Finder finder) => tester.widget<Slider>(finder).value.round();
+    final donorStart = valueOf(donorSlider);
+
+    // Simulate an interrupted drag: only onChanged fires, never onChangeEnd.
+    tester.widget<Slider>(donorSlider).onChanged!((donorStart - 60).toDouble());
+    await tester.pump();
+    expect(await _budgetText(tester, 'budget-available'), 'Available: 01:00');
+
+    final receiverSlider = find.byKey(ValueKey('target-slider-$receiverId'));
+    await _scrollTo(tester, receiverSlider);
+    final receiverStart = valueOf(receiverSlider);
+    tester.widget<Slider>(receiverSlider).onChanged!(
+      (receiverStart + 60).toDouble(),
+    );
+    await tester.pumpAndSettle();
+
+    expect(await _budgetText(tester, 'budget-available'), 'Available: 00:00');
+    await _scrollTo(tester, find.byKey(const ValueKey('confirm-matchup')));
+    expect(_confirmEnabled(tester), isTrue);
+  });
+
+  testWidgets('a zero-target starter gets a named, friendly message', (
+    tester,
+  ) async {
+    await _pumpSetup(tester, league, onConfirm: confirmed.add);
+    await _pickTeam(tester, 'home', home);
+    await _pickTeam(tester, 'away', away);
+    await _openCustomEditor(tester);
+
+    final base = CourtLineup.defaultFor(home);
+    final zeroTargetReserve = home.players.firstWhere(
+      (player) =>
+          !base.containsPlayer(player.id) &&
+          _expanded(home, base, RotationPreset.balanced)[player.id] == 0,
+    );
+    final slotKey = base.slots.first.slot.shortName.toLowerCase();
+    await _scrollToTop(tester);
+    await tester.tap(find.byKey(ValueKey('starter-slot-$slotKey')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find
+          .byKey(
+            ValueKey('starter-option-$slotKey-${zeroTargetReserve.id.value}'),
+          )
+          .hitTestable()
+          .last,
+    );
+    await tester.pumpAndSettle();
+    await _scrollTo(tester, find.byKey(const ValueKey('plan-error')));
+
+    final message = tester
+        .widget<Text>(find.byKey(const ValueKey('plan-error')))
+        .data!;
+    expect(message, contains(zeroTargetReserve.fullName));
+    expect(message, contains('reduce another player'));
+    expect(message, isNot(contains('player-')));
+    expect(_confirmEnabled(tester), isFalse);
   });
 
   for (final entry in const <String, Size>{
@@ -460,13 +738,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
 
-      final adjust = find.byKey(
-        ValueKey('custom-adjust-${reserve.id.value}-60'),
-      );
+      final adjust = find.byKey(ValueKey('fine-plus-${reserve.id.value}'));
       await _scrollTo(tester, adjust);
       await tester.tap(adjust);
       await tester.pumpAndSettle();
-      await _scrollTo(tester, find.byKey(const ValueKey('target-total')));
+      final slider = find.byKey(ValueKey('target-slider-${reserve.id.value}'));
+      await _scrollTo(tester, slider);
+      await tester.drag(slider, const Offset(-40, 0));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await _scrollTo(tester, find.byKey(const ValueKey('budget-allocated')));
       expect(tester.takeException(), isNull);
       await _scrollTo(tester, find.byKey(const ValueKey('confirm-matchup')));
       expect(tester.takeException(), isNull);

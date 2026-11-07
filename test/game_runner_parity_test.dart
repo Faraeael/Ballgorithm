@@ -374,12 +374,28 @@ void main() {
     final home = league.teams[3];
     final away = league.teams[5];
     final homeLineup = CourtLineup.defaultFor(home);
+    final basePlan = managedPlan(
+      league: league,
+      homeIndex: 3,
+      awayIndex: 5,
+      manageHome: true,
+      managedLineup: homeLineup,
+    );
+    final edited = <String, int>{
+      for (final entry in basePlan.home.targetSeconds.entries)
+        entry.key.value: entry.value,
+    };
+    edited[homeLineup.playerIds.first] =
+        edited[homeLineup.playerIds.first]! - 30;
+    edited[homeLineup.playerIds.last] = edited[homeLineup.playerIds.last]! + 30;
     final plan = managedPlan(
       league: league,
       homeIndex: 3,
       awayIndex: 5,
       manageHome: true,
       managedLineup: homeLineup,
+      preset: RotationPreset.custom,
+      customTargets: edited,
     );
     final planned = GameRequest(
       league: league,
