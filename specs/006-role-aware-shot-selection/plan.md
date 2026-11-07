@@ -1,46 +1,41 @@
-# Plan 006 — Role-Aware Shot Selection v1 (DRAFT)
+# Plan 006 — Role-Aware Shot Selection v1 (DRAFT, rev 2)
 
 > **Status: DRAFT — NOT FROZEN.** No task is authorized. Baseline `develop/m002`
 > `d642e7880f38dac0b14f2a55a35bd1282d9f9bd3`.
 
 ## 1. Delivery shape
 
-One atomic public-contract change, then evidence. Every task requires separate owner authorization.
-
 | Task | Purpose | Key deliverable |
 |---|---|---|
-| T01 | Contract and version boundary | Derived role helper + creation score; `gameSimulationVersion` 7, `gameFingerprintVersion` 5, one commit; typed v6-ledger rejection test |
-| T02 | Usage policy | Role-ranked usage weights inside the probability model; unit tests for ordering, multipliers, normalisation, bounds |
-| T03 | Zone-willingness policy | Piecewise ability curve; stretch-big and weak-shooter unit vectors; no new draws |
-| T04 | Simulator integration and ledgers | Deterministic v7 fixtures; repeat-run identity; VM/Chrome parity; intentional-difference record |
-| T05 | Evaluation instrumentation and metrics | Debug-only shot-decision observer (if approved); ledger-derived usage/3PA metrics; controlled archetype fixtures |
-| T06 | Pre-registered evaluation and owner review | Frozen protocol with development/held-out seeds and thresholds; owner gameplay comparison; acceptance report |
+| T01 | Contract and version boundary | Position-free creation ranking; `gameSimulationVersion` 7, `gameFingerprintVersion` 5 in one commit; typed v5/v6 rejection |
+| T02 | Usage policy | Role multipliers inside the probability model; ordering, normalisation and shuffled-input tests |
+| T03 | Zone-willingness policy | Piecewise 70/30 curve; controlled normalized vectors; no new draws |
+| T04 | Simulator integration, v7 fixtures and historical migration | v7 fixture with digest; v1–v6 archive untouched; historical generation verified at the M005 checkpoint; repeat identity and VM/Chrome parity |
+| T05 | Instrumentation and metrics | Optional debug shot observer; ledger-derived metrics with the denominators in the verification plan; shot-time role classification |
+| T06 | Pre-registered evaluation and owner review | Frozen protocol (development/held-out seeds, thresholds, CIs, Holm), single held-out run, owner box-score review |
 
 ## 2. Gates
 
-- **G0 (design):** owner answers DD-M006-01…06; spec reviewed; JEV advisory recorded (non-binding).
-- **G1 (contract):** T01 merge of version constants and role helper only; no behaviour change yet.
-- **G2 (policy):** T02+T03 unit evidence green; reducer and accounting invariants unchanged.
-- **G3 (integration):** T04 fixtures pinned; v1–v6 fixtures untouched; v6 reader rejects v7 and the
-  v7 reader rejects v6 with `unsupportedSimulationVersion`.
-- **G4 (evidence):** T05 metrics reproducible; T06 pre-registered cohort run once; owner review.
-- **G5 (acceptance):** owner decision. No acceptance before G5.
+- **G0 design:** owner answers DD-M006-01…07; this rev-2 draft reviewed.
+- **G1 contract:** version bump + ranking helper only; no behaviour change.
+- **G2 policy:** T02/T03 unit evidence green; normalized controlled table reproduced.
+- **G3 integration:** v7 fixture pinned; v1–v6 fixture files unchanged; historical v6 generation
+  verified once at `68018db` in a detached worktree and recorded; typed rejection both directions.
+- **G4 evidence:** metrics reproducible; empirical protocol frozen before the held-out run; one run.
+- **G5 acceptance:** owner decision only.
 
 ## 3. Version and fixture impact
 
-- New v7 canonical fixture(s) with explicit home/away lineups and rotation plans (M005 transport).
-- Historical v1–v6 fixtures preserved; no rebaseline; historical tests keep their own versions.
-- No change to M001 league generation, snapshot schema or PRNG vectors.
+simulation 7 / fingerprint 5; rules 3, schema 3, duration 2, PRNG unchanged. New v7 fixtures are
+additive. Historical v1–v6 fixtures and their digests stay byte-identical; historical generation
+tests are not re-run against v7. No dual simulation engine ships.
 
 ## 4. JEV advisory (non-binding)
 
-A focused JEV judgment on 2026-11-07 preferred the piecewise ability slope (0.71) over a role gate
-(0.16) or a multiplicative factor (0.13), with confidence 0.56, and returned 0.62 on the
-"per-branch draw order is enough without v6/v7 draw-count equality" claim. Both are advisory only:
-the low confidence on the evidence contract is recorded as a risk, not as approval.
+Piecewise structure preferred 0.71 (confidence 0.56); the “per-branch draw order without v6/v7
+draw-count equality” claim returned 0.62. Recorded as risk input, not approval.
 
 ## 5. Rollback
 
-Until G3 the change is a pure policy/weight refactor; reverting the T01–T03 commits restores v6
-behaviour with no fixture migration. After G3, v6 fixtures remain untouched, so rollback is a
-version reversal plus test selection, not a data migration.
+Before G3 the change is a weight refactor; revert restores v6. After G3, historical fixtures are
+untouched, so rollback is a version reversal plus test selection, never a data migration.

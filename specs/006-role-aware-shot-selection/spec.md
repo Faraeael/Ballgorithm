@@ -1,176 +1,140 @@
-# Specification 006 — Role-Aware Shot Selection v1 (DRAFT)
+# Specification 006 — Role-Aware Shot Selection v1 (DRAFT, rev 2)
 
 > **Status: DRAFT — NOT FROZEN — NOT AUTHORIZED FOR IMPLEMENTATION.**
-> Written 2026-11-07 on `design/m006-role-aware-shot-selection`, branched from `develop/m002`
-> `d642e7880f38dac0b14f2a55a35bd1282d9f9bd3`. No acceptance criterion below has been run or passed.
-> Nothing here authorizes a code change, a version bump, a fixture, calibration or a release.
+> Revision 2 of 2026-11-07 on `design/m006-role-aware-shot-selection`, branched from `develop/m002`
+> `d642e7880f38dac0b14f2a55a35bd1282d9f9bd3`. Revision 1 example tables compared raw weights and
+> were wrong; §3.3 now reports normalized probabilities. No criterion has been run or passed.
 
 ## 1. Purpose
 
-M005 accepted the possession engine, participation rules, tactical rotations and the app surfaces.
-The M002 conditions (`M002-OWNER-ACCEPTANCE.md` §7) and the deferred-realism backlog
-(`specs/002-possession-simulation/M003-BACKLOG.md` Priority 1) require player decision-making to
-become role-aware before any broader realism claim.
-
-M006 v1 changes **who shoots and from where**, using only existing attributes and canonical court
-slots. It does not simulate ball movement, play calls or coaching; it shapes deterministic
-probabilities.
+M005 closed the possession engine, participation, tactical rotations and app surfaces. The M002
+conditions and the deferred-realism backlog (`M003-BACKLOG.md` Priority 1) require role-aware player
+decision-making before any broader realism claim. M006 v1 changes **who shoots and from where**,
+using existing attributes and canonical court slots.
 
 ## 2. Current behaviour (v6, verified in source)
 
-Shooter selection (`shotUsageWeights`):
-
 ```text
-usage(p) = positionBase[slot]              # PG 260 … C 170
-         + 3 × max(0, bestShot(p) − 50)    # best of inside/midrange/three
+usage(p) = positionBase[slot]                      # PG 260 … C 170
+         + 3 × max(0, bestShot(p) − 50)
          + 2 × (ballHandling − 50)
-         +      (basketballIQ − 50)
-floored at 60, normalised to 10000. The actor draw uses these weights.
+         +     (basketballIQ − 50)                 # floor 60, normalised 10000
+
+inside   = 2400 + 22·(insideScoring−50) + 10·(athleticism−50) + slotInside + phaseInside
+midrange = 2500 + 26·(midrange−50)                          + slotMid    + phaseMid
+three    = 3600 + 24·(threePoint−50)                        + slotThree  + phaseThree
+each floored at 200 and normalised to 10000; half-court phase used unless stated.
+slotInside = [−400,−250,0,600,900]  slotMid = [100,200,150,0,−300]  slotThree = [250,350,200,−400,−900]
+phaseInside = [700,0,−300]  phaseMid = [−300,0,100]  phaseThree = [−400,0,200]   (transition/early/half-court)
 ```
 
-Zone selection (`_shotZoneWeightsForSlot`), drawn **after** the shooter, from that shooter's own
-ratings:
-
-```text
-inside   = 2400 + 22·(insideScoring−50) + 10·(athleticism−50) + slotInside[−400…900] + phaseInside
-midrange = 2500 + 26·(midrange−50)                          + slotMid[100…−300]   + phaseMid
-three    = 3600 + 24·(threePoint−50)                        + slotThree[250…−900] + phaseThree
-each floored at 200, normalised to 10000.
-```
-
-Turnover, offensive-foul and non-shooting-foul actors use a separate ball-handler score
-(`slotBase[420…180] + 3·ballHandling + passing + basketballIQ`). The zone draw happens after the
-actor draw; make, foul, assist and block draws follow in a fixed order.
-
-Consequences relevant to M006:
-
-- There is no role concept. Two players with identical attributes behave identically except for slot
-  position bonuses.
-- Three-point volume is ability-sensitive but weakly differentiated: a centre with `threePoint` 20
-  still takes roughly a quarter of his attempts from three, because the 3,600 base and the −900
-  centre bonus dominate the −24-per-point slope.
-- Nothing separates a legitimate stretch-five from a non-shooting big; both use the same linear term.
-- `FieldGoalAttempt` persists `shooterId` and `shotValue` (2 or 3) only. Inside versus midrange is
-  not serialised, so that split is not recoverable from a canonical ledger.
+Draw order per possession: phase duration (A1) → category → actor → zone → make → foul → assist or
+block. Turnover, offensive-foul and non-shooting-foul actors are drawn from a separate ball-handler
+score. `FieldGoalAttempt` persists `shooterId` and `shotValue` (2/3) only.
 
 ## 3. What M006 v1 changes
 
 ### 3.1 Derived offensive-role signal (non-persistent)
 
-Per active five, rank the players by an explicit **creation score** built only from existing data:
+**Revised after review.** The revision-1 creation score included `slotBase[slot]`, which made the
+classification largely positional: a weak point guard scored 650 against an elite playmaking centre
+at 555, so the point guard stayed “primary”. The approved-direction default is therefore
+**position-free**:
 
 ```text
-creation(p) = slotBase[slot] + 3·ballHandling + passing + basketballIQ   (same score the foul
-actor already uses, documented below as the creation ordering)
+creation(p) = 3·ballHandling + passing + basketballIQ      # ties break on canonical court-slot order
 ```
 
-The top-ranked player is the **primary-creation slot**; the others are secondary. Ties break on
-canonical court-slot order.
+Ranking the five players on court at the moment of a shot gives the primary-creation slot (rank 0)
+and secondary (rank 1); lower ranks get factor 1.0. The classification is recomputed whenever the
+active five changes, including every substitution, and the simulator must compute it from its
+current `TeamOnCourt`.
 
-This is a *classification used to shape weights*. It is **not** a simulated possession-level
-ballhandler, not a persistent `Player` field, and it does not decide who turns the ball over or
-commits an offensive foul; those keep their existing independent draw. The specification must say
-this wherever the role is described.
+The role is a **weight-shaping classification**, not a simulated ballhandler. It does not decide
+turnovers, offensive fouls or non-shooting-foul actors (those keep their independent draw), and it
+does not model possession-level ball movement.
 
-### 3.2 Usage policy (P1-1, P1-4)
-
-Shooter usage gains a role component applied to the existing raw weights before normalisation:
+### 3.2 Usage policy
 
 ```text
 usage(p) = currentRawUsage(p) × roleFactor(rank(p))
-roleFactor defaults: rank 0 → 13500 bp, rank 1 → 11500 bp, ranks 2–4 → 10000 bp
-(provisional; owner decision DD-M006-02)
+roleFactor defaults: rank 0 → 1.35, rank 1 → 1.15, ranks 2–4 → 1.00   (owner decision DD-M006-02)
 ```
 
-No new draw is introduced. Normalisation restores the sum to 10000, preserving the existing actor
-draw.
+Normalisation restores the sum to 10000; the single actor draw is unchanged.
 
-### 3.3 Zone-willingness policy (P1-2, P1-3)
+### 3.3 Zone-willingness policy
 
-Replace the linear `24·(threePoint−50)` term with a piecewise ability curve, keeping the position
-bonus, phase bonus and floor:
+The revision-1 curve (`50` below median, `30` above) was audited on normalised probabilities and is
+insufficient for weak perimeter guards. The corrected default is the steeper piecewise curve:
 
 ```text
-ability(p) = 50·(p − 50)  when p < 50     # steep below-median penalty
-           = 30·(p − 50)  when p ≥ 50     # moderate reward above median
+ability(p) = 70·(p − 50)  when p < 50
+           = 30·(p − 50)  when p ≥ 50
 three = 3600 + ability(threePoint) + slotThree + phaseThree, floored at 200
-inside and midrange terms unchanged
+inside and midrange unchanged
 ```
 
-Effect at the design points (illustrative, not calibrated):
+**Normalised audit (half-court phase, no draws involved):**
 
-| Shooter | `threePoint` | Old three weight | New three weight | Intended direction |
-|---|---|---|---|---|
-| Centre, non-shooter | 20 | 1980 | 1200 | materially fewer threes |
-| Centre, stretch | 80 | 3420 | 3600 | perimeter volume retained |
-| Guard, weak | 35 | 3240 | 2850 | fewer threes |
-| Guard, strong | 75 | 4200 | 4350 | slightly more threes |
+| Archetype (slot) | Attributes inside/mid/three/ath | v6 inside/mid/three % | v7 inside/mid/three % | Δ three | Relative |
+|---|---|---|---|---|---|
+| Weak PG (PG) | 40/45/30, ath 55 | 19.9 / 33.5 / 46.5 | 22.7 / 38.1 / 39.3 | −7.3 pp | −15.7% |
+| Weak SG (SG) | 45/50/35, ath 60 | 21.8 / 33.2 / 45.0 | 23.8 / 36.2 / 40.1 | −4.9 pp | −10.9% |
+| Non-shooting C (C) | 80/35/20, ath 65 | 48.2 / 24.2 / 27.6 | 58.4 / 29.3 / 12.3 | −15.3 pp | −55.5% |
+| High-three C (C) | 75/55/80, ath 60 | 37.6 / 25.1 / 37.3 | 36.9 / 24.6 / 38.5 | +1.1 pp | +3.1% |
+| High-three F (PF) | 70/65/78, ath 65 | 31.8 / 28.9 / 39.3 | 31.3 / 28.4 / 40.3 | +1.0 pp | +2.5% |
+| Median shooter (SF) | 50/50/50, ath 50 | 23.7 / 31.1 / 45.2 | 23.7 / 31.1 / 45.2 | 0.0 pp | 0.0% |
 
-Deliberately not proposed: a position ban on threes, a hard role gate, or any threshold that zeroes
-a zone. The stretch-big outcome is an explicit acceptance criterion, not a side effect.
+Phase check (early phase, three share): non-shooting C 25.1% → 16.9% (−8.2 pp); weak PG 43.9% →
+39.9% (−4.1 pp); stretch C 35.3% → 36.4% (+1.2 pp). The curve is phase-stable in direction.
+
+Residual: a weak-everywhere guard still takes ~39% of his attempts from three because his interior
+weights are equally weak. Two stronger alternatives are recorded in `design-decisions.md` DD-M006-03
+(breakpoint 55 curve; ability-relative penalty). A multiplicative factor centred on 60 was rejected
+because it collapsed the median shooter from 45.2% to 24.8%.
 
 ### 3.4 Event schema
 
-Event schema stays **3**. M006 v1 adds no event type and no persisted shot-zone field. Canonical
-ledgers therefore expose shooter identity and 2/3-point attempts only. Inside-versus-midrange
-attribution is **not** measurable from canonical fixtures and must not be claimed.
-
-Optional non-persistent instrumentation, if approved (DD-M006-05): a debug-only shot-decision
-observer on the simulator, mirroring `onPhaseTrace`, that reports the drawn zone and weights to a
-test callback without entering the ledger or the fingerprint.
+Event schema stays **3**. No new event type, no persisted zone field. Canonical ledgers expose
+shooter and 2/3-point value only; inside-versus-midrange is **not** measurable from canonical output
+and must not be claimed. An optional debug-only shot-decision observer (DD-M006-05) may expose the
+drawn zone and weights to tests without entering the ledger or fingerprint.
 
 ### 3.5 Versioning
 
-| Identifier | v6 | M006 v1 target | Reason |
-|---|---|---|---|
-| `gameSimulationVersion` | 6 | **7** | Weighted shot behaviour changes |
-| `gameFingerprintVersion` | 4 | **5** | Version-bearing canonical input |
-| `gameRulesVersion` | 3 | 3 | No clock, foul, bonus or possession-rule change |
-| `gameEventSchemaVersion` | 3 | 3 | No serialisation change |
-| `gameActionDurationModelVersion` | 2 | 2 | A1 durations untouched |
-| PRNG | `xorshift32-v1` | unchanged | No new randomness source |
-| `coreEngineVersion` / `snapshotSchemaVersion` | 1.0.0 / 1 | unchanged | M001 untouched |
-
-All v1–v6 fixtures remain historical evidence and are never rebaselined. M006 adds new v7
-fixtures.
+simulation **7**, fingerprint **5** (atomic); rules 3, schema 3, duration model 2,
+`xorshift32-v1` unchanged; M001 identifiers unchanged. No v6/v7 ledger or whole-game draw-count
+equality is claimed. Historical v1–v6 fixture files are untouched; M006 adds v7 fixtures. The
+historical fixture migration strategy is in `verification-plan.md` §2.
 
 ### 3.6 Determinism contract
 
-- No new random draws. Category, actor, zone, make, foul and assist/block draws keep their
-  documented order inside each action branch.
-- Because weighted choices differ, downstream game paths may diverge and whole-game draw counts
-  need **not** match v6. No v6/v7 byte equality is claimed.
-- Required proofs: same-input/same-seed repeat-run identity, Dart VM/Chrome parity, no-plan-mode
-  determinism, and an explicit list of intentional v6 differences.
+No new random draws; every action branch keeps its documented draw order (category, actor, zone,
+make, foul, assist/block). Different weighted choices legitimately change downstream game paths and
+draw counts. Required proofs: repeat-run identity, Dart VM/Chrome parity, documented intentional v6
+differences, reliable typed cross-version rejection.
 
-## 4. Acceptance intent (directional)
+## 4. Role, usage and actors — explicit distinctions
 
-1. Weak perimeter shooters take materially fewer threes than in v6.
-2. Legitimate high-`threePoint` forwards and centres keep meaningful perimeter volume.
-3. Different lineups produce measurably different shot distributions by role.
-4. The change is sound, deterministic and replayable, with no rules or schema drift.
-5. Historical evidence and M001–M005 contracts are untouched.
+| Concept | What it is | What it is not |
+|---|---|---|
+| Primary-creation classification | Deterministic ranking of the five players on court by position-free creation score | Not a simulated ballhandler; not a persisted player role |
+| Shooter usage | Normalised draw weights for “who attempts the shot” | Not an assist, turnover or foul attribution |
+| Turnover/offensive-foul/non-shooting-foul actor | Independent draw from the ball-handler score, unchanged | Not influenced by the role multiplier |
+| Possession-level ball handling | Not implemented | The role classification must not be described as it |
 
-No NBA-realism, calibration or device-performance claim is made.
+Metrics must classify a player **at the moment of each shot**, replaying substitutions from the
+ledger, not by starting lineups.
 
 ## 5. Scope exclusions
 
 Fatigue, injuries, manual play calling, coaching AI, defensive schemes, trades, contracts, seasons,
 persistence, possession-level ball movement, turnover or assist redistribution, new PRNG algorithms,
-real-world player data, Flutter gameplay UI and unrelated probability tuning are excluded.
+real-world player data, Flutter gameplay UI, unrelated probability tuning.
 
-## 6. Open decisions (owner approval required)
+## 6. Open decisions
 
-| ID | Decision | Default proposal |
-|---|---|---|
-| DD-M006-01 | Role derivation: creation-score ranking versus another attribute formula | creation score above |
-| DD-M006-02 | Role multipliers for usage | 135/115/100 bp |
-| DD-M006-03 | Zone curve: piecewise ability slope versus multiplicative factor | piecewise |
-| DD-M006-04 | Keep schema 3 and accept unmeasured 2-point split | keep 3 |
-| DD-M006-05 | Debug shot-decision observer allowed | yes, non-persistent |
-| DD-M006-06 | Evaluation thresholds and seeds | pre-registered before any cohort |
-
-## 7. Non-goals and non-claims
-
-This draft does not freeze a contract, does not authorize implementation, and does not assert any
-statistical result. Every acceptance row is **NOT RUN**.
+DD-M006-01 (position-free creation score), DD-M006-02 (role multipliers), DD-M006-03 (curve choice),
+DD-M006-04 (schema 3), DD-M006-05 (observer), DD-M006-06 (evaluation protocol; partially OPEN), plus
+the historical migration approval implied by DD-M006-07.
