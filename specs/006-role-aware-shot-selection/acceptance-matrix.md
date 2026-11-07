@@ -1,6 +1,7 @@
-# Acceptance Matrix 006 — Role-Aware Shot Selection v1 (DRAFT, rev 4)
+# Acceptance Matrix 006 — Role-Aware Shot Selection v1 (FROZEN — OWNER APPROVED 2026-11-07)
 
-> **Status: DRAFT — every row is NOT RUN.** No criterion may be marked PASS before the activation
+> **Status: FROZEN — OWNER APPROVED 2026-11-07.** Approved decisions DD-M006-01 through DD-M006-10 apply.
+> Implementation is **NOT STARTED and NOT AUTHORIZED**; every acceptance row remains NOT RUN. No criterion may be marked PASS before the activation
 > evidence, the pre-registered evaluation and the owner decisions.
 
 | ID | Task | Requirement | Evidence required | Status |
@@ -29,10 +30,10 @@
 | AC-M006-22 | T05 | Three-point share is reported by bucket (`<40`, `40–69`, `≥70`), using pooled attempt-weighted proportions within games | Controlled and generated-league reports | NOT RUN |
 | AC-M006-23 | T05 | Role shares are attributed at shot time from replayed lineups; usage-policy effects are separated from zone-policy effects | Paired policy-on/off comparisons | NOT RUN |
 | AC-M006-24 | T05 | Deterministic synthetic archetypes supply a genuine stretch-five when the generated league lacks one, without changing M001 generation | Fixture construction tests | NOT RUN |
-| AC-M006-25 | T06 | Stage A pilot uses development seeds only and never inspects held-out seeds; it estimates variance, eligibility and sample size | Pilot record with seed list and variance | NOT RUN |
+| AC-M006-25 | T06 | Stage A pilot uses development seeds only and never inspects held-out seeds; it estimates variance, eligibility and sample size on predetermined roster-and-seed cases | Pilot record with fixed case list and variance | NOT RUN |
 | AC-M006-26 | T06 | Stage B freezes the confirmatory protocol before any held-out run: metrics, denominators, eligibility, margins, sample size, bootstrap unit, multiplicity, failure rules | Owner-approved protocol committed first | NOT RUN |
-| AC-M006-27 | T06 | Stage C runs the held-out evaluation once, with 95% CIs from a bootstrap over paired games (not an independent-attempt formula) | Held-out report | NOT RUN |
-| AC-M006-28 | T06 | Eligibility minimums are enforced (weak-shooter combined FGA ≥ 20 per game; stretch-big PF/C with `threePoint ≥ 70` and ≥ 10 FGA); insufficiency stops confirmatory statistics | Eligibility report; insufficiency rule | NOT RUN |
+| AC-M006-27 | T06 | Stage C runs the held-out evaluation once on the predetermined paired cases with 95% CIs from a bootstrap over paired games (not an independent-attempt formula); no case is selected, excluded or replaced after outcomes are seen | Held-out report; case-list diff | NOT RUN |
+| AC-M006-28 | T06 | Eligibility minimums are enforced (weak-shooter combined FGA ≥ 20 per game; stretch-big PF/C with `threePoint ≥ 70` and ≥ 10 FGA); zero-attempt games are excluded per metric without replacement; cohort insufficiency reports INSUFFICIENT and stops for a separate owner decision | Eligibility report; INSUFFICIENT rule | NOT RUN |
 | AC-M006-29 | T06 | Guardrails hold within frozen margins: eFG, points/game, TOV/100, FTA/game; accounting exact; reducer valid | Guardrail report | NOT RUN |
 | AC-M006-30 | T06 | Owner review can observe the weak shooter, primary creator and stretch-big behaving differently in box scores, stated as directional only | Owner review record | NOT RUN |
 | AC-M006-31 | T06 | Scope compliance: no fatigue, injuries, coaching AI, defensive schemes, trades, contracts, seasons, persistence, ball movement, turnover/assist redistribution, new PRNG or real-player data | File and API diff review | NOT RUN |

@@ -1,7 +1,9 @@
-# Tasks 006 — Role-Aware Shot Selection v1 (DRAFT, rev 4)
+# Tasks 006 — Role-Aware Shot Selection v1 (FROZEN — OWNER APPROVED 2026-11-07)
 
-> **Status: DRAFT — NOT AUTHORIZED.** No task may start without a separate owner authorization.
-> Sequencing: T01–T03 add dormant, unit-tested policy code; T04 activates it and bumps versions
+> **Status: FROZEN — OWNER APPROVED 2026-11-07.** Approved decisions DD-M006-01 through DD-M006-10 apply.
+> Implementation is **NOT STARTED and NOT AUTHORIZED**; every acceptance row remains NOT RUN. No task may start without a separate owner authorization.
+> Implements the approved decisions DD-M006-01 through DD-M006-10. Sequencing: T01–T03 add dormant,
+> unit-tested policy code; T04 activates it and bumps versions
 > atomically.
 
 ## T01 — Dormant role helper (no behaviour change)
@@ -65,7 +67,10 @@
 
 - [ ] Stage A development pilot on development seeds only: estimate per-game variance, pooled
   metrics, eligibility counts and sample size. Never inspect held-out seeds.
-- [ ] Stage B freeze the confirmatory protocol: metrics, denominators, eligibility, margins, sample
+- [ ] Fix the paired roster-and-seed case list before any run; the same inputs run under v6 and v7;
+  no post-outcome case selection, exclusion or replacement.
+- [ ] Stage B freeze the confirmatory protocol: metrics, denominators, predetermined case list,
+  denominator-zero handling, eligibility, INSUFFICIENT rule, margins, sample
   size, bootstrap unit, multiplicity, failure conditions. Owner approves before any held-out run.
 - [ ] Stage C run the held-out evaluation once on the frozen protocol.
 - [ ] Owner box-score review (weak shooter, primary creator, stretch-big) stated as directional.

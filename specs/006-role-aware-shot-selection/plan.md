@@ -1,6 +1,7 @@
-# Plan 006 — Role-Aware Shot Selection v1 (DRAFT, rev 4)
+# Plan 006 — Role-Aware Shot Selection v1 (FROZEN — OWNER APPROVED 2026-11-07)
 
-> **Status: DRAFT — NOT FROZEN.** No task is authorized. Baseline `develop/m002`
+> **Status: FROZEN — OWNER APPROVED 2026-11-07.** Approved decisions DD-M006-01 through DD-M006-10 apply.
+> Implementation is **NOT STARTED and NOT AUTHORIZED**; every acceptance row remains NOT RUN. No task is authorized. Baseline `develop/m002`
 > `d642e7880f38dac0b14f2a55a35bd1282d9f9bd3`.
 
 ## 1. Delivery sequence (revised)
@@ -38,7 +39,7 @@ and version identifiers change atomically.
 
 ## 2. Gates
 
-- **G0 design:** owner answers DD-M006-01…08; rev-3 reviewed.
+- **G0 design (complete):** owner approved DD-M006-01…10 and froze the specification on 2026-11-07.
 - **G1 dormant code:** T01–T03 merged with v6 behaviour unchanged and the full existing suite green.
 - **G2 activation:** T04 atomic — versions 7/5, call sites switched, v7 fixture pinned, historical
   migration applied, v1–v6 files untouched, typed rejection both directions.
@@ -52,8 +53,9 @@ A. **Development pilot** — development seeds only; estimate per-game variance,
 B. **Frozen confirmatory protocol** — owner-approved file fixing metrics, denominators, eligibility,
    margins, sample size, CI method, multiplicity and decision rules. Committed before any held-out
    run.
-C. **One held-out evaluation** — single run on the frozen protocol; results reported without moving
-   thresholds. A failed or null result returns to design review, not to tuning.
+C. **One held-out evaluation** — single run on the frozen protocol and a predetermined paired
+   roster-and-seed case list; results reported without moving thresholds or swapping cases. A
+   failed, null or INSUFFICIENT result returns to design review, not to tuning.
 
 No cohort runs in this design task.
 

@@ -1,11 +1,14 @@
-# Design Decisions 006 — Role-Aware Shot Selection v1 (DRAFT, rev 4)
+# Design Decisions 006 — Role-Aware Shot Selection v1 (FROZEN — OWNER APPROVED 2026-11-07)
 
-> **Status: DRAFT — proposals only. No owner approval exists.** Revision 2 corrects the rev-1 role
+> **Status: FROZEN — OWNER APPROVED 2026-11-07.** Approved decisions DD-M006-01 through DD-M006-10 apply.
+> Implementation is **NOT STARTED and NOT AUTHORIZED**; every acceptance row remains NOT RUN. Revision 2 corrects the rev-1 role
 > score and zone table after the normalized-probability and role-bias audit.
 
 ## DD-M006-01 — Position-free derived role ranking (revised)
 
-**Proposal.** `creation = 3·ballHandling + passing + basketballIQ`; tie-break canonical court-slot
+**Approved 2026-11-07.** Owner design decision; see `M006-OWNER-DESIGN-FREEZE.md`.
+
+**Decision (approved 2026-11-07).** `creation = 3·ballHandling + passing + basketballIQ`; tie-break canonical court-slot
 order. Rank 0 = primary-creation slot, rank 1 = secondary, others neutral. Recompute from the five
 players on court whenever the lineup changes.
 
@@ -29,7 +32,9 @@ through the existing position bases and slot bonuses; only the role ranking is p
 
 ## DD-M006-02 — Usage multipliers by rank
 
-**Proposal.** `[1.35, 1.15, 1.00, 1.00, 1.00]` before normalisation.
+**Approved 2026-11-07.** Owner design decision; see `M006-OWNER-DESIGN-FREEZE.md`.
+
+**Decision (approved 2026-11-07).** `[1.35, 1.15, 1.00, 1.00, 1.00]` before normalisation.
 
 **Audit (position-free ranking).** Baseline five: PG 23.3% → 28.2%, SG 21.7% → 22.4%, others fall
 1.5–2.2 pp. Elite-wing lineup: wing 29.3% → 34.9%; mediocre PG 20.7% → 20.9%. Two-creator lineup:
@@ -48,7 +53,9 @@ lower. Normalised dilution of a neutral scorer is reported, not asserted as an o
 
 ## DD-M006-03 — Zone curve: default and alternatives
 
-**Proposal (default).** Piecewise `70·(p−50)` below 50, `30·(p−50)` above; position/phase bonuses
+**Approved 2026-11-07.** Owner design decision; see `M006-OWNER-DESIGN-FREEZE.md`.
+
+**Decision (approved 2026-11-07).** Piecewise `70·(p−50)` below 50, `30·(p−50)` above; position/phase bonuses
 and floor 200 unchanged.
 
 **Normalized three-point share audit (half-court):**
@@ -81,18 +88,24 @@ multiplicative 0.13, confidence 0.56. Advisory only.
 
 ## DD-M006-04 — Keep event schema 3
 
+**Approved 2026-11-07.** Owner design decision; see `M006-OWNER-DESIGN-FREEZE.md`.
+
 No new event type, no persisted zone. Ledgers expose shooter and 2/3 value; inside-versus-midrange
 remains unmeasured. A schema change would force new serialisation, fixtures and rejection tests for
 a capability v1 does not need.
 
 ## DD-M006-05 — Non-persistent shot-decision observer
 
+**Approved 2026-11-07.** Owner design decision; see `M006-OWNER-DESIGN-FREEZE.md`.
+
 Debug-only callback mirroring `onPhaseTrace`: reports drawn zone and weights; never enters the
 ledger or fingerprint. Alternative: ledger-derived metrics only.
 
 ## DD-M006-06 — Three-stage evaluation protocol
 
-**Proposal.** (A) a pre-registered development pilot on development seeds only, estimating
+**Approved 2026-11-07.** Owner design decision; see `M006-OWNER-DESIGN-FREEZE.md`.
+
+**Decision (approved 2026-11-07).** (A) a pre-registered development pilot on development seeds only, estimating
 per-game variance, eligibility counts and sample size; (B) a frozen confirmatory protocol approved
 by the owner before any held-out run; (C) exactly one held-out evaluation. Per-game pooled
 proportions and paired game differences are the analysis objects; uncertainty comes from a bootstrap
@@ -102,13 +115,17 @@ Stage B freeze. Eligibility minimums and the insufficiency rule are defined in
 
 ## DD-M006-07 — Version boundary and historical fixture migration
 
+**Approved 2026-11-07.** Owner design decision; see `M006-OWNER-DESIGN-FREEZE.md`.
+
 simulation 7 / fingerprint 5; rules 3, schema 3, duration 2, PRNG unchanged. No v6/v7 ledger or
 draw-count equality; per-branch draw order fixed; repeat identity and VM/Chrome parity required.
 Historical fixture migration (no dual engine, no rebaseline) is specified in
 `verification-plan.md` §2. This migration plan is itself an owner decision.
 ## DD-M006-08 — Dormant policy code, atomic activation
 
-**Proposal.** T01–T03 add pure, unit-tested policy functions beside the v6 implementations without
+**Approved 2026-11-07.** Owner design decision; see `M006-OWNER-DESIGN-FREEZE.md`.
+
+**Decision (approved 2026-11-07).** T01–T03 add pure, unit-tested policy functions beside the v6 implementations without
 changing production call sites or version constants; a dormancy test asserts production weights equal
 the v6 reference vectors. T04 switches the call sites, bumps simulation 7 / fingerprint 5, pins v7
 fixtures and migrates historical tests in one commit.
@@ -123,7 +140,9 @@ introduced.
 
 ## DD-M006-09 — Ability, preference, opportunity and coaching are separate layers
 
-**Proposal.** Keep four concepts distinct even where they read the same ratings:
+**Approved 2026-11-07.** Owner design decision; see `M006-OWNER-DESIGN-FREEZE.md`.
+
+**Decision (approved 2026-11-07).** Keep four concepts distinct even where they read the same ratings:
 
 | Layer | M006 v1 | Persistence | Changes accuracy? |
 |---|---|---|---|
@@ -143,7 +162,9 @@ attributes”, not an editable personality trait. No `Player` schema change.
 
 ## DD-M006-10 — Coaching strategy is a documented boundary, not M006 scope
 
-**Proposal.** Future coaching features (offensive focus, featured scorers, balanced/perimeter/interior
+**Approved 2026-11-07.** Owner design decision; see `M006-OWNER-DESIGN-FREEZE.md`.
+
+**Decision (approved 2026-11-07).** Future coaching features (offensive focus, featured scorers, balanced/perimeter/interior
 emphasis) would be a separate team-level weight layer. M006 adds no configuration, playbook,
 defensive scheme or coaching AI, and no event or schema support for them.
 

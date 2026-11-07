@@ -1,6 +1,7 @@
-# Specification 006 — Role-Aware Shot Selection v1 (DRAFT, rev 4)
+# Specification 006 — Role-Aware Shot Selection v1 (FROZEN — OWNER APPROVED 2026-11-07)
 
-> **Status: DRAFT — NOT FROZEN — NOT AUTHORIZED FOR IMPLEMENTATION.**
+> **Status: FROZEN — OWNER APPROVED 2026-11-07.** Approved decisions DD-M006-01 through DD-M006-10 apply.
+> Implementation is **NOT STARTED and NOT AUTHORIZED**; every acceptance row remains NOT RUN.
 > Revision 4 (2026-11-07) adds the ability / preference / opportunity / coaching separation and the
 > decision contract. Revision 2 replaced a wrong raw-weight table with normalized probabilities;
 > revision 3 moved the version bump to activation and corrected the role acceptance rules.
@@ -177,7 +178,10 @@ Fatigue, injuries, manual play calling, coaching AI/strategy configuration, defe
 contracts, seasons, persistence, possession-level ball movement, turnover or assist redistribution,
 new PRNG algorithms, real-world player data, Flutter gameplay UI, unrelated probability tuning.
 
-## 8. Open decisions
+## 8. Approved decisions and open empirical parameters
 
-DD-M006-01…09 in `design-decisions.md`; empirical thresholds remain OPEN until the development pilot
-and owner-approved protocol freeze.
+DD-M006-01 through DD-M006-10 are **approved** by the owner on 2026-11-07 and frozen in
+`design-decisions.md`; the decision record is `M006-OWNER-DESIGN-FREEZE.md`. Empirical thresholds,
+confirmatory sample size and final margins remain **OPEN** until the development pilot and the
+separately approved Stage B protocol. The specification freeze does not claim that the confirmatory
+statistical protocol is frozen.

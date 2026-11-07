@@ -1,6 +1,7 @@
-# Verification Plan 006 — Role-Aware Shot Selection v1 (DRAFT, rev 4)
+# Verification Plan 006 — Role-Aware Shot Selection v1 (FROZEN — OWNER APPROVED 2026-11-07)
 
-> **Status: DRAFT — nothing here has been executed.** Rev 3 corrects the implementation sequence,
+> **Status: FROZEN — OWNER APPROVED 2026-11-07.** Approved decisions DD-M006-01 through DD-M006-10 apply.
+> Implementation is **NOT STARTED and NOT AUTHORIZED**; every acceptance row remains NOT RUN. Rev 3 corrects the implementation sequence,
 > the role acceptance rules and the evaluation protocol. Baseline `develop/m002`
 > `d642e7880f38dac0b14f2a55a35bd1282d9f9bd3`.
 
@@ -133,6 +134,22 @@ decisions. A fail/null returns to design, not to tuning.
   with percentile 95% CI; report the bootstrap SE. Attempts inside one game are correlated, so an
   independent-attempt binomial interval is invalid and must not be used.
 - Multiplicity: four primary metrics, Holm-adjusted; guardrails reported descriptively with CIs.
+
+### Predetermined paired case selection (safeguard)
+
+- The evaluation case set is fixed before any run: exact league seed, home/away lineups, rotation
+  plans, rules and game seed, evaluated identically under v6 and v7.
+- Cases are never selected, excluded or replaced based on post-simulation outcomes. Observed attempt
+  counts are used only to judge evidence sufficiency, never to choose a more favourable comparison
+  sample.
+- Denominator-zero handling: a game whose eligible bucket records zero attempts yields an undefined
+  per-game proportion. That game is excluded from that metric only, its count is reported, and no
+  replacement game is drawn. Pooled attempt-weighted proportions remain defined when the cohort total
+  is non-zero.
+- Cohort insufficiency: if the predetermined eligible-game count falls below the frozen minimum
+  (proposal: 400 of 500; final value OPEN until Stage B), the result is reported as
+  **INSUFFICIENT** and the evaluation stops. A separate owner decision is required before any new
+  evidence run; the cohort is not topped up with extra or substituted cases.
 
 ### Eligibility, minimum counts and insufficiency
 
