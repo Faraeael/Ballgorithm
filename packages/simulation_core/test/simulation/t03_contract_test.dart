@@ -117,12 +117,12 @@ void main() {
     });
   });
 
-  group('v5 versions and rules', () {
-    test('version identifiers are the frozen T03 values', () {
-      expect(gameSimulationVersion, 5);
+  group('M005 versions and rules', () {
+    test('version identifiers are the frozen M005 values', () {
+      expect(gameSimulationVersion, 6);
       expect(gameRulesVersion, 3);
       expect(gameEventSchemaVersion, 3);
-      expect(gameFingerprintVersion, 3);
+      expect(gameFingerprintVersion, 4);
       expect(gameActionDurationModelVersion, 2);
       expect(GameRules.standard.foulOutLimit, 6);
       expect(GameRules.standard.substitutionPolicyVersion, 1);
@@ -410,7 +410,7 @@ void main() {
       isTrue,
       reason: 'the T05 simulator never emits tactical substitutions',
     );
-    expect(result.simulationVersion, 5);
+    expect(result.simulationVersion, gameSimulationVersion);
     expect(result.eventSchemaVersion, 3);
   });
 
@@ -418,10 +418,11 @@ void main() {
     final input = buildInput(seed: 15);
     final result = GameSimulator().simulate(input);
     expect(result.events.whereType<Substitution>(), isEmpty);
-    // Captured from commit d29d1ff (pre-T04) with the same input and seed.
+    // Event array captured from commit d29d1ff (pre-T04). M005 T04 keeps the
+    // events identical; only the fingerprint header moved to version 4.
     expect(
       result.inputFingerprint,
-      'bb1e6ff0ae16c733ca61ecee422dae5064c98c8e70cddea80907a76d6e49c59c',
+      'e3713d927eb3024baaa2ff19f8b1ccc73c3b12c44b4b2bc31e6e40da97e63e65',
     );
     expect(result.events, hasLength(839));
     final encoded = jsonEncode(

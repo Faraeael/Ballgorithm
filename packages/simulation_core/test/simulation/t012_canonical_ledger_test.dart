@@ -12,8 +12,11 @@ import 't012_canonical_ledger_fixture_v3.dart';
 import 't012_canonical_ledger_fixture_v5.dart';
 
 /// T012 primary fixture: league seed 20261028, game seed 42, standard rules.
+/// v6 fingerprint of the same null-plan input. The historical v5 value
+/// (`e9b99720...`) remains archived with the M004 checkpoint and is not
+/// rewritten; only the fingerprint header moved to version 4.
 const String pinnedInputFingerprint =
-    'e9b99720fa77ecd362e05029ebdba80ded67828f662f8b5f09e1edf8581ed3ed';
+    '05e56d1154cbc695a84e248efbbba408c70cdd589da3b5b94c1458e1a636e520';
 
 /// SHA-256 over the UTF-8 bytes of [t012CanonicalLedgerV5Json].
 const String pinnedLedgerDigest =
@@ -234,13 +237,13 @@ void main() {
       expect(result.ledger.gameId, 'game-1');
       expect(result.ledger.inputFingerprint, pinnedInputFingerprint);
       expect(result.eventSchemaVersion, 3);
-      expect(result.simulationVersion, 5);
+      expect(result.simulationVersion, gameSimulationVersion);
       expect(result.rulesVersion, 3);
       expect(result.prngImplementationId, 'xorshift32-v1');
       expect(gameEventSchemaVersion, 3);
-      expect(gameSimulationVersion, 5);
+      expect(gameSimulationVersion, 6);
       expect(gameRulesVersion, 3);
-      expect(gameFingerprintVersion, 3);
+      expect(gameFingerprintVersion, 4);
       expect(gameActionDurationModelVersion, 2);
 
       expect(result.events.first, isA<GameStarted>());
@@ -302,140 +305,38 @@ void main() {
   });
 
   group('golden ledger round trip', () {
-    test('decode, re-encode and validate the committed golden ledger', () {
+    // M005 T04: the archived v5 ledger is retained byte-for-byte but a v6
+    // build no longer decodes it. Historical decode, round-trip and link
+    // integrity are verified against the accepted M004 checkpoint
+    // 36bc3597 in an isolated read-only worktree; the current-version
+    // round trip and link checks run on the v6 fixture in
+    // t04_v6_fixture_test.dart.
+    test('the archived v5 golden ledger is rejected by the v6 reader', () {
       final decoded =
           jsonDecode(t012CanonicalLedgerV5Json) as Map<String, Object?>;
       expectNoFloats(t012CanonicalLedgerV5Json);
-
-      final ledger = GameEventLedger.fromJson(decoded);
-      final reencoded = jsonEncode(ledger.toJson());
-      expectCanonicalBytes(reencoded, t012CanonicalLedgerV5Json);
-      expect(utf8.encode(reencoded), utf8.encode(t012CanonicalLedgerV5Json));
-      expect(sha256Hex(reencoded), pinnedLedgerDigest);
-
-      // The provisional v5 fixture predates participation: T04 correctly
-      // rejects it because a sixth foul has no substitution. Historical
-      // decode/round-trip integrity is preserved; T07 pins the substitution-era
-      // canonical ledger.
-      expect(ledger.events.first, isA<GameStarted>());
-      expect(ledger.events.last, isA<GameEnded>());
-      expect(ledger.events, isNotEmpty);
+      expect(sha256Hex(t012CanonicalLedgerV5Json), pinnedLedgerDigest);
+      expect(decoded['gameSimulationVersion'], 5);
+      expect(decoded['eventSchemaVersion'], gameEventSchemaVersion);
+      expect(
+        () => GameEventLedger.fromJson(decoded),
+        throwsA(
+          isA<GameValidationException>()
+              .having(
+                (error) => error.codes,
+                'codes',
+                contains(GameValidationCode.unsupportedSimulationVersion),
+              )
+              .having(
+                (error) => error.codes,
+                'codes',
+                isNot(
+                  contains(GameValidationCode.unsupportedEventSchemaVersion),
+                ),
+              ),
+        ),
+      );
     });
-
-    test(
-      'decoded ledger preserves free-throw, foul, rebound and turnover links',
-      () {
-        final ledger = GameEventLedger.fromJson(
-          jsonDecode(t012CanonicalLedgerV5Json) as Map<String, Object?>,
-        );
-        final events = ledger.events;
-        final bySequence = {for (final event in events) event.sequence: event};
-
-        final groups = <String, List<FreeThrowAttempt>>{};
-        for (final attempt in events.whereType<FreeThrowAttempt>()) {
-          groups.putIfAbsent(attempt.groupId, () => []).add(attempt);
-        }
-        expect(groups, isNotEmpty);
-        for (final group in groups.values) {
-          final size = group.first.attemptsInGroup;
-          expect(group.length, size);
-          expect(
-            group.map((a) => a.attemptIndex),
-            List.generate(size, (i) => i + 1),
-          );
-          expect(group.last.lastOfGroup, isTrue);
-          expect(group.take(size - 1).every((a) => !a.lastOfGroup), isTrue);
-          expect(group.map((a) => a.teamId).toSet(), hasLength(1));
-          expect(group.map((a) => a.shooterId).toSet(), hasLength(1));
-        }
-
-        final andOnes = events.whereType<FieldGoalAttempt>().where(
-          (e) => e.andOne,
-        );
-        for (final shot in andOnes) {
-          expect(shot.made, isTrue);
-          final following =
-              events.firstWhere(
-                    (event) =>
-                        event.sequence > shot.sequence &&
-                        event is FreeThrowAttempt,
-                  )
-                  as FreeThrowAttempt;
-          expect(following.teamId, shot.teamId);
-          expect(following.shooterId, shot.shooterId);
-          expect(following.attemptIndex, 1);
-        }
-
-        final rebounds = events.whereType<Rebound>().toList();
-        expect(rebounds, isNotEmpty);
-        for (final rebound in rebounds) {
-          final missed = bySequence[rebound.missedEventSequence];
-          expect(missed, isNotNull);
-          expect(missed!.sequence, lessThan(rebound.sequence));
-          if (missed is FieldGoalAttempt) {
-            expect(missed.made, isFalse);
-            if (rebound.offensive) expect(missed.teamId, rebound.teamId);
-          } else if (missed is FreeThrowAttempt) {
-            expect(missed.made, isFalse);
-            expect(missed.lastOfGroup, isTrue);
-          } else {
-            fail('unexpected rebound source ${missed.type}');
-          }
-        }
-
-        final nonSteal = events
-            .whereType<Turnover>()
-            .where((turnover) => turnover.reason == TurnoverReason.nonSteal)
-            .toList();
-        expect(nonSteal, isNotEmpty);
-        for (final turnover in nonSteal) {
-          expect(turnover.stolenById, isNull);
-          expect(
-            (turnover.toJson()['reason']),
-            'nonSteal',
-            reason: 'Amendment 001 wire reason must survive decoding',
-          );
-        }
-
-        final steals = events.whereType<Turnover>().where(
-          (turnover) => turnover.reason == TurnoverReason.steal,
-        );
-        for (final turnover in steals) {
-          expect(turnover.stolenById, isNotNull);
-        }
-
-        final possessionStarts = events.whereType<PossessionStarted>().toList();
-        expect(possessionStarts, isNotEmpty);
-        String? open;
-        for (final event in events) {
-          if (event is PossessionStarted) {
-            expect(
-              open,
-              isNull,
-              reason: 'nested possession at ${event.sequence}',
-            );
-            open = event.possessionId;
-          } else if (event is PossessionEnded) {
-            expect(event.possessionId, open);
-            open = null;
-          }
-        }
-        expect(open, isNull);
-
-        var lastClock = -1;
-        var period = 0;
-        for (final event in events) {
-          if (event is GameStarted || event is PeriodStarted) {
-            period = event.period;
-            lastClock = event.gameClock;
-            continue;
-          }
-          expect(event.period, period);
-          expect(event.gameClock, lessThanOrEqualTo(lastClock));
-          lastClock = event.gameClock;
-        }
-      },
-    );
   });
 
   group('additional pinned seeds', () {
