@@ -76,6 +76,20 @@ final class RotationPolicyInput {
   final int? lastTacticalSwapGameSeconds;
 }
 
+/// Per-period overtime playing-time targets for one team.
+final class OvertimeRotationTargets {
+  const OvertimeRotationTargets({
+    required this.targetSeconds,
+    required this.tacticalEnabled,
+  });
+
+  final Map<PlayerId, int> targetSeconds;
+
+  /// False when fewer than five players are eligible; depleted continuation
+  /// disables tactical swapping for this period.
+  final bool tacticalEnabled;
+}
+
 /// Pure deterministic playing-time policy. Consumes no randomness and holds no
 /// mutable state.
 abstract final class RotationPolicy {
@@ -86,6 +100,94 @@ abstract final class RotationPolicy {
   }
 
   static int _atLeastOne(int value) => value < 1 ? 1 : value;
+
+  /// Allocates one overtime period's targets from the regulation plan.
+  ///
+  /// Eligible players are ordered active court slots first, then eligible
+  /// bench in canonical roster order. Base targets are
+  /// `floor(regulationTarget × L ÷ C)`, capped at `L`, with a round-robin
+  /// remainder. When every eligible regulation target is zero, an equal split
+  /// is used instead. Leftovers in a depleted period are forced onto
+  /// disqualified continuers.
+  static OvertimeRotationTargets allocateOvertime({
+    required Team team,
+    required CourtLineup activeLineup,
+    required Map<PlayerId, int> regulationTargets,
+    required Set<PlayerId> disqualified,
+    required int overtimeSeconds,
+    required int regulationCap,
+  }) {
+    final length = _atLeastOne(overtimeSeconds);
+    final total = 5 * length;
+    final cap = _atLeastOne(regulationCap);
+    final targets = <PlayerId, int>{
+      for (final player in team.players) player.id: 0,
+    };
+
+    final activeIds = [for (final id in activeLineup.playerIds) PlayerId(id)];
+    final activeSet = activeIds.toSet();
+    final eligible = <PlayerId>[];
+    for (final playerId in activeIds) {
+      if (!disqualified.contains(playerId)) eligible.add(playerId);
+    }
+    for (final player in team.players) {
+      if (activeSet.contains(player.id)) continue;
+      if (disqualified.contains(player.id)) continue;
+      if ((regulationTargets[player.id] ?? 0) <= 0) continue;
+      eligible.add(player.id);
+    }
+    final continuers = [
+      for (final playerId in activeIds)
+        if (disqualified.contains(playerId)) playerId,
+    ];
+
+    void distributeRoundRobin(List<PlayerId> order, int remaining) {
+      var index = 0;
+      final limit = order.length * (length + 1);
+      while (remaining > 0 && order.isNotEmpty && index < limit) {
+        final playerId = order[index % order.length];
+        if (targets[playerId]! < length) {
+          targets[playerId] = targets[playerId]! + 1;
+          remaining--;
+        }
+        index++;
+      }
+    }
+
+    if (eligible.isEmpty) {
+      distributeRoundRobin(continuers, total);
+      return OvertimeRotationTargets(
+        targetSeconds: Map<PlayerId, int>.unmodifiable(targets),
+        tacticalEnabled: false,
+      );
+    }
+
+    final allZero = eligible.every(
+      (playerId) => (regulationTargets[playerId] ?? 0) == 0,
+    );
+    for (final playerId in eligible) {
+      final base = allZero
+          ? total ~/ eligible.length
+          : (regulationTargets[playerId] ?? 0) * length ~/ cap;
+      targets[playerId] = base > length ? length : base;
+    }
+
+    var remaining =
+        total - targets.values.fold<int>(0, (sum, value) => sum + value);
+    distributeRoundRobin(eligible, remaining);
+    remaining =
+        total - targets.values.fold<int>(0, (sum, value) => sum + value);
+    if (remaining > 0) {
+      distributeRoundRobin(continuers, remaining);
+      remaining =
+          total - targets.values.fold<int>(0, (sum, value) => sum + value);
+    }
+
+    return OvertimeRotationTargets(
+      targetSeconds: Map<PlayerId, int>.unmodifiable(targets),
+      tacticalEnabled: eligible.length >= 5 && remaining == 0,
+    );
+  }
 
   /// Returns at most one tactical swap, or `null` when no swap qualifies.
   static RotationSwapProposal? propose(RotationPolicyInput input) {

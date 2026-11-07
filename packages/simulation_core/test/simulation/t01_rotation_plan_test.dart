@@ -681,24 +681,17 @@ void main() {
       expect(prngImplementationId, 'xorshift32-v1');
     });
 
-    test('T01 emits no tactical substitution and does not alter events', () {
-      final planned = rebuildWithPlan(
-        base,
-        planFor(base, RotationPreset.balanced, RotationPreset.starterHeavy),
-      );
-      final result = GameSimulator().simulate(planned);
-      final legacy = GameSimulator().simulate(base);
-      expect(
-        result.events.whereType<Substitution>().where(
-          (event) => event.reason == SubstitutionReason.tactical,
-        ),
-        isEmpty,
-      );
-      expect(
-        jsonEncode([for (final event in result.events) event.toJson()]),
-        jsonEncode([for (final event in legacy.events) event.toJson()]),
-      );
-      expect(result.simulationVersion, 6);
+    test('null plan preserves the legacy path without tactical swaps', () {
+      for (final seed in [7, 15, 42]) {
+        final legacy = GameSimulator().simulate(buildInput(seed: seed));
+        expect(
+          legacy.events.whereType<Substitution>().where(
+            (event) => event.reason == SubstitutionReason.tactical,
+          ),
+          isEmpty,
+          reason: 'seed $seed',
+        );
+      }
     });
   });
 }

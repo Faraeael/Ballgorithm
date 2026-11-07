@@ -15,6 +15,9 @@ import 'game_validation.dart';
 import 'phase_trace.dart';
 import 'game_versions.dart';
 import 'probability_model.dart';
+import 'rotation_plan.dart';
+import 'rotation_policy.dart';
+import 'rotation_window_history.dart';
 
 /// Deterministic headless M002 game orchestrator (T009).
 ///
@@ -86,11 +89,21 @@ final class ReplacementDrawTrace {
   final int draws;
 }
 
+final class RotationDrawTrace {
+  const RotationDrawTrace({required this.teamId, required this.draws});
+
+  final String teamId;
+
+  /// PRNG draws consumed by the tactical decision; always zero by contract.
+  final int draws;
+}
+
 final class GameSimulator {
   GameSimulator({
     BasketballProbabilityModel? probabilityModel,
     this.onPhaseTrace,
     this.onReplacementDraw,
+    this.onRotationDraw,
   }) : _injectedModel = probabilityModel;
 
   final BasketballProbabilityModel? _injectedModel;
@@ -102,6 +115,10 @@ final class GameSimulator {
   /// Optional passive replacement-selection observer (default disabled). It
   /// runs after the ranking decision and only reads the PRNG draw counter.
   final void Function(ReplacementDrawTrace trace)? onReplacementDraw;
+
+  /// Optional passive tactical-decision observer (default disabled). It only
+  /// reads the PRNG draw counter; the policy is deterministic.
+  final void Function(RotationDrawTrace trace)? onRotationDraw;
 
   /// Simulates and validates one game. Throws [GameValidationException] on any
   /// illegal state, incompatible injected model or bound; never returns a
@@ -120,11 +137,18 @@ final class GameSimulator {
         ),
         onPhaseTrace,
         onReplacementDraw,
+        onRotationDraw,
       ).run();
     }
     _requireCompatibleA1(injected.rules, input.rules);
     _requireCanonicalRoster(injected, input);
-    return _GameRun(input, injected, onPhaseTrace, onReplacementDraw).run();
+    return _GameRun(
+      input,
+      injected,
+      onPhaseTrace,
+      onReplacementDraw,
+      onRotationDraw,
+    ).run();
   }
 
   /// Rejects an injected model whose roster disagrees with the input league.
@@ -267,10 +291,15 @@ final class GameSimulator {
 }
 
 final class _GameRun {
-  _GameRun(this.input, this._model, [this._trace, this._replacementDraw])
-    : rules = input.rules,
-      rng = DeterministicRandom(input.normalizedSeed),
-      fingerprint = GameFingerprint.of(input) {
+  _GameRun(
+    this.input,
+    this._model, [
+    this._trace,
+    this._replacementDraw,
+    this._rotationDraw,
+  ]) : rules = input.rules,
+       rng = DeterministicRandom(input.normalizedSeed),
+       fingerprint = GameFingerprint.of(input) {
     _teamFouls[input.homeTeamId.value] = 0;
     _teamFouls[input.awayTeamId.value] = 0;
   }
@@ -279,6 +308,7 @@ final class _GameRun {
   final BasketballProbabilityModel _model;
   final void Function(PhaseTraceRecord record)? _trace;
   final void Function(ReplacementDrawTrace trace)? _replacementDraw;
+  final void Function(RotationDrawTrace trace)? _rotationDraw;
   final GameRules rules;
 
   int _traceSequence = 0;
@@ -329,6 +359,17 @@ final class _GameRun {
   final Map<String, int> _playerFouls = <String, int>{};
   final Set<String> _pendingPeriodReplacements = <String>{};
 
+  late final RotationPlan? _rotation = input.rotationPlan;
+  final Map<String, int> _regulationActual = <String, int>{};
+  final Map<String, int> _overtimeActual = <String, int>{};
+  final Map<String, int> _overtimeTargets = <String, int>{};
+  final Set<String> _overtimeTacticalTeams = <String>{};
+  final RotationWindowHistory _windowHistory = RotationWindowHistory();
+  final Set<String> _mandatoryTeams = <String>{};
+  int? _overtimeAllocationPeriod;
+  int _completedGameSeconds = 0;
+  int _lastAccrualGameSeconds = 0;
+
   int _sequence = 0;
   int _period = 1;
   int _clock = 0;
@@ -341,6 +382,155 @@ final class _GameRun {
   int _freeThrowGroupCounter = 0;
   int _lastClock = 0;
   int _zeroTimeEvents = 0;
+
+  bool get _rotationEnabled => _rotation != null;
+
+  int get _cumulativeGameSeconds =>
+      _completedGameSeconds + (rules.periodLength(_period) - _clock);
+
+  /// Accrues elapsed game seconds to every active player in the active phase
+  /// bucket. Called at window boundaries and at the period horn.
+  void _accruePlaytime() {
+    if (!_rotationEnabled) return;
+    final now = _cumulativeGameSeconds;
+    final delta = now - _lastAccrualGameSeconds;
+    if (delta <= 0) return;
+    final bucket = _period > rules.periods
+        ? _overtimeActual
+        : _regulationActual;
+    for (final teamId in [input.homeTeamId.value, input.awayTeamId.value]) {
+      for (final slot in _onCourt(TeamId(teamId)).lineup.slots) {
+        final playerId = slot.playerId.value;
+        bucket[playerId] = (bucket[playerId] ?? 0) + delta;
+      }
+    }
+    _lastAccrualGameSeconds = now;
+  }
+
+  /// Opens a substitution window for rotation purposes: commits the previous
+  /// window's tactical swap (or null), clears the sliding history, and accrues
+  /// playtime to the current clock.
+  void _beginWindow() {
+    if (!_rotationEnabled) return;
+    _accruePlaytime();
+    _windowHistory.beginWindow([
+      input.homeTeamId.value,
+      input.awayTeamId.value,
+    ]);
+    _mandatoryTeams.clear();
+  }
+
+  void _ensureOvertimeTargets() {
+    if (!_rotationEnabled || _period <= rules.periods) return;
+    if (_overtimeAllocationPeriod == _period) return;
+    final plan = _rotation!;
+    for (final teamId in [input.homeTeamId.value, input.awayTeamId.value]) {
+      final team = _teamById(teamId);
+      final teamPlan = teamId == input.homeTeamId.value ? plan.home : plan.away;
+      final allocation = RotationPolicy.allocateOvertime(
+        team: team,
+        activeLineup: _onCourt(TeamId(teamId)).lineup,
+        regulationTargets: teamPlan.targetSeconds,
+        disqualified: {
+          for (final player in team.players)
+            if (_disqualified(player.id.value)) player.id,
+        },
+        overtimeSeconds: rules.overtimeSeconds,
+        regulationCap: RotationPlan.regulationCap(rules),
+      );
+      for (final entry in allocation.targetSeconds.entries) {
+        _overtimeTargets[entry.key.value] = entry.value;
+      }
+      if (allocation.tacticalEnabled) _overtimeTacticalTeams.add(teamId);
+    }
+    _overtimeAllocationPeriod = _period;
+  }
+
+  void _runTacticalHooks() {
+    if (!_rotationEnabled || _clock <= 0) return;
+    _ensureOvertimeTargets();
+    for (final teamId in [input.homeTeamId.value, input.awayTeamId.value]) {
+      if (_mandatoryTeams.contains(teamId)) continue;
+      if (_pendingPeriodReplacements.contains(teamId)) continue;
+      if (_period > rules.periods && !_overtimeTacticalTeams.contains(teamId)) {
+        continue;
+      }
+      _proposeTactical(teamId);
+    }
+  }
+
+  void _proposeTactical(String teamId) {
+    final drawsBefore = _rotationDraw == null ? 0 : rng.drawCount;
+    final plan = _rotation!;
+    final teamPlan = teamId == input.homeTeamId.value ? plan.home : plan.away;
+    final team = _teamById(teamId);
+    final lineup = _onCourt(TeamId(teamId)).lineup;
+    final overtime = _period > rules.periods;
+    final targets = overtime
+        ? <PlayerId, int>{
+            for (final player in team.players)
+              player.id: _overtimeTargets[player.id.value] ?? 0,
+          }
+        : teamPlan.targetSeconds;
+    final actual = overtime ? _overtimeActual : _regulationActual;
+    final elapsedSeconds = overtime
+        ? rules.overtimeSeconds - _clock
+        : _cumulativeGameSeconds;
+    final horizonSeconds = overtime
+        ? rules.overtimeSeconds
+        : RotationPlan.regulationCap(rules);
+    final proposal = RotationPolicy.propose(
+      RotationPolicyInput(
+        team: team,
+        activeLineup: lineup,
+        targetSeconds: targets,
+        actualSeconds: {
+          for (final player in team.players)
+            player.id: actual[player.id.value] ?? 0,
+        },
+        elapsedSeconds: elapsedSeconds,
+        horizonSeconds: horizonSeconds,
+        activePeriodSeconds: overtime
+            ? rules.overtimeSeconds
+            : rules.periodSeconds,
+        gameSecondsElapsed: _cumulativeGameSeconds,
+        disqualified: {
+          for (final player in team.players)
+            if (_disqualified(player.id.value)) player.id,
+        },
+        mandatoryReplacementPending: _pendingPeriodReplacements.contains(
+          teamId,
+        ),
+        swappedThisWindow: _windowHistory.swappedThisWindow(teamId),
+        previousWindowSwap: _windowHistory.previousWindowSwap(teamId),
+        lastTacticalSwapGameSeconds: _windowHistory.lastTacticalSwapSeconds(
+          teamId,
+        ),
+      ),
+    );
+    _rotationDraw?.call(
+      RotationDrawTrace(teamId: teamId, draws: rng.drawCount - drawsBefore),
+    );
+    if (proposal == null) return;
+    _emit(
+      Substitution(
+        sequence: _nextSequence(),
+        period: _period,
+        gameClock: _clock,
+        shotClock: _shotClock,
+        teamId: teamId,
+        playerOutId: proposal.playerOutId.value,
+        playerInId: proposal.playerInId.value,
+        reason: SubstitutionReason.tactical,
+      ),
+    );
+    _applySubstitution(
+      teamId: teamId,
+      playerOutId: proposal.playerOutId.value,
+      playerInId: proposal.playerInId.value,
+    );
+    _windowHistory.recordSwap(teamId, proposal, _cumulativeGameSeconds);
+  }
 
   GameResult run() {
     _emit(
@@ -359,6 +549,7 @@ final class _GameRun {
     while (true) {
       _startPeriod();
       _playPeriod();
+      _accruePlaytime();
       _emit(
         PeriodEnded(
           sequence: _nextSequence(),
@@ -367,6 +558,7 @@ final class _GameRun {
           shotClock: null,
         ),
       );
+      _completedGameSeconds += rules.periodLength(_period);
 
       final homePoints = _pointsFor(input.homeTeamId);
       final awayPoints = _pointsFor(input.awayTeamId);
@@ -430,6 +622,12 @@ final class _GameRun {
     _offense = _starterFor(_period);
     _teamFouls[input.homeTeamId.value] = 0;
     _teamFouls[input.awayTeamId.value] = 0;
+    if (_rotationEnabled && _period > rules.periods) {
+      _overtimeActual.clear();
+      _overtimeTargets.clear();
+      _overtimeTacticalTeams.clear();
+      _overtimeAllocationPeriod = null;
+    }
     _emit(
       PeriodStarted(
         sequence: _nextSequence(),
@@ -439,6 +637,7 @@ final class _GameRun {
         startingTeamId: _offense.value,
       ),
     );
+    if (_rotationEnabled) _beginWindow();
     // W5: satisfy any deferred or outstanding disqualification before the
     // first possession of the period.
     for (final teamId in [input.homeTeamId.value, input.awayTeamId.value]) {
@@ -455,6 +654,7 @@ final class _GameRun {
       }
     }
     _pendingPeriodReplacements.clear();
+    _runTacticalHooks();
   }
 
   void _playPeriod() {
@@ -725,6 +925,11 @@ final class _GameRun {
         ),
       );
       _recordFoul(action.foulingDefenderId!.value);
+      if (_rotationEnabled &&
+          clock > 0 &&
+          _disqualified(action.foulingDefenderId!.value)) {
+        _beginWindow();
+      }
       _emitFoulOutReplacement(
         teamId: defense.value,
         playerId: action.foulingDefenderId!.value,
@@ -773,6 +978,11 @@ final class _GameRun {
           ),
         );
         _recordFoul(action.foulingDefenderId!.value);
+        if (_rotationEnabled &&
+            clock > 0 &&
+            _disqualified(action.foulingDefenderId!.value)) {
+          _beginWindow();
+        }
         _emitFoulOutReplacement(
           teamId: defense.value,
           playerId: action.foulingDefenderId!.value,
@@ -886,12 +1096,14 @@ final class _GameRun {
       ),
     );
     _endPossession(PossessionEndReason.turnover);
+    if (_rotationEnabled && _clock > 0) _beginWindow();
     _emitFoulOutReplacement(
       teamId: _offense.value,
       playerId: action.playerId.value,
       clock: _clock,
       shotClock: null,
     );
+    if (_rotationEnabled && _clock > 0) _runTacticalHooks();
   }
 
   void _resolveNonShootingFoul(NonShootingFoulAction action) {
@@ -914,6 +1126,11 @@ final class _GameRun {
     );
     _recordFoul(action.committingPlayerId.value);
     if (bonus) {
+      if (_rotationEnabled &&
+          _clock > 0 &&
+          _disqualified(action.committingPlayerId.value)) {
+        _beginWindow();
+      }
       _emitFoulOutReplacement(
         teamId: defense.value,
         playerId: action.committingPlayerId.value,
@@ -923,6 +1140,7 @@ final class _GameRun {
       _resolveFreeThrows(shooterId: action.drawnByPlayerId.value, attempts: 2);
       return;
     }
+    if (_rotationEnabled && _clock > 0) _beginWindow();
     final floor = rules.nonBonusFoulResetFloorSeconds;
     final current = _shotClock!;
     _shotClock = current > floor ? current : floor;
@@ -936,6 +1154,7 @@ final class _GameRun {
       clock: _clock,
       shotClock: _shotClock,
     );
+    if (_rotationEnabled && _clock > 0) _runTacticalHooks();
   }
 
   Team _teamById(String teamId) =>
@@ -1037,6 +1256,7 @@ final class _GameRun {
       playerOutId: playerId,
       playerInId: replacement.id.value,
     );
+    _mandatoryTeams.add(teamId);
     return true;
   }
 
@@ -1074,6 +1294,10 @@ final class _GameRun {
 
     if (group.madeByAttempt.last) {
       _endPossession(PossessionEndReason.madeFinalFreeThrow);
+      if (_rotationEnabled && _clock > 0) {
+        _beginWindow();
+        _runTacticalHooks();
+      }
       return;
     }
     if (clock == 0) {

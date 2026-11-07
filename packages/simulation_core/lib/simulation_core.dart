@@ -33,3 +33,4 @@ export 'src/simulation/phase_trace.dart';
 export 'src/simulation/probability_model.dart';
 export 'src/simulation/rotation_plan.dart';
 export 'src/simulation/rotation_policy.dart';
+export 'src/simulation/rotation_window_history.dart';
