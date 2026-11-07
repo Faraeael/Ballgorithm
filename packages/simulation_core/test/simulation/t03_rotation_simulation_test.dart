@@ -672,6 +672,204 @@ void main() {
     );
   });
 
+  test('an overtime foul-out precedes tactics and reshapes the next period', () {
+    final rules = GameRules.standard;
+    final input = plannedInput(
+      seed: 4329,
+      homePreset: RotationPreset.starterHeavy,
+      awayPreset: RotationPreset.starterHeavy,
+    );
+    final result = GameSimulator().simulate(input);
+    expect(result.overtimes, greaterThanOrEqualTo(2));
+    final events = result.events;
+
+    final fouls = <String, int>{};
+    var foulOutIndex = -1;
+    for (var index = 0; index < events.length; index++) {
+      final event = events[index];
+      if (event is PersonalFoul) {
+        fouls[event.committingPlayerId] =
+            (fouls[event.committingPlayerId] ?? 0) + 1;
+        continue;
+      }
+      if (event is Substitution &&
+          event.period > rules.periods &&
+          event.reason == SubstitutionReason.foulOut) {
+        foulOutIndex = index;
+        break;
+      }
+    }
+    expect(foulOutIndex, greaterThan(0), reason: 'overtime foul-out required');
+    final foulOut = events[foulOutIndex] as Substitution;
+    final foulPeriod = foulOut.period;
+    expect(foulPeriod, greaterThan(rules.periods));
+    expect(foulPeriod, lessThan(result.periodsPlayed));
+    expect(foulOut.gameClock, greaterThan(0));
+    expect(fouls[foulOut.playerOutId], rules.foulOutLimit);
+
+    final trigger = events[foulOutIndex - 1];
+    expect(trigger, isA<PersonalFoul>());
+    final foul = trigger as PersonalFoul;
+    expect(foul.committingPlayerId, foulOut.playerOutId);
+    expect(foul.period, foulPeriod);
+    expect(foul.gameClock, foulOut.gameClock);
+    expect(
+      foul.kind,
+      FoulKind.nonShooting,
+      reason: 'W1 is a tactical window, so precedence is observable there',
+    );
+    expect(foul.freeThrowsAwarded, 0);
+    expect(foul.bonus, isFalse);
+    expect(
+      events[foulOutIndex + 1],
+      isNot(isA<Substitution>()),
+      reason: 'the mandatory replacement closes its window before any swap',
+    );
+
+    final later = [
+      for (var index = foulOutIndex + 1; index < events.length; index++)
+        if (events[index] is Substitution) events[index] as Substitution,
+    ];
+    for (final sub in later) {
+      expect(sub.playerInId, isNot(foulOut.playerOutId));
+    }
+    final samePeriodTactical = [
+      for (final sub in later)
+        if (sub.period == foulPeriod &&
+            sub.teamId == foulOut.teamId &&
+            sub.reason == SubstitutionReason.tactical)
+          sub,
+    ];
+    expect(
+      samePeriodTactical,
+      isNotEmpty,
+      reason: 'the fixed period allocation keeps driving later windows',
+    );
+    for (final sub in samePeriodTactical) {
+      expect(sub.playerOutId, isNot(foulOut.playerOutId));
+    }
+
+    // Ledger oracle: per-period seconds, foul counts and the lineup at the end
+    // of the foul-out period.
+    final seconds = <int, Map<String, int>>{};
+    final active = <String, List<String>>{
+      input.homeTeamId.value: input.homeLineup.playerIds.toList(),
+      input.awayTeamId.value: input.awayLineup.playerIds.toList(),
+    };
+    final endOfFoulPeriod = <String, List<String>>{};
+    var last = 0;
+    var snapshotTaken = false;
+    for (final event in events) {
+      if (event.period > foulPeriod && !snapshotTaken) {
+        snapshotTaken = true;
+        endOfFoulPeriod.addAll({
+          for (final entry in active.entries) entry.key: List.of(entry.value),
+        });
+      }
+      final now = cumulativeSeconds(rules, event);
+      final delta = now - last;
+      if (delta > 0) {
+        final bucket = seconds.putIfAbsent(event.period, () => <String, int>{});
+        for (final five in active.values) {
+          for (final playerId in five) {
+            bucket[playerId] = (bucket[playerId] ?? 0) + delta;
+          }
+        }
+      }
+      last = now;
+      if (event is Substitution) {
+        final five = active[event.teamId]!;
+        final slot = five.indexOf(event.playerOutId);
+        expect(slot, greaterThanOrEqualTo(0));
+        five[slot] = event.playerInId;
+      }
+    }
+    expect(endOfFoulPeriod, isNotEmpty);
+
+    final foulCountsAtFoulPeriodEnd = <String, int>{};
+    for (final event in events) {
+      if (event.period > foulPeriod) break;
+      if (event is PersonalFoul) {
+        foulCountsAtFoulPeriodEnd[event.committingPlayerId] =
+            (foulCountsAtFoulPeriodEnd[event.committingPlayerId] ?? 0) + 1;
+      }
+    }
+
+    for (final entry in seconds.entries) {
+      if (entry.key > foulPeriod) {
+        expect(entry.value[foulOut.playerOutId] ?? 0, 0);
+      }
+    }
+    for (final player in result.boxScore.players.values) {
+      final total = seconds.values.fold<int>(
+        0,
+        (sum, bucket) => sum + (bucket[player.playerId] ?? 0),
+      );
+      expect(total, player.secondsPlayed);
+    }
+    for (final teamId in [input.homeTeamId.value, input.awayTeamId.value]) {
+      var total = 0;
+      for (final player
+          in input.league.teams
+              .firstWhere((team) => team.id.value == teamId)
+              .players) {
+        total += result.boxScore.players[player.id.value]!.secondsPlayed;
+      }
+      var expected = 0;
+      for (var period = 1; period <= result.periodsPlayed; period++) {
+        expected += 5 * rules.periodLength(period);
+      }
+      expect(total, expected);
+    }
+
+    final team = input.league.teams.firstWhere(
+      (candidate) => candidate.id.value == foulOut.teamId,
+    );
+    final teamPlan = foulOut.teamId == input.homeTeamId.value
+        ? input.rotationPlan!.home
+        : input.rotationPlan!.away;
+    final allocation = RotationPolicy.allocateOvertime(
+      team: team,
+      activeLineup: CourtLineup.create(
+        team: team,
+        slotOrderedPlayers: [
+          for (final playerId in endOfFoulPeriod[foulOut.teamId]!)
+            team.players.firstWhere((player) => player.id.value == playerId),
+        ],
+      ),
+      regulationTargets: teamPlan.targetSeconds,
+      disqualified: {
+        for (final player in team.players)
+          if ((foulCountsAtFoulPeriodEnd[player.id.value] ?? 0) >=
+              rules.foulOutLimit)
+            player.id,
+      },
+      overtimeSeconds: rules.overtimeSeconds,
+      regulationCap: RotationPlan.regulationCap(rules),
+    );
+    expect(
+      allocation.targetSeconds[PlayerId(foulOut.playerOutId)],
+      0,
+      reason: 'the next period must exclude the disqualified player',
+    );
+    expect(
+      allocation.targetSeconds.values.fold<int>(0, (sum, value) => sum + value),
+      5 * rules.overtimeSeconds,
+    );
+
+    final replay = GameSimulator().simulate(
+      plannedInput(
+        seed: 4329,
+        homePreset: RotationPreset.starterHeavy,
+        awayPreset: RotationPreset.starterHeavy,
+      ),
+    );
+    expect(
+      [for (final event in replay.events) event.toJson()],
+      [for (final event in events) event.toJson()],
+    );
+  });
+
   group('window history', () {
     const team = 'team-1';
     const other = 'team-2';
