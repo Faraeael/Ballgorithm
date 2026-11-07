@@ -503,31 +503,43 @@ final class BasketballProbabilityModel {
     return value;
   }
 
+  /// Unnormalised v6 shooter-usage weights in canonical court-slot order.
+  ///
+  /// This is the single source of the raw usage formula. [shotUsageWeights]
+  /// normalises it, and the dormant M006 opportunity policy consumes the same
+  /// raw vector before applying role multipliers, so the two paths can never
+  /// drift apart.
+  List<int> rawShotUsageWeights(CourtLineup offense) => [
+    for (final slot in offense.slots)
+      max(
+        60,
+        _usagePositionBase[slot.slot.index] +
+            max(
+                  0,
+                  max(
+                        _playerOf(slot).attributes.insideScoring,
+                        max(
+                          _playerOf(slot).attributes.midrange,
+                          _playerOf(slot).attributes.threePoint,
+                        ),
+                      ) -
+                      50,
+                ) *
+                3 +
+            (_playerOf(slot).attributes.ballHandling - 50) * 2 +
+            (_playerOf(slot).attributes.basketballIQ - 50),
+      ),
+  ];
+
   /// Normalized shot-usage weights summing to 10000.
-  List<int> shotUsageWeights(CourtLineup offense) {
-    final raw = <int>[
-      for (final slot in offense.slots)
-        max(
-          60,
-          _usagePositionBase[slot.slot.index] +
-              max(
-                    0,
-                    max(
-                          _playerOf(slot).attributes.insideScoring,
-                          max(
-                            _playerOf(slot).attributes.midrange,
-                            _playerOf(slot).attributes.threePoint,
-                          ),
-                        ) -
-                        50,
-                  ) *
-                  3 +
-              (_playerOf(slot).attributes.ballHandling - 50) * 2 +
-              (_playerOf(slot).attributes.basketballIQ - 50),
-        ),
-    ];
-    return _normalize(raw);
-  }
+  List<int> shotUsageWeights(CourtLineup offense) =>
+      _normalize(rawShotUsageWeights(offense));
+
+  /// The model's canonical proportional normalisation to 10000 basis points.
+  ///
+  /// Exposed for the dormant M006 policy so it reuses the exact convention of
+  /// [shotUsageWeights] and [shotZoneWeights] instead of duplicating it.
+  static List<int> normalizeBasisPointWeights(List<int> raw) => _normalize(raw);
 
   /// Normalized zone weights `[inside, midrange, three]` summing to 10000.
   List<int> shotZoneWeights({

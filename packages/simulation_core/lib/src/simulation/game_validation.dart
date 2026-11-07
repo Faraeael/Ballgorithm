@@ -66,6 +66,7 @@ enum GameValidationCode {
   overtimeLimitExceeded,
   overtimeNotTied,
   periodHornPrecedence,
+  roleAssignmentMismatch,
 }
 
 final class GameValidationIssue {
