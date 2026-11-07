@@ -299,17 +299,24 @@ class _GameSetupScreenState extends State<GameSetupScreen> {
     return math.min(_cap, _teamTotal - others);
   }
 
-  /// Applies one exact integer-second value, rejecting any increase that would
-  /// exceed the per-player cap or the team budget. The rejected proposal leaves
-  /// the allocation untouched; no other player is adjusted.
-  bool _setCustomTarget(String playerId, int seconds) {
+  /// Applies one exact integer-second value to a single player.
+  ///
+  /// [clamp] is used by the slider drag: a proposal above the currently allowed
+  /// maximum sticks to that maximum instead of being dropped, so the thumb
+  /// never runs past the team budget. Fine adjustments reject out-of-range
+  /// proposals outright. In both cases only the edited player can change.
+  bool _setCustomTarget(String playerId, int seconds, {bool clamp = false}) {
     if (_preset != RotationPreset.custom) return false;
     final current = _customTargets[playerId] ?? 0;
-    if (seconds == current) return false;
     final allowed = _maximumAllowed(playerId);
-    if (seconds < 0 || seconds > allowed) return false;
+    var proposed = seconds;
+    if (clamp) {
+      proposed = math.min(proposed, allowed);
+    }
+    if (proposed < 0 || proposed > allowed) return false;
+    if (proposed == current) return false;
     setState(() {
-      _customTargets[playerId] = seconds;
+      _customTargets[playerId] = proposed;
       _refreshBudgetMessage();
     });
     return true;
@@ -688,6 +695,19 @@ class _GameSetupScreenState extends State<GameSetupScreen> {
               ],
             ),
           ),
+        if (total == _teamTotal)
+          // Kept below the editor rows so the hint never shifts them.
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'No minutes remain. To give a player more minutes, reduce '
+              "another player's allocation first.",
+              key: const ValueKey('budget-full'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -744,17 +764,6 @@ class _GameSetupScreenState extends State<GameSetupScreen> {
           minHeight: 6,
           borderRadius: BorderRadius.circular(3),
         ),
-        if (available == 0) ...[
-          const SizedBox(height: 6),
-          Text(
-            'No minutes remain. To give a player more minutes, reduce '
-            "another player's allocation first.",
-            key: const ValueKey('budget-full'),
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -770,7 +779,9 @@ class _GameSetupScreenState extends State<GameSetupScreen> {
     final seconds = targets[playerId] ?? 0;
     final starter = lineup.containsPlayer(player.id);
     final allowed = _maximumAllowed(playerId);
-    final sliderMax = math.max(allowed, seconds);
+    // Fixed visual scale for every player: never derived from the shared
+    // budget, so one player's edit cannot move another player's thumb.
+    final sliderMax = _cap;
     final sliderValue = seconds.clamp(0, sliderMax);
 
     Widget fine(String key, String label, int delta, bool enabled) => SizedBox(
@@ -829,11 +840,12 @@ class _GameSetupScreenState extends State<GameSetupScreen> {
                   value: sliderValue.toDouble(),
                   min: 0,
                   max: sliderMax.toDouble(),
-                  divisions: sliderMax > 0 ? sliderMax : null,
+                  divisions: sliderMax,
                   label: formatMinutes(seconds),
-                  onChanged: sliderMax > 0
-                      ? (value) => _setCustomTarget(playerId, value.round())
-                      : null,
+                  // Always enabled: dragging left must free minutes even when
+                  // the team budget is already fully allocated.
+                  onChanged: (value) =>
+                      _setCustomTarget(playerId, value.round(), clamp: true),
                   onChangeEnd: (_) => _revalidate(),
                 ),
               ),

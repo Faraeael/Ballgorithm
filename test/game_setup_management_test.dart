@@ -447,7 +447,7 @@ void main() {
     expect(await _budgetText(tester, 'budget-allocated'), endsWith('/ 240:00'));
   });
 
-  testWidgets('an increase beyond the available budget is rejected', (
+  testWidgets('a slider proposal beyond the available budget clamps', (
     tester,
   ) async {
     await _pumpSetup(tester, league, onConfirm: confirmed.add);
@@ -460,18 +460,18 @@ void main() {
     final receiverId = base.slots[1].playerId.value;
 
     final donorSlider = find.byKey(ValueKey('target-slider-$donorId'));
+    final receiverSlider = find.byKey(ValueKey('target-slider-$receiverId'));
     await _scrollTo(tester, donorSlider);
     final donorValue = tester.widget<Slider>(donorSlider).value.round();
+    final receiverBefore = tester.widget<Slider>(receiverSlider).value.round();
 
-    // Fully allocated: any increase is rejected outright.
-    tester.widget<Slider>(donorSlider).onChanged!(donorValue + 1.0);
+    // Fully allocated: an increase proposal clamps back to the same value.
+    tester.widget<Slider>(donorSlider).onChanged!((donorValue + 1.0));
     await tester.pumpAndSettle();
     expect(tester.widget<Slider>(donorSlider).value.round(), donorValue);
     expect(await _budgetText(tester, 'budget-available'), 'Available: 00:00');
 
-    // Free 60 seconds from another player. The handler is invoked directly:
-    // layout shifts from the new validation text must not turn this into a
-    // hit-testing test.
+    // Free 60 seconds from another player.
     final receiverMinus = find.byKey(ValueKey('fine-minus-$receiverId'));
     await _scrollTo(tester, receiverMinus);
     for (var tap = 0; tap < 6; tap++) {
@@ -481,15 +481,151 @@ void main() {
     await tester.pumpAndSettle();
     expect(await _budgetText(tester, 'budget-available'), 'Available: 01:00');
 
-    // One second past the freed budget is rejected; the exact amount applies.
-    tester.widget<Slider>(donorSlider).onChanged!(donorValue + 61.0);
-    await tester.pumpAndSettle();
-    expect(tester.widget<Slider>(donorSlider).value.round(), donorValue);
-
-    tester.widget<Slider>(donorSlider).onChanged!(donorValue + 60.0);
+    // 61 seconds of increase is clamped to the 60 seconds actually available.
+    await _scrollTo(tester, donorSlider);
+    tester.widget<Slider>(donorSlider).onChanged!((donorValue + 61.0));
     await tester.pumpAndSettle();
     expect(tester.widget<Slider>(donorSlider).value.round(), donorValue + 60);
     expect(await _budgetText(tester, 'budget-available'), 'Available: 00:00');
+    expect(
+      tester.widget<Slider>(receiverSlider).value.round(),
+      receiverBefore - 60,
+    );
+  });
+
+  testWidgets('all sliders share the fixed 0..2880-second scale', (
+    tester,
+  ) async {
+    await _pumpSetup(tester, league, onConfirm: confirmed.add);
+    await _pickTeam(tester, 'home', home);
+    await _pickTeam(tester, 'away', away);
+    await _openCustomEditor(tester);
+
+    final base = CourtLineup.defaultFor(home);
+    for (final playerId in base.playerIds) {
+      final finder = find.byKey(ValueKey('target-slider-$playerId'));
+      await _scrollTo(tester, finder);
+      final slider = tester.widget<Slider>(finder);
+      expect(slider.min, 0);
+      expect(slider.max, 2880);
+      expect(slider.divisions, 2880);
+      expect(slider.value, lessThanOrEqualTo(2880));
+    }
+  });
+
+  testWidgets('dragging one slider leaves every other slider untouched', (
+    tester,
+  ) async {
+    await _pumpSetup(tester, league, onConfirm: confirmed.add);
+    await _pickTeam(tester, 'home', home);
+    await _pickTeam(tester, 'away', away);
+    await _openCustomEditor(tester);
+
+    final base = CourtLineup.defaultFor(home);
+    final dragged = base.playerIds.first;
+    final other = base.playerIds[1];
+    final draggedFinder = find.byKey(ValueKey('target-slider-$dragged'));
+    final otherFinder = find.byKey(ValueKey('target-slider-$other'));
+    await _scrollTo(tester, draggedFinder);
+
+    expect(otherFinder.evaluate(), isNotEmpty, reason: 'both rows built');
+    final otherBefore = tester.widget<Slider>(otherFinder);
+    final otherValueBefore = otherBefore.value;
+    final otherMaxBefore = otherBefore.max;
+    final otherRectBefore = tester.getRect(otherFinder);
+    final otherTextBefore = tester
+        .widget<Text>(find.byKey(ValueKey('target-seconds-$other')))
+        .data;
+
+    await tester.drag(draggedFinder, const Offset(-70, 0));
+    await tester.pumpAndSettle();
+
+    final otherAfter = tester.widget<Slider>(otherFinder);
+    expect(otherAfter.value, otherValueBefore);
+    expect(otherAfter.max, otherMaxBefore);
+    expect(otherAfter.min, 0);
+    expect(tester.getRect(otherFinder), otherRectBefore);
+    expect(
+      tester.widget<Text>(find.byKey(ValueKey('target-seconds-$other'))).data,
+      otherTextBefore,
+    );
+    expect(
+      tester.widget<Slider>(draggedFinder).value.round(),
+      lessThan(otherValueBefore.round()),
+    );
+  });
+
+  testWidgets('fine buttons leave every other slider untouched', (
+    tester,
+  ) async {
+    await _pumpSetup(tester, league, onConfirm: confirmed.add);
+    await _pickTeam(tester, 'home', home);
+    await _pickTeam(tester, 'away', away);
+    await _openCustomEditor(tester);
+
+    final base = CourtLineup.defaultFor(home);
+    final edited = base.playerIds.first;
+    final other = base.playerIds[1];
+    final otherFinder = find.byKey(ValueKey('target-slider-$other'));
+    await _scrollTo(tester, find.byKey(ValueKey('fine-minus-$edited')));
+
+    final otherBefore = tester.widget<Slider>(otherFinder);
+    final otherValueBefore = otherBefore.value;
+    final otherRectBefore = tester.getRect(otherFinder);
+    final editedBefore = tester
+        .widget<Slider>(find.byKey(ValueKey('target-slider-$edited')))
+        .value
+        .round();
+
+    tester
+        .widget<TextButton>(find.byKey(ValueKey('fine-minus-$edited')))
+        .onPressed!();
+    await tester.pumpAndSettle();
+
+    expect(otherFinder.evaluate(), isNotEmpty);
+    final otherAfter = tester.widget<Slider>(otherFinder);
+    expect(otherAfter.value, otherValueBefore);
+    expect(otherAfter.max, 2880);
+    expect(tester.getRect(otherFinder), otherRectBefore);
+    expect(
+      tester
+          .widget<Slider>(find.byKey(ValueKey('target-slider-$edited')))
+          .value
+          .round(),
+      editedBefore - 10,
+    );
+  });
+
+  testWidgets('a slider still decreases when the budget is fully allocated', (
+    tester,
+  ) async {
+    await _pumpSetup(tester, league, onConfirm: confirmed.add);
+    await _pickTeam(tester, 'home', home);
+    await _pickTeam(tester, 'away', away);
+    await _openCustomEditor(tester);
+
+    final base = CourtLineup.defaultFor(home);
+    final dragged = base.playerIds.first;
+    final other = base.playerIds[1];
+    final draggedFinder = find.byKey(ValueKey('target-slider-$dragged'));
+    await _scrollTo(tester, draggedFinder);
+    expect(await _budgetText(tester, 'budget-available'), 'Available: 00:00');
+    final otherBefore = tester
+        .widget<Slider>(find.byKey(ValueKey('target-slider-$other')))
+        .value;
+
+    await tester.drag(draggedFinder, const Offset(-40, 0));
+    await tester.pumpAndSettle();
+
+    expect(
+      await _budgetText(tester, 'budget-available'),
+      isNot('Available: 00:00'),
+    );
+    expect(tester.widget<Slider>(draggedFinder).value.round(), lessThan(2880));
+    expect(
+      tester.widget<Slider>(find.byKey(ValueKey('target-slider-$other'))).value,
+      otherBefore,
+    );
   });
 
   testWidgets('rapid slider changes never exceed the team budget', (
