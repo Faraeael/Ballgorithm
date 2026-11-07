@@ -14,6 +14,9 @@ GameRequest testRequest(
   int homeIndex = testHomeIndex,
   int awayIndex = testAwayIndex,
   int rematchIndex = 0,
+  CourtLineup? homeLineup,
+  CourtLineup? awayLineup,
+  RotationPlan? rotationPlan,
 }) => GameRequest(
   league: league,
   homeTeamId: league.teams[homeIndex].id,
@@ -24,7 +27,86 @@ GameRequest testRequest(
     awayIndex: awayIndex,
     rematchIndex: rematchIndex,
   ),
+  homeLineup: homeLineup,
+  awayLineup: awayLineup,
+  rotationPlan: rotationPlan,
 );
+
+/// A valid lineup that is not `CourtLineup.defaultFor`: the first reserve
+/// occupies the first court slot.
+CourtLineup nonDefaultLineup(Team team) {
+  final base = CourtLineup.defaultFor(team);
+  final reserve = team.players.firstWhere(
+    (player) => !base.containsPlayer(player.id),
+  );
+  return CourtLineup.create(
+    team: team,
+    slotOrderedPlayers: [
+      reserve,
+      for (final slot in base.slots.skip(1)) slot.player!,
+    ],
+  );
+}
+
+/// The same plan the setup screen builds for one managed team and its
+/// deterministic opponent.
+RotationPlan managedPlan({
+  required League league,
+  required int homeIndex,
+  required int awayIndex,
+  required bool manageHome,
+  required CourtLineup managedLineup,
+  RotationPreset preset = RotationPreset.balanced,
+  Map<String, int>? customTargets,
+}) {
+  final home = league.teams[homeIndex];
+  final away = league.teams[awayIndex];
+  TeamRotationPlan planFor(
+    Team team,
+    CourtLineup lineup,
+    RotationPreset teamPreset,
+    Map<String, int>? custom,
+  ) {
+    final targets = teamPreset == RotationPreset.custom
+        ? <PlayerId, int>{
+            for (final player in team.players)
+              player.id: custom?[player.id.value] ?? 0,
+          }
+        : RotationPlan.expandPreset(
+            preset: teamPreset,
+            team: team,
+            lineup: lineup,
+            rules: GameRules.standard,
+          );
+    return TeamRotationPlan.create(
+      team: team,
+      preset: teamPreset,
+      targets: [
+        for (final player in team.players)
+          RotationTarget(playerId: player.id, seconds: targets[player.id] ?? 0),
+      ],
+    );
+  }
+
+  final managed = manageHome ? home : away;
+  final managedTeamPlan = planFor(
+    managed,
+    managedLineup,
+    preset,
+    customTargets,
+  );
+  final opponent = manageHome ? away : home;
+  final opponentPlan = planFor(
+    opponent,
+    CourtLineup.defaultFor(opponent),
+    RotationPreset.balanced,
+    null,
+  );
+  return RotationPlan(
+    home: manageHome ? managedTeamPlan : opponentPlan,
+    away: manageHome ? opponentPlan : managedTeamPlan,
+  );
+}
 
 /// The same input the worker builds, simulated on the calling isolate.
 GameResult simulateRequest(GameRequest request) {
@@ -43,10 +125,11 @@ GameResult simulateRequest(GameRequest request) {
       league: league,
       homeTeamId: request.homeTeamId,
       awayTeamId: request.awayTeamId,
-      homeLineup: CourtLineup.defaultFor(homeTeam),
-      awayLineup: CourtLineup.defaultFor(awayTeam),
+      homeLineup: request.homeLineup ?? CourtLineup.defaultFor(homeTeam),
+      awayLineup: request.awayLineup ?? CourtLineup.defaultFor(awayTeam),
       seed: request.seed,
       rules: GameRules.standard,
+      rotationPlan: request.rotationPlan,
     ),
   );
 }

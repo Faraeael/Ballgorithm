@@ -2,18 +2,28 @@ import 'package:flutter/foundation.dart';
 import 'package:simulation_core/simulation_core.dart';
 
 /// Everything one game needs, in a form that can cross an isolate boundary.
+///
+/// The lineups and the rotation plan are optional so M003 callers keep
+/// working: the worker builds `CourtLineup.defaultFor` only when a lineup is
+/// absent and passes a null plan through unchanged.
 final class GameRequest {
   const GameRequest({
     required this.league,
     required this.homeTeamId,
     required this.awayTeamId,
     required this.seed,
+    this.homeLineup,
+    this.awayLineup,
+    this.rotationPlan,
   });
 
   final League league;
   final TeamId homeTeamId;
   final TeamId awayTeamId;
   final int seed;
+  final CourtLineup? homeLineup;
+  final CourtLineup? awayLineup;
+  final RotationPlan? rotationPlan;
 }
 
 /// Incremented inside the worker. It stays zero on the calling isolate, which
@@ -38,10 +48,11 @@ GameResult _simulateGame(GameRequest request) {
     league: request.league,
     homeTeamId: request.homeTeamId,
     awayTeamId: request.awayTeamId,
-    homeLineup: CourtLineup.defaultFor(homeTeam),
-    awayLineup: CourtLineup.defaultFor(awayTeam),
+    homeLineup: request.homeLineup ?? CourtLineup.defaultFor(homeTeam),
+    awayLineup: request.awayLineup ?? CourtLineup.defaultFor(awayTeam),
     seed: request.seed,
     rules: GameRules.standard,
+    rotationPlan: request.rotationPlan,
   );
   return GameSimulator().simulate(input);
 }

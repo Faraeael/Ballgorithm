@@ -153,6 +153,12 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('confirm-matchup')),
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('confirm-matchup')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));

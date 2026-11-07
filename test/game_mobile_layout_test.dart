@@ -256,11 +256,9 @@ Future<void> _verifyFrozenIdentityAtRightmost(
     for (var attempt = 0; attempt < 8; attempt++) {
       final pf = find.byKey(ValueKey('player-stat-${ids.first}-PF'));
       if (tester.getRect(pf).left < size.width) break;
-      final start =
-          tester.getTopLeft(
-            find.byKey(ValueKey('player-stat-${ids.first}-PTS')),
-          ) +
-          const Offset(8, 12);
+      // Drag from a stable point inside the statistics pane; the leftmost
+      // metric slides under the fixed identity pane as the pane scrolls.
+      final start = Offset(size.width - 40, tester.getCenter(pf).dy);
       await tester.dragFrom(start, const Offset(-420, 0));
       await tester.pumpAndSettle();
     }
@@ -289,6 +287,7 @@ Future<void> _verifyFrozenIdentityAtRightmost(
       );
       for (final metric in [
         'MIN',
+        'TGT',
         'PTS',
         'FG',
         '3PT',

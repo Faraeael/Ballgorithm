@@ -3,12 +3,15 @@ import 'package:simulation_core/simulation_core.dart';
 
 import 'game_runner.dart';
 import 'game_seed.dart';
+import 'participation_view.dart';
 
-/// Game Day setup (T022): choose two distinct teams, confirm the matchup.
+/// Game Day setup (M003 T022, extended in M005 T05).
 ///
-/// The screen produces a [GameRequest] with the derived seed and hands it to
-/// [onConfirm]. It never runs a game, shows a score or invents a result; game
-/// execution belongs to T023.
+/// Choose two distinct teams, the managed side, its starting five and the
+/// playing-time plan. The screen produces a [GameRequest] with the derived
+/// seed, both lineups and both validated plans, and hands it to [onConfirm].
+/// It never runs a game, shows a score or invents a result, and it never
+/// duplicates the core preset or validation mathematics.
 class GameSetupScreen extends StatefulWidget {
   const GameSetupScreen({
     super.key,
@@ -24,8 +27,22 @@ class GameSetupScreen extends StatefulWidget {
 }
 
 class _GameSetupScreenState extends State<GameSetupScreen> {
+  static const int _quickSeconds = 10;
+  static const int _largeSeconds = 60;
+
   Team? _homeTeam;
   Team? _awayTeam;
+  bool _manageHome = true;
+  CourtLineup? _managedLineup;
+  RotationPreset _preset = RotationPreset.balanced;
+  final Map<String, int> _customTargets = <String, int>{};
+  String? _planError;
+
+  GameRules get _rules => GameRules.standard;
+
+  int get _cap => RotationPlan.regulationCap(_rules);
+
+  int get _teamTotal => 5 * _cap;
 
   int? _indexOf(Team? team) {
     if (team == null) return null;
@@ -49,30 +66,252 @@ class _GameSetupScreenState extends State<GameSetupScreen> {
     );
   }
 
+  bool get _matchupReady => _seed != null && _homeTeam != null;
+
+  Team? get _managedTeam => _manageHome ? _homeTeam : _awayTeam;
+
+  // --- Plan construction ---------------------------------------------------
+
+  TeamRotationPlan _planFor(
+    Team team,
+    CourtLineup lineup,
+    RotationPreset preset,
+    Map<String, int>? custom,
+  ) {
+    final targets = preset == RotationPreset.custom
+        ? <PlayerId, int>{
+            for (final player in team.players)
+              player.id: custom?[player.id.value] ?? 0,
+          }
+        : RotationPlan.expandPreset(
+            preset: preset,
+            team: team,
+            lineup: lineup,
+            rules: _rules,
+          );
+    return TeamRotationPlan.create(
+      team: team,
+      preset: preset,
+      targets: [
+        for (final player in team.players)
+          RotationTarget(playerId: player.id, seconds: targets[player.id] ?? 0),
+      ],
+    );
+  }
+
+  Map<String, int> _presetTargetSeconds(Team team, CourtLineup lineup) {
+    final preset = _preset == RotationPreset.custom
+        ? RotationPreset.balanced
+        : _preset;
+    final targets = RotationPlan.expandPreset(
+      preset: preset,
+      team: team,
+      lineup: lineup,
+      rules: _rules,
+    );
+    return {for (final entry in targets.entries) entry.key.value: entry.value};
+  }
+
+  /// The managed team's current target vector, in exact integer seconds.
+  Map<String, int> _managedTargets() {
+    final team = _managedTeam;
+    final lineup = _managedLineup;
+    if (team == null || lineup == null) return const <String, int>{};
+    if (_preset == RotationPreset.custom) return _customTargets;
+    return _presetTargetSeconds(team, lineup);
+  }
+
+  RotationPlan? _buildPlan() {
+    final home = _homeTeam;
+    final away = _awayTeam;
+    final managed = _managedTeam;
+    final lineup = _managedLineup;
+    if (home == null || away == null || managed == null || lineup == null) {
+      return null;
+    }
+    final managedPlan = _planFor(
+      managed,
+      lineup,
+      _preset,
+      _preset == RotationPreset.custom ? _customTargets : null,
+    );
+    final opponentPlan = _planFor(
+      _manageHome ? away : home,
+      CourtLineup.defaultFor(_manageHome ? away : home),
+      RotationPreset.balanced,
+      null,
+    );
+    return RotationPlan(
+      home: _manageHome ? managedPlan : opponentPlan,
+      away: _manageHome ? opponentPlan : managedPlan,
+    );
+  }
+
+  CourtLineup? get _homeLineup => _lineupFor(_manageHome, _homeTeam);
+
+  CourtLineup? get _awayLineup => _lineupFor(!_manageHome, _awayTeam);
+
+  CourtLineup? _lineupFor(bool managed, Team? team) {
+    if (team == null) return null;
+    if (managed) return _managedLineup ?? CourtLineup.defaultFor(team);
+    return CourtLineup.defaultFor(team);
+  }
+
+  /// Validates the complete candidate input with the core validator, so the UI
+  /// never invents a rule the engine would reject.
+  void _revalidate() {
+    final plan = _buildPlan();
+    final home = _homeTeam;
+    final away = _awayTeam;
+    final homeLineup = _homeLineup;
+    final awayLineup = _awayLineup;
+    final seed = _seed;
+    _planError = null;
+    if (plan == null ||
+        home == null ||
+        away == null ||
+        homeLineup == null ||
+        awayLineup == null ||
+        seed == null) {
+      return;
+    }
+    try {
+      GameInput.create(
+        gameId: '${home.id.value}-${away.id.value}-$seed',
+        league: widget.league,
+        homeTeamId: home.id,
+        awayTeamId: away.id,
+        homeLineup: homeLineup,
+        awayLineup: awayLineup,
+        seed: seed,
+        rules: _rules,
+        rotationPlan: plan,
+      );
+    } on GameValidationException catch (error) {
+      _planError = [for (final issue in error.issues) issue.message].join(' ');
+    } on DomainValidationException catch (error) {
+      _planError = [for (final issue in error.issues) issue.message].join(' ');
+    }
+  }
+
+  void _resetForMatchup({bool resetPreset = false}) {
+    final team = _managedTeam;
+    if (resetPreset && _preset == RotationPreset.custom) {
+      _preset = RotationPreset.balanced;
+    }
+    _managedLineup = team == null ? null : CourtLineup.defaultFor(team);
+    _customTargets.clear();
+    if (team != null && _managedLineup != null) {
+      if (_preset == RotationPreset.custom) {
+        _customTargets.addAll(_presetTargetSeconds(team, _managedLineup!));
+      }
+    }
+    _revalidate();
+  }
+
   void _select({required bool home, required Team team}) {
     setState(() {
+      final managedChanged = home == _manageHome;
       if (home) {
         _homeTeam = team;
       } else {
         _awayTeam = team;
       }
+      if (managedChanged) {
+        // The managed roster changed: rebuild its five and plan rather than
+        // keeping stale player identities.
+        _resetForMatchup();
+      } else {
+        _revalidate();
+      }
     });
   }
+
+  void _selectManaged(bool home) {
+    if (!_matchupReady || home == _manageHome) return;
+    setState(() {
+      _manageHome = home;
+      _resetForMatchup();
+    });
+  }
+
+  void _selectStarter(int slotIndex, String playerId) {
+    final team = _managedTeam;
+    final lineup = _managedLineup;
+    if (team == null || lineup == null) return;
+    final players = [
+      for (var index = 0; index < lineup.slots.length; index++)
+        if (index == slotIndex)
+          team.players.firstWhere((p) => p.id.value == playerId)
+        else
+          lineup.slots[index].player!,
+    ];
+    setState(() {
+      _managedLineup = CourtLineup.create(
+        team: team,
+        slotOrderedPlayers: players,
+      );
+    });
+    _revalidate();
+  }
+
+  void _selectPreset(RotationPreset preset) {
+    final team = _managedTeam;
+    final lineup = _managedLineup;
+    setState(() {
+      _preset = preset;
+      _customTargets.clear();
+      if (preset == RotationPreset.custom && team != null && lineup != null) {
+        // Starting point for custom editing: the current preset expansion.
+        _customTargets.addAll(_presetTargetSeconds(team, lineup));
+      }
+      _revalidate();
+    });
+  }
+
+  void _adjustCustom(String playerId, int delta) {
+    final current = _customTargets[playerId] ?? 0;
+    final next = current + delta;
+    if (next < 0 || next > _cap) return;
+    setState(() {
+      _customTargets[playerId] = next;
+      _revalidate();
+    });
+  }
+
+  bool get _canConfirm =>
+      _seed != null && _managedLineup != null && _planError == null;
 
   void _confirm() {
     final home = _homeTeam;
     final away = _awayTeam;
     final seed = _seed;
-    if (home == null || away == null || seed == null) return;
+    final plan = _buildPlan();
+    final homeLineup = _homeLineup;
+    final awayLineup = _awayLineup;
+    if (!_canConfirm ||
+        home == null ||
+        away == null ||
+        seed == null ||
+        plan == null ||
+        homeLineup == null ||
+        awayLineup == null) {
+      return;
+    }
     widget.onConfirm(
       GameRequest(
         league: widget.league,
         homeTeamId: home.id,
         awayTeamId: away.id,
         seed: seed,
+        homeLineup: homeLineup,
+        awayLineup: awayLineup,
+        rotationPlan: plan,
       ),
     );
   }
+
+  // --- Build ---------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -137,12 +376,317 @@ class _GameSetupScreenState extends State<GameSetupScreen> {
             key: const ValueKey('derived-seed'),
             style: theme.textTheme.bodyMedium,
           ),
+          if (_matchupReady) ...[
+            const SizedBox(height: 24),
+            _managedSection(theme, home!, away!),
+            const SizedBox(height: 20),
+            _startersSection(theme),
+            const SizedBox(height: 20),
+            _playingTimeSection(theme),
+          ],
           const SizedBox(height: 24),
+          if (_matchupReady && _planError != null) ...[
+            Text(
+              _planError!,
+              key: const ValueKey('plan-error'),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           FilledButton(
             key: const ValueKey('confirm-matchup'),
-            onPressed: seed != null ? _confirm : null,
+            onPressed: _canConfirm ? _confirm : null,
             child: const Text('Confirm matchup'),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionHeader(ThemeData theme, String title, String hint) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(title, style: theme.textTheme.titleSmall),
+      const SizedBox(height: 2),
+      Text(
+        hint,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+      const SizedBox(height: 8),
+    ],
+  );
+
+  Widget _managedSection(ThemeData theme, Team home, Team away) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionHeader(
+          theme,
+          'Manage',
+          'The opponent always uses its default five and a balanced plan.',
+        ),
+        SegmentedButton<bool>(
+          segments: [
+            ButtonSegment<bool>(
+              value: true,
+              label: Text(
+                home.abbreviation,
+                key: const ValueKey('managed-team-home'),
+              ),
+            ),
+            ButtonSegment<bool>(
+              value: false,
+              label: Text(
+                away.abbreviation,
+                key: const ValueKey('managed-team-away'),
+              ),
+            ),
+          ],
+          selected: {_manageHome},
+          onSelectionChanged: (selection) => _selectManaged(selection.first),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          _manageHome ? home.name : away.name,
+          key: const ValueKey('managed-team-name'),
+          style: theme.textTheme.bodyMedium,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+
+  Widget _startersSection(ThemeData theme) {
+    final team = _managedTeam;
+    final lineup = _managedLineup;
+    if (team == null || lineup == null) return const SizedBox.shrink();
+    final selected = {for (final slot in lineup.slots) slot.playerId.value};
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionHeader(
+          theme,
+          'Starting five',
+          'Slot position does not restrict a player; the five must be unique.',
+        ),
+        for (var index = 0; index < lineup.slots.length; index++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 36,
+                  child: Text(
+                    lineup.slots[index].slot.shortName,
+                    style: theme.textTheme.labelLarge,
+                  ),
+                ),
+                Expanded(
+                  child: DropdownButton<String>(
+                    key: ValueKey(
+                      'starter-slot-${lineup.slots[index].slot.shortName.toLowerCase()}',
+                    ),
+                    isExpanded: true,
+                    value: lineup.slots[index].playerId.value,
+                    items: [
+                      for (final player in team.players)
+                        if (player.id.value ==
+                                lineup.slots[index].playerId.value ||
+                            !selected.contains(player.id.value))
+                          DropdownMenuItem<String>(
+                            key: ValueKey(
+                              'starter-option-'
+                              '${lineup.slots[index].slot.shortName.toLowerCase()}'
+                              '-${player.id.value}',
+                            ),
+                            value: player.id.value,
+                            child: Text(
+                              '${player.fullName} · '
+                              '${player.position.shortName}',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _selectStarter(index, value));
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _playingTimeSection(ThemeData theme) {
+    final team = _managedTeam;
+    final lineup = _managedLineup;
+    if (team == null || lineup == null) return const SizedBox.shrink();
+    final targets = _managedTargets();
+    final total = targets.values.fold<int>(0, (sum, value) => sum + value);
+    final participants = _orderedPlayers(
+      team,
+      lineup,
+    ).where((player) => (targets[player.id.value] ?? 0) > 0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionHeader(
+          theme,
+          'Playing time',
+          'Targets are best-effort minutes, not guaranteed playing time.',
+        ),
+        SegmentedButton<RotationPreset>(
+          segments: const [
+            ButtonSegment<RotationPreset>(
+              value: RotationPreset.balanced,
+              label: Text('Balanced', key: ValueKey('preset-balanced')),
+            ),
+            ButtonSegment<RotationPreset>(
+              value: RotationPreset.starterHeavy,
+              label: Text(
+                'Starter-heavy',
+                key: ValueKey('preset-starterHeavy'),
+              ),
+            ),
+            ButtonSegment<RotationPreset>(
+              value: RotationPreset.custom,
+              label: Text('Custom', key: ValueKey('preset-custom')),
+            ),
+          ],
+          selected: {_preset},
+          onSelectionChanged: (selection) => _selectPreset(selection.first),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Team total: $total / $_teamTotal player-seconds',
+          key: const ValueKey('target-total'),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: total == _teamTotal
+                ? theme.colorScheme.onSurface
+                : theme.colorScheme.error,
+          ),
+        ),
+        const SizedBox(height: 8),
+        for (final player in participants)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    player.fullName,
+                    style: theme.textTheme.bodySmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Text(
+                  formatMinutes(targets[player.id.value] ?? 0),
+                  key: ValueKey('target-preview-${player.id.value}'),
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        if (_preset == RotationPreset.custom)
+          Theme(
+            data: theme.copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              key: const ValueKey('custom-editor'),
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: EdgeInsets.zero,
+              title: Text('Edit targets', style: theme.textTheme.bodyMedium),
+              subtitle: Text(
+                'Adjust in seconds; the total must stay $_teamTotal.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              children: [
+                for (final player in _orderedPlayers(team, lineup))
+                  _customRow(theme, team, lineup, player, targets),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  List<Player> _orderedPlayers(Team team, CourtLineup lineup) {
+    final byId = {for (final player in team.players) player.id.value: player};
+    final ordered = <Player>[
+      for (final slot in lineup.slots) byId[slot.playerId.value]!,
+    ];
+    final starters = {for (final slot in lineup.slots) slot.playerId.value};
+    ordered.addAll([
+      for (final player in team.players)
+        if (!starters.contains(player.id.value)) player,
+    ]);
+    return ordered;
+  }
+
+  Widget _customRow(
+    ThemeData theme,
+    Team team,
+    CourtLineup lineup,
+    Player player,
+    Map<String, int> targets,
+  ) {
+    final playerId = player.id.value;
+    final seconds = targets[playerId] ?? 0;
+    final starter = lineup.containsPlayer(player.id);
+    final label = starter
+        ? '${player.fullName} · ${player.position.shortName}'
+        : '${player.fullName} · ${player.position.shortName} (reserve)';
+    Widget adjust(int delta, String text) => Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: SizedBox(
+        height: 32,
+        child: OutlinedButton(
+          key: ValueKey('custom-adjust-$playerId-$delta'),
+          onPressed: seconds + delta < 0 || seconds + delta > _cap
+              ? null
+              : () => _adjustCustom(playerId, delta),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            minimumSize: const Size(34, 32),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: Text(text, style: theme.textTheme.labelSmall),
+        ),
+      ),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: theme.textTheme.bodySmall,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          SizedBox(
+            width: 44,
+            child: Text(
+              formatMinutes(seconds),
+              key: ValueKey('target-seconds-$playerId'),
+              textAlign: TextAlign.right,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+          adjust(-_largeSeconds, '-1m'),
+          adjust(-_quickSeconds, '-10s'),
+          adjust(_quickSeconds, '+10s'),
+          adjust(_largeSeconds, '+1m'),
         ],
       ),
     );

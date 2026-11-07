@@ -376,8 +376,19 @@ class GameResultView extends StatelessWidget {
     final rowHeights = {
       for (final row in rows) row.box.playerId: rowHeightFor(row),
     };
+    final plan = result.input.rotationPlan;
+    String targetFor(PlayerBoxScore box) {
+      final seconds = plan == null
+          ? 0
+          : (plan.home.targetSeconds[PlayerId(box.playerId)] ??
+                plan.away.targetSeconds[PlayerId(box.playerId)] ??
+                0);
+      return seconds == 0 ? '—' : formatMinutes(seconds);
+    }
+
     final metrics = <(String, String Function(PlayerBoxScore), double)>[
       ('MIN', (box) => formatMinutes(box.secondsPlayed), 56),
+      ('TGT', targetFor, 56),
       ('PTS', (box) => '${box.points}', 44),
       ('FG', (box) => '${box.fgm}/${box.fga}', 64),
       ('3PT', (box) => '${box.threePm}/${box.threePa}', 64),
@@ -538,10 +549,12 @@ class GameResultView extends StatelessWidget {
           'substituted after disqualification; foul-outs are modelled. If no '
           'eligible bench player remains, a disqualified player may continue. '
           'Technical-foul penalties for that continuation are not modelled, a '
-          'deliberate departure from the referenced NBA rule. Regular '
-          'rotations and fatigue are not modelled. Players who never entered '
-          'are excluded from these tables but remain in the full box model. '
-          'These results are simulated, not a claim of NBA realism.',
+          'deliberate departure from the referenced NBA rule. Targets are '
+          'best-effort. Foul-outs, disqualification rules and the limited '
+          'dead-ball windows can change minutes. Fatigue is not modelled. '
+          'Players who never entered are excluded from these tables but '
+          'remain in the full box model. These results are simulated, not a '
+          'claim of NBA realism.',
           key: const ValueKey('disclosure-participation'),
           style: muted,
         ),

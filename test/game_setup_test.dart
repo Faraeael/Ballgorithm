@@ -39,11 +39,22 @@ Future<void> _pick(WidgetTester tester, String role, Team team) async {
 String? _seedText(WidgetTester tester) =>
     tester.widget<Text>(find.byKey(const ValueKey('derived-seed'))).data;
 
-bool _confirmEnabled(WidgetTester tester) =>
-    tester
-        .widget<FilledButton>(find.byKey(const ValueKey('confirm-matchup')))
-        .onPressed !=
-    null;
+Future<void> _scrollToConfirm(WidgetTester tester) async {
+  await tester.scrollUntilVisible(
+    find.byKey(const ValueKey('confirm-matchup')),
+    160,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<bool> _confirmEnabled(WidgetTester tester) async {
+  await _scrollToConfirm(tester);
+  return tester
+          .widget<FilledButton>(find.byKey(const ValueKey('confirm-matchup')))
+          .onPressed !=
+      null;
+}
 
 List<String> _offeredIds(WidgetTester tester, String role) {
   final dropdown = tester.widget<DropdownButton<Team>>(
@@ -80,7 +91,7 @@ void main() {
     expect(find.text('Game Day Setup'), findsOneWidget);
     expect(find.byKey(const ValueKey('home-team-select')), findsOneWidget);
     expect(find.byKey(const ValueKey('away-team-select')), findsOneWidget);
-    expect(_confirmEnabled(tester), isFalse);
+    expect(await _confirmEnabled(tester), isFalse);
   });
 
   testWidgets('selecting both teams shows matchup and derived seed', (
@@ -112,7 +123,7 @@ void main() {
       rematchIndex: 0,
     );
     expect(_seedText(tester), 'Game seed: ${describeGameSeed(seed)}');
-    expect(_confirmEnabled(tester), isTrue);
+    expect(await _confirmEnabled(tester), isTrue);
   });
 
   testWidgets('the other role team is never offered for selection', (
@@ -155,10 +166,10 @@ void main() {
     await tester.pump();
 
     expect(_seedText(tester), seedBefore);
-    expect(_confirmEnabled(tester), isTrue);
     expect(find.text('${away.name} at ${home.name}'), findsOneWidget);
     expect(_offeredIds(tester, 'home'), isNot(contains(away.id.value)));
     expect(_offeredIds(tester, 'away'), isNot(contains(home.id.value)));
+    expect(await _confirmEnabled(tester), isTrue);
     expect(confirmed, isEmpty);
   });
 
@@ -175,6 +186,7 @@ void main() {
     await _pick(tester, 'home', home);
     await _pick(tester, 'away', away);
 
+    await _scrollToConfirm(tester);
     await tester.tap(find.byKey(const ValueKey('confirm-matchup')));
     await tester.pumpAndSettle();
 
@@ -236,11 +248,11 @@ void main() {
     addTearDown(tester.view.reset);
     await _pumpSetup(tester, league, onConfirm: confirmed.add);
 
-    expect(_confirmEnabled(tester), isFalse);
+    expect(await _confirmEnabled(tester), isFalse);
     await _pick(tester, 'home', league.teams[2]);
-    expect(_confirmEnabled(tester), isFalse);
+    expect(await _confirmEnabled(tester), isFalse);
     await _pick(tester, 'away', league.teams[4]);
-    expect(_confirmEnabled(tester), isTrue);
+    expect(await _confirmEnabled(tester), isTrue);
   });
 
   testWidgets('back navigation preserves the league and roster flow', (
@@ -292,7 +304,7 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
-      expect(_confirmEnabled(tester), isTrue);
+      expect(await _confirmEnabled(tester), isTrue);
       expect(tester.takeException(), isNull);
     });
   }

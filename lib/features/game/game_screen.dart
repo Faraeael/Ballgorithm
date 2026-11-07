@@ -119,11 +119,15 @@ class _GameScreenState extends State<GameScreen> {
     setState(() {
       _rematchIndex = next;
       _seedCycleRepeated = next == 0;
+      // Rematch preserves every management decision; only the seed advances.
       _currentRequest = GameRequest(
         league: _currentRequest.league,
         homeTeamId: _currentRequest.homeTeamId,
         awayTeamId: _currentRequest.awayTeamId,
         seed: seed,
+        homeLineup: _currentRequest.homeLineup,
+        awayLineup: _currentRequest.awayLineup,
+        rotationPlan: _currentRequest.rotationPlan,
       );
       _phase = _GamePhase.loading;
       _result = null;

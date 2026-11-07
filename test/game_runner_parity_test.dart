@@ -7,6 +7,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simulation_core/simulation_core.dart';
 
+import 'game_fixtures.dart';
+
 const _config = GenerationConfig(seed: 20261028);
 
 /// Independent control path: builds the same input the worker builds and runs
@@ -25,10 +27,11 @@ GameResult _simulateOnCallingIsolate(GameRequest request) {
     league: league,
     homeTeamId: request.homeTeamId,
     awayTeamId: request.awayTeamId,
-    homeLineup: CourtLineup.defaultFor(homeTeam),
-    awayLineup: CourtLineup.defaultFor(awayTeam),
+    homeLineup: request.homeLineup ?? CourtLineup.defaultFor(homeTeam),
+    awayLineup: request.awayLineup ?? CourtLineup.defaultFor(awayTeam),
     seed: request.seed,
     rules: GameRules.standard,
+    rotationPlan: request.rotationPlan,
   );
   return GameSimulator().simulate(input);
 }
@@ -157,6 +160,20 @@ void _expectConservation(GameResult result) {
         .fold<int>(0, (sum, player) => sum + player.secondsPlayed);
     expect(teamSeconds, 5 * total, reason: 'playing-time conservation $teamId');
   }
+}
+
+CourtLineup _nonDefaultLineup(Team team) {
+  final base = CourtLineup.defaultFor(team);
+  final reserve = team.players.firstWhere(
+    (player) => !base.containsPlayer(player.id),
+  );
+  return CourtLineup.create(
+    team: team,
+    slotOrderedPlayers: [
+      reserve,
+      for (final slot in base.slots.skip(1)) slot.player!,
+    ],
+  );
 }
 
 List<Object?> _substitutionIdentity(GameResult result) => [
@@ -296,6 +313,105 @@ void main() {
       ),
     );
   });
+
+  test(
+    'planned request transports lineups and plan through the worker',
+    () async {
+      final home = league.teams[3];
+      final away = league.teams[5];
+      final homeLineup = _nonDefaultLineup(home);
+      final awayLineup = CourtLineup.defaultFor(away);
+      final plan = managedPlan(
+        league: league,
+        homeIndex: 3,
+        awayIndex: 5,
+        manageHome: true,
+        managedLineup: homeLineup,
+      );
+      final planned = GameRequest(
+        league: league,
+        homeTeamId: home.id,
+        awayTeamId: away.id,
+        seed: request.seed,
+        homeLineup: homeLineup,
+        awayLineup: awayLineup,
+        rotationPlan: plan,
+      );
+
+      final worker = await runGame(planned);
+      final direct = _simulateOnCallingIsolate(planned);
+
+      expect(worker.input.lineupFor(home.id).playerIds, homeLineup.playerIds);
+      expect(
+        worker.input.lineupFor(home.id).playerIds,
+        isNot(CourtLineup.defaultFor(home).playerIds),
+      );
+      expect(worker.input.lineupFor(away.id).playerIds, awayLineup.playerIds);
+      expect(worker.input.rotationPlan, isNotNull);
+      expect(
+        worker.input.rotationPlan!.home.targetSeconds,
+        plan.home.targetSeconds,
+      );
+      expect(
+        worker.input.rotationPlan!.away.targetSeconds,
+        plan.away.targetSeconds,
+      );
+      expect(
+        worker.events.whereType<Substitution>().where(
+          (sub) => sub.reason == SubstitutionReason.tactical,
+        ),
+        isNotEmpty,
+        reason: 'an ignored plan would emit no tactical substitution',
+      );
+      expect(worker.inputFingerprint, direct.inputFingerprint);
+      expect(_ledgerDigest(worker), _ledgerDigest(direct));
+      expect(_substitutionIdentity(worker), _substitutionIdentity(direct));
+      _expectSameBoxScore(worker.boxScore, direct.boxScore);
+    },
+  );
+
+  test('plan without explicit lineups uses the default five', () async {
+    final home = league.teams[3];
+    final away = league.teams[5];
+    final homeLineup = CourtLineup.defaultFor(home);
+    final plan = managedPlan(
+      league: league,
+      homeIndex: 3,
+      awayIndex: 5,
+      manageHome: true,
+      managedLineup: homeLineup,
+    );
+    final planned = GameRequest(
+      league: league,
+      homeTeamId: home.id,
+      awayTeamId: away.id,
+      seed: request.seed,
+      rotationPlan: plan,
+    );
+    final worker = await runGame(planned);
+    expect(worker.input.lineupFor(home.id).playerIds, homeLineup.playerIds);
+    expect(worker.input.rotationPlan, isNotNull);
+    expect(
+      worker.events.whereType<Substitution>().where(
+        (sub) => sub.reason == SubstitutionReason.tactical,
+      ),
+      isNotEmpty,
+    );
+  });
+
+  test(
+    'null-plan request keeps the legacy path without tactical swaps',
+    () async {
+      final worker = await runGame(request);
+      expect(worker.input.rotationPlan, isNull);
+      expect(
+        worker.events.whereType<Substitution>().where(
+          (sub) => sub.reason == SubstitutionReason.tactical,
+        ),
+        isEmpty,
+      );
+    },
+  );
 
   test('worker overhead is recorded, not asserted', () async {
     final directWatch = Stopwatch()..start();

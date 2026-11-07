@@ -5,7 +5,10 @@ import 'package:basketball_manager/features/game/game_screen.dart';
 import 'package:basketball_manager/features/game/game_seed.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:basketball_manager/features/game/participation_view.dart';
 import 'package:simulation_core/simulation_core.dart';
+
+import 'game_fixtures.dart';
 
 const _config = GenerationConfig(seed: 20261028);
 const _homeIndex = 3;
@@ -52,10 +55,11 @@ GameResult _simulate(GameRequest request) {
       league: league,
       homeTeamId: request.homeTeamId,
       awayTeamId: request.awayTeamId,
-      homeLineup: CourtLineup.defaultFor(homeTeam),
-      awayLineup: CourtLineup.defaultFor(awayTeam),
+      homeLineup: request.homeLineup ?? CourtLineup.defaultFor(homeTeam),
+      awayLineup: request.awayLineup ?? CourtLineup.defaultFor(awayTeam),
       seed: request.seed,
       rules: GameRules.standard,
+      rotationPlan: request.rotationPlan,
     ),
   );
 }
@@ -558,6 +562,125 @@ void main() {
       _text(tester, const ValueKey('result-seed')),
       'Seed ${describeGameSeed(0)}',
     );
+  });
+
+  testWidgets(
+    'rematch preserves lineups and plans and advances only the seed',
+    (tester) async {
+      final home = league.teams[_homeIndex];
+      final away = league.teams[_awayIndex];
+      final homeLineup = nonDefaultLineup(home);
+      final awayLineup = CourtLineup.defaultFor(away);
+      final plan = managedPlan(
+        league: league,
+        homeIndex: _homeIndex,
+        awayIndex: _awayIndex,
+        manageHome: true,
+        managedLineup: homeLineup,
+      );
+      final planned = GameRequest(
+        league: league,
+        homeTeamId: home.id,
+        awayTeamId: away.id,
+        seed: baseRequest.seed,
+        homeLineup: homeLineup,
+        awayLineup: awayLineup,
+        rotationPlan: plan,
+      );
+      final controlled = _ControlledRunner();
+      await _pumpGame(tester, planned, controlled.run);
+      controlled.pending.single.complete(_simulate(planned));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('rematch-game')));
+      await tester.pump();
+
+      expect(controlled.requests, hasLength(2));
+      final rematch = controlled.requests.last;
+      expect(rematch.league, same(league));
+      expect(rematch.homeTeamId.value, home.id.value);
+      expect(rematch.awayTeamId.value, away.id.value);
+      expect(rematch.homeLineup!.playerIds, homeLineup.playerIds);
+      expect(rematch.awayLineup!.playerIds, awayLineup.playerIds);
+      expect(rematch.rotationPlan!.home.targetSeconds, plan.home.targetSeconds);
+      expect(rematch.rotationPlan!.away.targetSeconds, plan.away.targetSeconds);
+      expect(rematch.rotationPlan!.home.preset, plan.home.preset);
+      expect(
+        rematch.seed,
+        deriveGameSeed(
+          leagueSeed: league.config.seed,
+          homeIndex: _homeIndex,
+          awayIndex: _awayIndex,
+          rematchIndex: 1,
+        ),
+      );
+      expect(rematch.seed, isNot(planned.seed));
+
+      final next = _simulate(rematch);
+      expect(next.input.lineupFor(home.id).playerIds, homeLineup.playerIds);
+      expect(
+        next.input.rotationPlan!.home.targetSeconds,
+        plan.home.targetSeconds,
+      );
+    },
+  );
+
+  testWidgets('planned targets render separately from actual minutes', (
+    tester,
+  ) async {
+    final home = league.teams[_homeIndex];
+    final away = league.teams[_awayIndex];
+    final homeLineup = nonDefaultLineup(home);
+    final plan = managedPlan(
+      league: league,
+      homeIndex: _homeIndex,
+      awayIndex: _awayIndex,
+      manageHome: true,
+      managedLineup: homeLineup,
+    );
+    final planned = GameRequest(
+      league: league,
+      homeTeamId: home.id,
+      awayTeamId: away.id,
+      seed: baseRequest.seed,
+      homeLineup: homeLineup,
+      awayLineup: CourtLineup.defaultFor(away),
+      rotationPlan: plan,
+    );
+    final result = _simulate(planned);
+    final controlled = _ControlledRunner();
+    await _pumpGame(tester, planned, controlled.run);
+    controlled.pending.single.complete(result);
+    await tester.pump();
+
+    final target = plan.home.targetSeconds.entries.first;
+    final actual = result.boxScore.players[target.key.value]!.secondsPlayed;
+    expect(
+      _text(tester, ValueKey('player-stat-${target.key.value}-TGT')),
+      formatMinutes(target.value),
+    );
+    expect(
+      _text(tester, ValueKey('player-stat-${target.key.value}-MIN')),
+      formatMinutes(actual),
+    );
+    expect(target.value, isNot(actual));
+
+    final disclosure = _text(
+      tester,
+      const ValueKey('disclosure-participation'),
+    );
+    expect(
+      disclosure,
+      contains(
+        'Targets are best-effort. Foul-outs, disqualification rules and the '
+        'limited dead-ball windows can change minutes.',
+      ),
+    );
+    expect(
+      disclosure,
+      isNot(contains('rotations and fatigue are not modelled')),
+    );
+    expect(disclosure, contains('Fatigue is not modelled'));
   });
 
   testWidgets('rematch advances the seed and changes the fingerprint', (
