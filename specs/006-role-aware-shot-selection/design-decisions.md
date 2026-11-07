@@ -1,4 +1,4 @@
-# Design Decisions 006 — Role-Aware Shot Selection v1 (DRAFT, rev 2)
+# Design Decisions 006 — Role-Aware Shot Selection v1 (DRAFT, rev 3)
 
 > **Status: DRAFT — proposals only. No owner approval exists.** Revision 2 corrects the rev-1 role
 > score and zone table after the normalized-probability and role-bias audit.
@@ -39,6 +39,12 @@ through the existing position bases and slot bonuses; only the role ranking is p
 **Trade-offs.** 1.35 concentrates roughly a third of attempts on the primary creator in strong
 lineups; 1.15/1.05 would be gentler but may be statistically invisible. Closing the gap between rank
 0 and rank 1 reduces concentration; owner choice.
+
+**Acceptance correction.** No rule requires the primary-creation player to out-shoot every secondary
+or neutral player. Verified properties are: exact incremental weight change for identical attributes,
+correct assignment, pre-normalisation ordering by rank, recomputed assignment after substitutions,
+multipliers never below 1.0, and no forced suppression of a high-usage scorer whose creation rank is
+lower. Normalised dilution of a neutral scorer is reported, not asserted as an ordering.
 
 ## DD-M006-03 — Zone curve: default and alternatives
 
@@ -84,12 +90,30 @@ a capability v1 does not need.
 Debug-only callback mirroring `onPhaseTrace`: reports drawn zone and weights; never enters the
 ledger or fingerprint. Alternative: ledger-derived metrics only.
 
-## DD-M006-06 — Evaluation protocol (to be frozen before cohorts)
+## DD-M006-08 — Dormant policy code, atomic activation
 
-Metrics, denominators and open thresholds are defined in `verification-plan.md` §3–§5. Controlled,
-formula-level expectations (normalized probabilities and usage shares) are deterministic and need no
-cohort. Empirical thresholds are **OPEN** until a v6 baseline cohort establishes variance; the
-minimum baseline needed is stated there.
+**Proposal.** T01–T03 add pure, unit-tested policy functions beside the v6 implementations without
+changing production call sites or version constants; a dormancy test asserts production weights equal
+the v6 reference vectors. T04 switches the call sites, bumps simulation 7 / fingerprint 5, pins v7
+fixtures and migrates historical tests in one commit.
+
+**Why.** The rev-2 plan bumped versions in T01, which would have made intermediate commits fail the
+existing suite or expose the new contract before behaviour existed. Dormancy keeps every
+intermediate commit meaningful and green.
+
+**Trade-offs.** T01–T03 ship code not yet used in production; the dormancy tests and a source scan
+guard against accidental early activation. No second engine, feature flag or duplicate pipeline is
+introduced.
+
+## DD-M006-06 — Three-stage evaluation protocol
+
+**Proposal.** (A) a pre-registered development pilot on development seeds only, estimating
+per-game variance, eligibility counts and sample size; (B) a frozen confirmatory protocol approved
+by the owner before any held-out run; (C) exactly one held-out evaluation. Per-game pooled
+proportions and paired game differences are the analysis objects; uncertainty comes from a bootstrap
+over paired games, never an independent-attempt formula. Thresholds stay OPEN until the pilot and
+Stage B freeze. Eligibility minimums and the insufficiency rule are defined in
+`verification-plan.md` §5. No cohort runs during design.
 
 ## DD-M006-07 — Version boundary and historical fixture migration
 

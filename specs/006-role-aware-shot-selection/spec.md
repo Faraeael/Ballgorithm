@@ -1,4 +1,4 @@
-# Specification 006 — Role-Aware Shot Selection v1 (DRAFT, rev 2)
+# Specification 006 — Role-Aware Shot Selection v1 (DRAFT, rev 3)
 
 > **Status: DRAFT — NOT FROZEN — NOT AUTHORIZED FOR IMPLEMENTATION.**
 > Revision 2 of 2026-11-07 on `design/m006-role-aware-shot-selection`, branched from `develop/m002`
@@ -52,7 +52,12 @@ current `TeamOnCourt`.
 
 The role is a **weight-shaping classification**, not a simulated ballhandler. It does not decide
 turnovers, offensive fouls or non-shooting-foul actors (those keep their independent draw), and it
-does not model possession-level ball movement.
+does not model possession-level ball movement. No acceptance rule requires the primary-creation
+player to out-shoot every secondary or neutral player; see §4.
+
+Implementation sequencing: the role helper, usage policy and zone policy are added as dormant,
+unit-tested functions while production keeps v6 behaviour; activation, the version bump and the
+fixture migration land together in one later task (`plan.md` §1).
 
 ### 3.2 Usage policy
 
@@ -103,8 +108,9 @@ drawn zone and weights to tests without entering the ledger or fingerprint.
 
 ### 3.5 Versioning
 
-simulation **7**, fingerprint **5** (atomic); rules 3, schema 3, duration model 2,
-`xorshift32-v1` unchanged; M001 identifiers unchanged. No v6/v7 ledger or whole-game draw-count
+simulation **7**, fingerprint **5**, landing atomically with activation in T04 — no earlier commit
+changes a version constant; rules 3, schema 3, duration model 2, `xorshift32-v1` unchanged; M001
+identifiers unchanged. No v6/v7 ledger or whole-game draw-count
 equality is claimed. Historical v1–v6 fixture files are untouched; M006 adds v7 fixtures. The
 historical fixture migration strategy is in `verification-plan.md` §2.
 
@@ -123,6 +129,11 @@ differences, reliable typed cross-version rejection.
 | Shooter usage | Normalised draw weights for “who attempts the shot” | Not an assist, turnover or foul attribution |
 | Turnover/offensive-foul/non-shooting-foul actor | Independent draw from the ball-handler score, unchanged | Not influenced by the role multiplier |
 | Possession-level ball handling | Not implemented | The role classification must not be described as it |
+
+Role acceptance is verified by incremental weight changes for identical attributes, correct primary
+and secondary assignment, pre-normalisation ordering, recomputation after substitutions and the
+absence of any multiplier below 1.0. A high-usage scorer whose creation rank is neutral keeps the
+same raw weight; normalised dilution is reported, not treated as a violation.
 
 Metrics must classify a player **at the moment of each shot**, replaying substitutions from the
 ledger, not by starting lineups.
