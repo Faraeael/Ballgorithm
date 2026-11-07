@@ -1,4 +1,4 @@
-# Design Decisions 006 — Role-Aware Shot Selection v1 (DRAFT, rev 3)
+# Design Decisions 006 — Role-Aware Shot Selection v1 (DRAFT, rev 4)
 
 > **Status: DRAFT — proposals only. No owner approval exists.** Revision 2 corrects the rev-1 role
 > score and zone table after the normalized-probability and role-bias audit.
@@ -90,21 +90,6 @@ a capability v1 does not need.
 Debug-only callback mirroring `onPhaseTrace`: reports drawn zone and weights; never enters the
 ledger or fingerprint. Alternative: ledger-derived metrics only.
 
-## DD-M006-08 — Dormant policy code, atomic activation
-
-**Proposal.** T01–T03 add pure, unit-tested policy functions beside the v6 implementations without
-changing production call sites or version constants; a dormancy test asserts production weights equal
-the v6 reference vectors. T04 switches the call sites, bumps simulation 7 / fingerprint 5, pins v7
-fixtures and migrates historical tests in one commit.
-
-**Why.** The rev-2 plan bumped versions in T01, which would have made intermediate commits fail the
-existing suite or expose the new contract before behaviour existed. Dormancy keeps every
-intermediate commit meaningful and green.
-
-**Trade-offs.** T01–T03 ship code not yet used in production; the dormancy tests and a source scan
-guard against accidental early activation. No second engine, feature flag or duplicate pipeline is
-introduced.
-
 ## DD-M006-06 — Three-stage evaluation protocol
 
 **Proposal.** (A) a pre-registered development pilot on development seeds only, estimating
@@ -121,3 +106,47 @@ simulation 7 / fingerprint 5; rules 3, schema 3, duration 2, PRNG unchanged. No 
 draw-count equality; per-branch draw order fixed; repeat identity and VM/Chrome parity required.
 Historical fixture migration (no dual engine, no rebaseline) is specified in
 `verification-plan.md` §2. This migration plan is itself an owner decision.
+## DD-M006-08 — Dormant policy code, atomic activation
+
+**Proposal.** T01–T03 add pure, unit-tested policy functions beside the v6 implementations without
+changing production call sites or version constants; a dormancy test asserts production weights equal
+the v6 reference vectors. T04 switches the call sites, bumps simulation 7 / fingerprint 5, pins v7
+fixtures and migrates historical tests in one commit.
+
+**Why.** The rev-2 plan bumped versions in T01, which would have made intermediate commits fail the
+existing suite or expose the new contract before behaviour existed. Dormancy keeps every
+intermediate commit meaningful and green.
+
+**Trade-offs.** T01–T03 ship code not yet used in production; the dormancy tests and a source scan
+guard against accidental early activation. No second engine, feature flag or duplicate pipeline is
+introduced.
+
+## DD-M006-09 — Ability, preference, opportunity and coaching are separate layers
+
+**Proposal.** Keep four concepts distinct even where they read the same ratings:
+
+| Layer | M006 v1 | Persistence | Changes accuracy? |
+|---|---|---|---|
+| Ability (shot success) | Existing `shotMakeBasisPoints` and free-throw formulas | Existing | n/a — unchanged |
+| Derived shot preference | Zone willingness derived from attributes, 70/30 three curve | Non-persistent, computed | **No** |
+| Offensive opportunity | Position-free creation ranking × 1.35/1.15/1.00 usage factors | Non-persistent, computed | **No** |
+| Coaching strategy | None in M006 | — | — |
+
+**Why.** Usage, zone preference and success already exist as separate functions, but they share
+rating inputs and are easy to conflate. Naming the layers makes each separately testable: changing a
+preference weight must not change a make probability, and changing an opportunity weight must not
+change a zone-specific conversion.
+
+**Trade-offs.** Derived preferences are still ability-correlated; genuine tendency ratings that are
+independent of ability are deferred, so “preference” here means “willingness inferred from
+attributes”, not an editable personality trait. No `Player` schema change.
+
+## DD-M006-10 — Coaching strategy is a documented boundary, not M006 scope
+
+**Proposal.** Future coaching features (offensive focus, featured scorers, balanced/perimeter/interior
+emphasis) would be a separate team-level weight layer. M006 adds no configuration, playbook,
+defensive scheme or coaching AI, and no event or schema support for them.
+
+**Trade-offs.** Documenting the boundary prevents accidental scope creep; it also means roster-level
+opportunity cannot yet be overridden by a coach's game plan.
+

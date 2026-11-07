@@ -1,4 +1,4 @@
-# Acceptance Matrix 006 — Role-Aware Shot Selection v1 (DRAFT, rev 3)
+# Acceptance Matrix 006 — Role-Aware Shot Selection v1 (DRAFT, rev 4)
 
 > **Status: DRAFT — every row is NOT RUN.** No criterion may be marked PASS before the activation
 > evidence, the pre-registered evaluation and the owner decisions.
@@ -37,6 +37,13 @@
 | AC-M006-30 | T06 | Owner review can observe the weak shooter, primary creator and stretch-big behaving differently in box scores, stated as directional only | Owner review record | NOT RUN |
 | AC-M006-31 | T06 | Scope compliance: no fatigue, injuries, coaching AI, defensive schemes, trades, contracts, seasons, persistence, ball movement, turnover/assist redistribution, new PRNG or real-player data | File and API diff review | NOT RUN |
 
+| AC-M006-32 | T04 | Shot-success coefficients are unchanged from v6: make, and-one, shooting-foul, free-throw, assist and block reference vectors are identical | Coefficient reference tests | NOT RUN |
+| AC-M006-33 | T02 | Changing only the opportunity factor changes actor weights and never alters the zone-specific make probability for a fixed shooter, defender and zone | Layer-separation test | NOT RUN |
+| AC-M006-34 | T03 | Changing only the derived preference weight changes zone selection and never alters shot accuracy or conversion coefficients | Layer-separation test | NOT RUN |
+| AC-M006-35 | T01 | The same player is classified differently when his on-court teammates change; no persisted role follows him across lineups | Reclassification tests | NOT RUN |
+| AC-M006-36 | T01 | Turnover, offensive-foul and non-shooting-foul actor selection remains separate from role/preference and unchanged in kind | Actor-path tests | NOT RUN |
+| AC-M006-37 | T01–T04 | No new random draw stage is introduced and no `Player` schema or snapshot migration occurs | Draw audit; schema diff | NOT RUN |
+
 ## Explicit non-claims
 
 - No NBA realism, calibration or win-rate claim.
@@ -44,6 +51,8 @@
 - No Android or device-performance claim.
 - No claim that any generated league contains a genuine stretch-five without constructed fixtures.
 - No claim that the primary-creation player must always out-shoot a secondary or neutral player.
+- No claim that derived preferences are editable, ability-independent player tendencies.
+- No claim of reproducing NBA 2K's proprietary probability formulas or coaching systems.
 
 ## Preserved historical records
 

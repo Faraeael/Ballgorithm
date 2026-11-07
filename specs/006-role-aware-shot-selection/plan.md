@@ -1,4 +1,4 @@
-# Plan 006 — Role-Aware Shot Selection v1 (DRAFT, rev 3)
+# Plan 006 — Role-Aware Shot Selection v1 (DRAFT, rev 4)
 
 > **Status: DRAFT — NOT FROZEN.** No task is authorized. Baseline `develop/m002`
 > `d642e7880f38dac0b14f2a55a35bd1282d9f9bd3`.
@@ -13,8 +13,8 @@ versions and migrates historical tests together.
 | Task | Purpose | Behaviour visible? | Version bump? | Key deliverable |
 |---|---|---|---|---|
 | T01 | Dormant role helper | No | No | Pure, position-free creation ranking and role assignment functions plus unit tests; production call sites untouched |
-| T02 | Dormant usage policy | No | No | Pure role-adjusted usage weights plus unit tests; `selectAction` still calls the v6 weights |
-| T03 | Dormant zone policy | No | No | Pure piecewise three-point weight plus unit tests; production zone function unchanged |
+| T02 | Dormant opportunity weights | No | No | Pure role-adjusted usage weights plus unit tests; `selectAction` still calls the v6 weights |
+| T03 | Dormant derived shot preferences | No | No | Pure piecewise three-point weight plus unit tests; production zone function and make coefficients unchanged |
 | T04 | Activation, version boundary, fixtures and migration | Yes (v7) | Yes, atomic 7/5 | Switch the three call sites; bump simulation 7 / fingerprint 5; land the v7 fixture; migrate historical tests per `verification-plan.md` §2 |
 | T05 | Instrumentation and metrics | No | No | Optional debug shot observer; ledger metrics; shot-time role classification |
 | T06 | Pilot, protocol freeze, held-out evaluation and owner review | No | No | Three-stage evidence process (see §3) |

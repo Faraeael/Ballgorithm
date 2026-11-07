@@ -1,4 +1,4 @@
-# Tasks 006 — Role-Aware Shot Selection v1 (DRAFT, rev 3)
+# Tasks 006 — Role-Aware Shot Selection v1 (DRAFT, rev 4)
 
 > **Status: DRAFT — NOT AUTHORIZED.** No task may start without a separate owner authorization.
 > Sequencing: T01–T03 add dormant, unit-tested policy code; T04 activates it and bumps versions
@@ -16,15 +16,17 @@
   path untouched); dormancy test proving production weights equal the v6 reference vectors.
 - [ ] Document the classification-versus-ballhandler distinction where the helper is introduced.
 
-## T02 — Dormant usage policy (no behaviour change)
+## T02 — Dormant opportunity weights (no behaviour change)
 
 - [ ] Add a pure function `roleAdjustedUsage(rawWeights, roleRanking)` applying 1.35 / 1.15 / 1.00
   before normalisation; no call site changes yet.
 - [ ] Tests: multiplier application, floor preservation, normalisation sum, shuffled roster
   equality, raw ordering preserved before normalisation; dormancy test asserting `selectAction`
   still consumes the v6 weight vector.
+- [ ] Layer test: changing only the opportunity factor changes actor weights and never the
+  zone-specific make probability for a fixed shooter, defender and zone.
 
-## T03 — Dormant zone policy (no behaviour change)
+## T03 — Dormant derived shot preferences (no behaviour change)
 
 - [ ] Add a pure function `threePointWeight(shooter, slotIndex, phase)` implementing the 70/30
   piecewise ability curve; production zone function unchanged.
@@ -32,6 +34,9 @@
   non-shooting C 12.3%, high-three C 38.5%, high-three F 40.3%, median 45.2%.
 - [ ] Tests: no new draws; inside/midrange formulas untouched; dormancy test asserting production
   zone weights equal the v6 reference vectors.
+- [ ] Layer test: changing only the three-point preference weight changes zone selection and leaves
+  `shotMakeBasisPoints` byte-identical for the same shooter/defender/zone; make, foul, assist and
+  block coefficients are unchanged from v6 reference vectors.
 
 ## T04 — Activation, atomic version bump, fixtures and migration
 

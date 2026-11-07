@@ -1,4 +1,4 @@
-# Verification Plan 006 — Role-Aware Shot Selection v1 (DRAFT, rev 3)
+# Verification Plan 006 — Role-Aware Shot Selection v1 (DRAFT, rev 4)
 
 > **Status: DRAFT — nothing here has been executed.** Rev 3 corrects the implementation sequence,
 > the role acceptance rules and the evaluation protocol. Baseline `develop/m002`
@@ -10,7 +10,8 @@
 |---|---|---|
 | Contract | Role ranking, version boundary | Position-free ranking, tie-break, atomic 7/5 bump in T04 only |
 | Dormancy | No behaviour change before activation | Production weights equal v6 reference vectors; no production call site uses the new functions |
-| Weight unit | Usage and zone policy | Multipliers, normalisation, piecewise curve, floors, shuffled input equality |
+| Weight unit | Opportunity and preference policy | Multipliers, normalisation, piecewise curve, floors, shuffled input equality |
+| Layer separation | Ability vs preference vs opportunity | Make vectors unchanged; actor-weight change leaves make probability fixed; zone-weight change leaves accuracy fixed; actors separate; no new draws; no schema |
 | Determinism | Repeatability and parity | Repeat-run identity, Dart VM/Chrome equality, per-branch draw-order audit |
 | Simulator | Ledger integrity | Reducer acceptance, accounting conservation, no new event types |
 | Fixtures | Versioned evidence | New v7 digest; v1–v6 archived bytes preserved |
@@ -90,6 +91,15 @@ Role acceptance (corrected):
    high-usage scorer ranked neutral keeps the identical raw weight; any normalised-share dilution is
    reported, not asserted as an ordering requirement. There is no rule that the primary-creation
    player must out-shoot every secondary or neutral player.
+
+6. **Same player, different teammates.** A player's classification changes when the on-court five
+   changes, with no persisted role.
+7. **Actor separation.** Turnover, offensive-foul and non-shooting-foul actors keep their separate
+   draw and are unchanged in kind.
+8. **No new randomness or schema.** No new draw stage; `Player` and snapshot schema unchanged.
+9. **Layer isolation.** For a fixed shooter/defender/zone, `shotMakeBasisPoints` is identical before
+   and after any opportunity or preference change; all conversion coefficients equal the v6
+   reference vectors.
 
 Role remains a classification; turnover and foul actors keep their separate draw.
 
