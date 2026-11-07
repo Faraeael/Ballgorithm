@@ -81,6 +81,31 @@ Future<String> _targetText(WidgetTester tester, String playerId) async {
   return tester.widget<Text>(finder).data!;
 }
 
+Future<void> _openCustomEditor(WidgetTester tester) async {
+  await _scrollTo(tester, find.byKey(const ValueKey('preset-custom')));
+  await tester.tap(find.byKey(const ValueKey('preset-custom')));
+  await tester.pumpAndSettle();
+  await _scrollTo(tester, find.byKey(const ValueKey('custom-editor')));
+  await tester.tap(find.byKey(const ValueKey('custom-editor')));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _expectCustomTargets(
+  WidgetTester tester,
+  Team team,
+  Map<PlayerId, int> expected,
+) async {
+  for (final player in team.players) {
+    final finder = find.byKey(ValueKey('target-seconds-${player.id.value}'));
+    await _scrollTo(tester, finder);
+    expect(
+      tester.widget<Text>(finder).data,
+      formatMinutes(expected[player.id]!),
+      reason: 'custom target for ${player.id.value}',
+    );
+  }
+}
+
 void main() {
   late League league;
   late Team home;
@@ -249,6 +274,60 @@ void main() {
         )[PlayerId(starter)]!,
       ),
     );
+  });
+
+  testWidgets('starter-heavy targets seed custom editing exactly', (
+    tester,
+  ) async {
+    await _pumpSetup(tester, league, onConfirm: confirmed.add);
+    await _pickTeam(tester, 'home', home);
+    await _pickTeam(tester, 'away', away);
+
+    await _scrollTo(tester, find.byKey(const ValueKey('preset-starterHeavy')));
+    await tester.tap(find.byKey(const ValueKey('preset-starterHeavy')));
+    await tester.pumpAndSettle();
+
+    final base = CourtLineup.defaultFor(home);
+    final starterHeavy = _expanded(home, base, RotationPreset.starterHeavy);
+    final balanced = _expanded(home, base, RotationPreset.balanced);
+    expect(starterHeavy, isNot(balanced));
+
+    await _openCustomEditor(tester);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('target-total'))).data,
+      'Team total: 14400 / 14400 player-seconds',
+    );
+    await _expectCustomTargets(tester, home, starterHeavy);
+
+    await _confirm(tester);
+    final plan = confirmed.single.rotationPlan!;
+    expect(plan.home.preset, RotationPreset.custom);
+    expect(plan.home.targetSeconds, starterHeavy);
+    expect(
+      plan.home.targetSeconds.values.fold<int>(0, (sum, value) => sum + value),
+      5 * 720 * 4,
+    );
+  });
+
+  testWidgets('balanced targets seed custom editing exactly', (tester) async {
+    await _pumpSetup(tester, league, onConfirm: confirmed.add);
+    await _pickTeam(tester, 'home', home);
+    await _pickTeam(tester, 'away', away);
+
+    final base = CourtLineup.defaultFor(home);
+    final balanced = _expanded(home, base, RotationPreset.balanced);
+
+    await _openCustomEditor(tester);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('target-total'))).data,
+      'Team total: 14400 / 14400 player-seconds',
+    );
+    await _expectCustomTargets(tester, home, balanced);
+
+    await _confirm(tester);
+    final plan = confirmed.single.rotationPlan!;
+    expect(plan.home.preset, RotationPreset.custom);
+    expect(plan.home.targetSeconds, balanced);
   });
 
   testWidgets('custom editing conserves the exact team total', (tester) async {

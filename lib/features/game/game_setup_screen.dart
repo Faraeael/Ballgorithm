@@ -259,12 +259,25 @@ class _GameSetupScreenState extends State<GameSetupScreen> {
     final team = _managedTeam;
     final lineup = _managedLineup;
     setState(() {
-      _preset = preset;
       _customTargets.clear();
       if (preset == RotationPreset.custom && team != null && lineup != null) {
-        // Starting point for custom editing: the current preset expansion.
-        _customTargets.addAll(_presetTargetSeconds(team, lineup));
+        // Starting point for custom editing: the allocation the user was just
+        // shown. Resolve the active preset before switching, so custom never
+        // silently inherits an unrelated preset's numbers.
+        final source = _preset == RotationPreset.custom
+            ? RotationPreset.balanced
+            : _preset;
+        final starting = RotationPlan.expandPreset(
+          preset: source,
+          team: team,
+          lineup: lineup,
+          rules: _rules,
+        );
+        _customTargets.addAll({
+          for (final entry in starting.entries) entry.key.value: entry.value,
+        });
       }
+      _preset = preset;
       _revalidate();
     });
   }
