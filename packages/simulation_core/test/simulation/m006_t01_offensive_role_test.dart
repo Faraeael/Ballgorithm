@@ -355,11 +355,19 @@ void main() {
         anyOf(OffensiveRole.secondary, OffensiveRole.neutral),
       );
 
-      // v6 usage is not role-adjusted: the scorer can still carry high usage.
-      final weights = BasketballProbabilityModel().shotUsageWeights(lineup);
+      // M006 T04: the raw usage weight still favours the scorer; the role
+      // multiplier then lifts the creator. Normalised dilution of a neutral
+      // scorer is reported, never asserted as an ordering rule (AC-M006-09).
+      final model = BasketballProbabilityModel();
+      final raw = model.rawShotUsageWeights(lineup);
       final scorerIndex = lineup.slotIndexForPlayer(const PlayerId('scorer'));
       final creatorIndex = lineup.slotIndexForPlayer(const PlayerId('creator'));
-      expect(weights[scorerIndex], greaterThan(weights[creatorIndex]));
+      expect(raw[scorerIndex], greaterThan(raw[creatorIndex]));
+
+      final weights = model.shotUsageWeights(lineup);
+      expect(weights.fold<int>(0, (a, b) => a + b), 10000);
+      expect(weights[scorerIndex], greaterThan(0));
+      expect(weights[creatorIndex], greaterThan(weights[scorerIndex]));
     },
   );
 }

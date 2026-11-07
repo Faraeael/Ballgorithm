@@ -107,7 +107,8 @@ const _highThreeC = _Archetype('high-three c', Position.c, 4, 75, 55, 80, 60);
 const _highThreeF = _Archetype('high-three f', Position.pf, 3, 70, 65, 78, 65);
 const _medianSf = _Archetype('median sf', Position.sf, 2, 50, 50, 50, 50);
 
-/// v6 reference zone vectors, half-court, pinned from the frozen field audit.
+/// Historical v6 reference vectors (simulation 6), retained as the intentional
+/// difference baseline. Simulation 7 no longer produces them.
 const _v6HalfCourt = <String, List<int>>{
   'weak pg': [1994, 3350, 4656],
   'weak sg': [2182, 3321, 4497],
@@ -117,7 +118,17 @@ const _v6HalfCourt = <String, List<int>>{
   'median sf': [2372, 3107, 4521],
 };
 
-/// Proposed v7 zone vectors, half-court, from the piecewise three-point curve.
+/// v7 raw `[inside, midrange, three]` weights, half-court.
+const _v7RawHalfCourt = <String, List<int>>{
+  'weak pg': [1530, 2570, 2650],
+  'weak sg': [1840, 2800, 3100],
+  'non-shooting c': [3810, 1910, 800],
+  'high-three c': [3650, 2430, 3800],
+  'high-three f': [3290, 2990, 4240],
+  'median sf': [2100, 2750, 4000],
+};
+
+/// v7 normalized zone vectors, half-court.
 const _v7HalfCourt = <String, List<int>>{
   'weak pg': [2266, 3807, 3927],
   'weak sg': [2377, 3617, 4006],
@@ -231,7 +242,7 @@ CourtLineup _separationLineup() {
 void main() {
   final model = BasketballProbabilityModel();
 
-  group('v6 production zone weights are unchanged', () {
+  group('production zone weights are the activated policy', () {
     for (final archetype in _archetypes) {
       test('${archetype.name} half-court', () {
         expect(
@@ -239,45 +250,60 @@ void main() {
             shooter: archetype.player,
             phase: PhaseKind.halfCourt,
           ),
-          _v6HalfCourt[archetype.name],
+          _v7HalfCourt[archetype.name],
         );
       });
     }
 
-    test('production weights equal the normalised v6 raw formula', () {
-      for (final archetype in _archetypes) {
-        for (final phase in PhaseKind.values) {
-          expect(
-            model.shotZoneWeights(shooter: archetype.player, phase: phase),
-            BasketballProbabilityModel.normalizeBasisPointWeights(
-              BasketballProbabilityModel.rawShotZoneWeights(
+    test(
+      'production weights equal the policy for every archetype and phase',
+      () {
+        for (final archetype in _archetypes) {
+          for (final phase in PhaseKind.values) {
+            expect(
+              model.shotZoneWeights(shooter: archetype.player, phase: phase),
+              DerivedShotPreference.zoneWeights(
                 shooter: archetype.player,
                 slotIndex: archetype.slotIndex,
                 phase: phase,
               ),
-            ),
-            reason: '${archetype.name} $phase',
-          );
+              reason: '${archetype.name} $phase',
+            );
+          }
         }
-      }
+      },
+    );
+
+    test('the median shooter is unchanged from v6', () {
+      expect(
+        _v7HalfCourt[_medianSf.name]![2],
+        _v6HalfCourt[_medianSf.name]![2],
+      );
     });
 
-    test('v6 keeps the linear three-point coefficient of 24', () {
-      final shooter = _player('sf70', Position.sf, three: 70);
-      expect(
-        BasketballProbabilityModel.rawShotZoneWeights(
-          shooter: shooter,
-          slotIndex: 2,
-          phase: PhaseKind.halfCourt,
-        )[2],
-        3600 + 24 * 20 + 200 + 200,
-      );
+    test('every non-median archetype differs from v6 by design', () {
+      for (final archetype in _archetypes) {
+        if (archetype.name == _medianSf.name) continue;
+        expect(
+          _v7HalfCourt[archetype.name],
+          isNot(_v6HalfCourt[archetype.name]),
+          reason: '${archetype.name} must record an intentional difference',
+        );
+      }
     });
   });
 
   group('derived preference half-court vectors', () {
     for (final archetype in _archetypes) {
-      test('${archetype.name} normalised to 10000', () {
+      test('${archetype.name} raw and normalised', () {
+        expect(
+          DerivedShotPreference.rawZoneWeights(
+            shooter: archetype.player,
+            slotIndex: archetype.slotIndex,
+            phase: PhaseKind.halfCourt,
+          ),
+          _v7RawHalfCourt[archetype.name],
+        );
         final weights = DerivedShotPreference.zoneWeights(
           shooter: archetype.player,
           slotIndex: archetype.slotIndex,
@@ -375,20 +401,24 @@ void main() {
     });
 
     test('inside and midrange raw terms are the v6 terms verbatim', () {
+      // v6 raw half-court inside/midrange for the same archetypes.
+      const v6Raw = <String, List<int>>{
+        'weak pg': [1530, 2570],
+        'weak sg': [1840, 2800],
+        'non-shooting c': [3810, 1910],
+        'high-three c': [3650, 2430],
+        'high-three f': [3290, 2990],
+        'median sf': [2100, 2750],
+      };
       for (final archetype in _archetypes) {
-        for (final phase in PhaseKind.values) {
-          final v6 = BasketballProbabilityModel.rawShotZoneWeights(
+        expect(
+          DerivedShotPreference.rawZoneWeights(
             shooter: archetype.player,
             slotIndex: archetype.slotIndex,
-            phase: phase,
-          );
-          final derived = DerivedShotPreference.rawZoneWeights(
-            shooter: archetype.player,
-            slotIndex: archetype.slotIndex,
-            phase: phase,
-          );
-          expect(derived.sublist(0, 2), v6.sublist(0, 2));
-        }
+            phase: PhaseKind.halfCourt,
+          ).sublist(0, 2),
+          v6Raw[archetype.name],
+        );
       }
     });
   });
@@ -442,15 +472,7 @@ void main() {
 
   group('occupied slot versus nominal position', () {
     final shooter = _player('combo', Position.pg, three: 70);
-    final lineup = CourtLineup.create(
-      team: Team(
-        id: const TeamId('m006-t03-slot'),
-        name: 'M006 T03 slot',
-        abbreviation: 'SLT',
-        roster: Roster(_separationRoster()),
-      ),
-      slotOrderedPlayers: _separationRoster(),
-    );
+    final lineup = _separationLineup();
 
     test('the occupied slot selects the bonus', () {
       final atPointGuard = DerivedShotPreference.threePointWeight(
@@ -471,7 +493,7 @@ void main() {
     test('nominal position weights ignore the occupied slot', () {
       expect(
         model.shotZoneWeights(shooter: shooter, phase: PhaseKind.halfCourt),
-        [1903, 3023, 5074],
+        [1878, 2983, 5139],
       );
       expect(
         DerivedShotPreference.zoneWeights(
@@ -645,29 +667,5 @@ void main() {
       expect(second, first);
       expect(rng.drawCount, drawsBefore);
     });
-
-    test(
-      'normalized weights equal the model normalisation of the raw vector',
-      () {
-        for (final archetype in _archetypes) {
-          for (final phase in PhaseKind.values) {
-            expect(
-              DerivedShotPreference.zoneWeights(
-                shooter: archetype.player,
-                slotIndex: archetype.slotIndex,
-                phase: phase,
-              ),
-              BasketballProbabilityModel.normalizeBasisPointWeights(
-                DerivedShotPreference.rawZoneWeights(
-                  shooter: archetype.player,
-                  slotIndex: archetype.slotIndex,
-                  phase: phase,
-                ),
-              ),
-            );
-          }
-        }
-      },
-    );
   });
 }

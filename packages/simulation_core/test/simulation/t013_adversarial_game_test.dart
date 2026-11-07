@@ -5,7 +5,6 @@ import 'package:simulation_core/simulation_core.dart';
 import 'package:test/test.dart';
 
 import 'support.dart';
-import 't012_canonical_ledger_fixture_v5.dart';
 import 't013_support.dart';
 import 't011_game_reliability_test.dart' as t011;
 
@@ -140,41 +139,26 @@ void main() {
         expect(next.awayScore, first.awayScore);
         expect(next.periodsPlayed, first.periodsPlayed);
       }
-      if (hasSubstitutions(first)) {
-        final fixture =
-            jsonDecode(t012CanonicalLedgerV5Json) as Map<String, Object?>;
-        final fixtureEvents = fixture['events']! as List<Object?>;
-        final prefix = [
-          for (final event in eventsBeforeFirstSubstitution(first.events))
-            event.toJson(),
-        ];
-        expect(fixtureEvents.take(prefix.length).toList(), prefix);
-      } else {
-        expect(
-          sha256.convert(utf8.encode(expected)).toString(),
-          sha256.convert(utf8.encode(t012CanonicalLedgerV5Json)).toString(),
-          reason: 'T012 golden must remain the canonical seed-42 ledger',
-        );
-      }
+      // M006 T04: simulation 7 intentionally changes actor and zone selection,
+      // so the v5 fixture prefix and published v4/v5 seed digests are history.
+      // Repeat-run identity and ledger validity remain the current contract;
+      // the v7 canonical output is pinned in t04_v7_fixture_test.dart.
     });
 
-    test('pinned T012 seeds still reproduce their published digests', () {
-      const published = {
-        1: '04524d55ed4c304c0fbfa222349476c6f6e10f9af1cdee72555927e095eb9855',
-        42: '3ba26e3d34abf8b1e40f5469fa3c043be8ac712f9b39c6b3b992859d92cd3cc2',
-        99: '05d54e5e49c47de89550771b23d0ceedd071e2d97d6834fb1e227b4ca540476c',
-        20261029:
-            '0aa5fdec5ffa5d1514950d48bf6e56639587ca70938e410b3b439f2035115fb8',
-      };
-      for (final entry in published.entries) {
-        final input = standardInput(entry.key);
-        final result = simulateAndAudit(input);
-        if (hasSubstitutions(result)) {
-          final repeat = simulateAndAudit(standardInput(entry.key));
-          expect(digest(repeat), digest(result));
-        } else {
-          expect(digest(result), entry.value);
-        }
+    test('pinned seeds repeat byte-identically and reconcile', () {
+      const seeds = [1, 42, 99, 20261029];
+      for (final seed in seeds) {
+        final first = simulateAndAudit(standardInput(seed));
+        final repeat = simulateAndAudit(standardInput(seed));
+        expect(digest(repeat), digest(first), reason: 'seed $seed');
+        expect(
+          GameEventReducer.validate(
+            standardInput(seed),
+            first.ledger,
+          ).state.ended,
+          isTrue,
+        );
+        expect(first.events.length, greaterThan(700));
       }
     });
 

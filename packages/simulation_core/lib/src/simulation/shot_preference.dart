@@ -1,18 +1,17 @@
 import '../models/player.dart';
 import 'action_intent.dart';
-import 'probability_model.dart';
+import 'basis_point_weights.dart';
 
-/// Dormant M006-T03 derived shot-preference policy.
+/// M006 shot-preference policy: willingness to shoot from each zone.
 ///
-/// Replaces the linear three-point willingness term with a piecewise ability
-/// curve. Inside and midrange weights come from the v6 raw formula unchanged, so
-/// this policy reuses those terms instead of restating them.
+/// Preference is inferred from existing attributes. It is not a persisted
+/// tendency and not shot accuracy: [BasketballProbabilityModel.shotMakeBasisPoints]
+/// free throws, fouls, assists and blocks have their own coefficients and are
+/// not read or written here. The functions are pure, consume no randomness and
+/// mutate nothing.
 ///
-/// Preference is willingness inferred from attributes, not a persisted tendency
-/// and not shot accuracy: [BasketballProbabilityModel.shotMakeBasisPoints],
-/// free throws, fouls, assists and blocks are untouched. The functions are pure,
-/// consume no randomness, mutate nothing and are called from no production path
-/// while T03 remains dormant.
+/// The inside and midrange terms are the v6 formulas, unchanged. Only the
+/// three-point term uses the approved piecewise ability curve.
 abstract final class DerivedShotPreference {
   /// Ability slope below a rating of 50: willingness falls fast.
   static const int belowAverageSlope = 70;
@@ -20,7 +19,22 @@ abstract final class DerivedShotPreference {
   /// Ability slope at or above a rating of 50: willingness rises slowly.
   static const int aboveAverageSlope = 30;
 
+  /// Shared three-point base weight before ability and bonuses.
+  static const int baseThreeWeight = 3600;
+
+  /// Every raw zone weight is floored here before normalisation.
+  static const int minimumZoneWeight = 200;
+
   static const int _pivot = 50;
+
+  // --- Slot and phase bonuses, indexed PG..C and PhaseKind.values. --------
+
+  static const List<int> _slotInsideBonus = [-400, -250, 0, 600, 900];
+  static const List<int> _slotMidrangeBonus = [100, 200, 150, 0, -300];
+  static const List<int> _slotThreeBonus = [250, 350, 200, -400, -900];
+  static const List<int> _phaseInsideBonus = [700, 0, -300];
+  static const List<int> _phaseMidrangeBonus = [-300, 0, 100];
+  static const List<int> _phaseThreeBonus = [-400, 0, 200];
 
   /// The piecewise ability term for a three-point rating in `0..100`.
   ///
@@ -37,10 +51,11 @@ abstract final class DerivedShotPreference {
     required Player shooter,
     required int slotIndex,
     required PhaseKind phase,
-  }) => BasketballProbabilityModel.rawThreePointWeight(
-    abilityBasisPoints: threePointAbility(shooter.attributes.threePoint),
-    slotIndex: slotIndex,
-    phase: phase,
+  }) => _bounded(
+    baseThreeWeight +
+        threePointAbility(shooter.attributes.threePoint) +
+        _slotThreeBonus[slotIndex] +
+        _phaseThreeBonus[phase.index],
   );
 
   /// Raw `[inside, midrange, three]` weights before normalisation.
@@ -49,14 +64,21 @@ abstract final class DerivedShotPreference {
     required int slotIndex,
     required PhaseKind phase,
   }) {
-    final v6 = BasketballProbabilityModel.rawShotZoneWeights(
-      shooter: shooter,
-      slotIndex: slotIndex,
-      phase: phase,
-    );
+    final a = shooter.attributes;
     return <int>[
-      v6[0],
-      v6[1],
+      _bounded(
+        2400 +
+            (a.insideScoring - 50) * 22 +
+            (a.athleticism - 50) * 10 +
+            _slotInsideBonus[slotIndex] +
+            _phaseInsideBonus[phase.index],
+      ),
+      _bounded(
+        2500 +
+            (a.midrange - 50) * 26 +
+            _slotMidrangeBonus[slotIndex] +
+            _phaseMidrangeBonus[phase.index],
+      ),
       threePointWeight(shooter: shooter, slotIndex: slotIndex, phase: phase),
     ];
   }
@@ -66,7 +88,10 @@ abstract final class DerivedShotPreference {
     required Player shooter,
     required int slotIndex,
     required PhaseKind phase,
-  }) => BasketballProbabilityModel.normalizeBasisPointWeights(
+  }) => normalizeBasisPointWeights(
     rawZoneWeights(shooter: shooter, slotIndex: slotIndex, phase: phase),
   );
+
+  static int _bounded(int weight) =>
+      weight < minimumZoneWeight ? minimumZoneWeight : weight;
 }

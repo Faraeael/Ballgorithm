@@ -44,11 +44,10 @@ final class OffensiveRoleAssignment {
 /// `creationScore = 3 × ballHandling + passing + basketballIQ`
 ///
 /// The score deliberately contains **no position bonus**: position still
-/// influences usage and shot zones through the existing v6 weights, but the
-/// role ranking must reflect creation ability only. Ties break on canonical
-/// court-slot order (PG, SG, SF, PF, C). The function consumes no randomness,
-/// holds no state and is not called from any production path while M006-T01
-/// remains dormant.
+/// influences shot zones through the shot-preference policy, but the role
+/// ranking must reflect creation ability only. Ties break on canonical
+/// court-slot order (PG, SG, SF, PF, C). The function consumes no randomness and
+/// holds no state; since simulation 7 it shapes the shooter-selection weights.
 abstract final class OffensiveRoleRanking {
   static int creationScore(Player player) {
     final attributes = player.attributes;

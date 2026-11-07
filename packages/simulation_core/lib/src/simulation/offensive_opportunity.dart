@@ -1,18 +1,16 @@
 import '../models/ids.dart';
+import 'basis_point_weights.dart';
 import 'court_lineup.dart';
 import 'game_validation.dart';
 import 'offensive_role.dart';
-import 'probability_model.dart';
 
-/// Dormant M006-T02 opportunity policy.
+/// M006 opportunity policy: role multipliers on the raw shooter-usage weights.
 ///
-/// Applies the approved role multipliers to the raw v6 shooter-usage weights
-/// and normalises the result to 10000 basis points. The function is pure: it
-/// consumes no randomness, mutates nothing and is not called from any production
-/// path while T02 remains dormant.
-///
-/// It deliberately does not model possession-level ball handling; the role
-/// assignment is a weight-shaping classification only.
+/// Applies the approved role multipliers to the raw v6 usage weights and
+/// normalises the result to 10000 basis points in canonical court-slot order.
+/// The function is pure: it consumes no randomness, mutates nothing and holds no
+/// state. It deliberately does not model possession-level ball handling; the
+/// role assignment is a weight-shaping classification only.
 abstract final class OffensiveOpportunity {
   static const int primaryBasisPoints = 13500;
   static const int secondaryBasisPoints = 11500;
@@ -24,29 +22,14 @@ abstract final class OffensiveOpportunity {
     OffensiveRole.neutral => neutralBasisPoints,
   };
 
-  /// The dormant policy entry point.
+  /// Applies `raw × multiplier` with exact integer arithmetic and normalises
+  /// once, returning weights that sum to exactly 10000 in canonical court-slot
+  /// order.
   ///
-  /// Starts from the model's raw v6 usage weights (canonical court-slot order),
-  /// applies `raw × multiplier` with exact integer arithmetic, and runs the
-  /// model's own proportional normalisation once, returning weights that sum to
-  /// exactly 10000 in canonical court-slot order.
+  /// [rawUsageWeights] must be the unnormalised vector for the same five as
+  /// [activeLineup]; multipliers are never applied to an already-normalised
+  /// vector.
   static List<int> adjustedUsageWeights({
-    required CourtLineup activeLineup,
-    required OffensiveRoleAssignment roles,
-  }) {
-    final raw = BasketballProbabilityModel().rawShotUsageWeights(activeLineup);
-    return applyRoleMultipliers(
-      rawUsageWeights: raw,
-      activeLineup: activeLineup,
-      roles: roles,
-    );
-  }
-
-  /// Applies the multipliers to an explicit raw v6 usage vector.
-  ///
-  /// Public and pure so the multiplier step is independently testable without
-  /// recomputing attributes; callers must pass the raw, unnormalised vector.
-  static List<int> applyRoleMultipliers({
     required List<int> rawUsageWeights,
     required CourtLineup activeLineup,
     required OffensiveRoleAssignment roles,
@@ -70,7 +53,7 @@ abstract final class OffensiveOpportunity {
               roles.roleOf(PlayerId(activeLineup.slots[index].playerId.value)),
             ),
     ];
-    return BasketballProbabilityModel.normalizeBasisPointWeights(weighted);
+    return normalizeBasisPointWeights(weighted);
   }
 
   /// Rejects a role assignment that does not describe exactly the active five.
@@ -98,11 +81,14 @@ abstract final class OffensiveOpportunity {
         }
       }
       if (message == null) {
-        final lineupSet = {for (final playerId in lineupIds) playerId.value};
-        final rankingSet = {for (final playerId in ranking) playerId.value};
-        if (rankingSet.length != lineupSet.length ||
-            !rankingSet.containsAll(lineupSet)) {
-          message = 'role ranking does not match the active five';
+        final onCourt = {for (final id in lineupIds) id.value};
+        for (final playerId in ranking) {
+          if (!onCourt.contains(playerId.value)) {
+            message =
+                'role ranking includes ${playerId.value}, '
+                'who is not on court';
+            break;
+          }
         }
       }
     }
@@ -110,7 +96,7 @@ abstract final class OffensiveOpportunity {
       throw GameValidationException([
         GameValidationIssue(
           code: GameValidationCode.roleAssignmentMismatch,
-          path: 'roles.ranking',
+          path: 'roles',
           message: message,
         ),
       ]);

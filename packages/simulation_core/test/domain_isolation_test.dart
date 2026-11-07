@@ -37,30 +37,4 @@ void main() {
       }
     }
   });
-
-  test('dormant M006 policy code has no production call site', () {
-    // Guards DD-M006-08: T01-T03 ship dormant code until T04 activates it in one
-    // commit and removes this test. Each identifier may appear only in the file
-    // that defines it, its test and the package barrel.
-    final policies = <String, String>{
-      'OffensiveRoleRanking': 'offensive_role.dart',
-      'OffensiveOpportunity': 'offensive_opportunity.dart',
-      'DerivedShotPreference': 'shot_preference.dart',
-    };
-    final sources = Directory('lib/src')
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((file) => file.path.endsWith('.dart'));
-
-    for (final entry in policies.entries) {
-      for (final file in sources) {
-        if (file.path.endsWith(entry.value)) continue;
-        expect(
-          file.readAsStringSync().contains(entry.key),
-          isFalse,
-          reason: '${file.path} calls the dormant policy ${entry.key}',
-        );
-      }
-    }
-  });
 }

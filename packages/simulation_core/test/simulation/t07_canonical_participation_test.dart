@@ -63,8 +63,8 @@ void main() {
     expect(json['gameId'], 'game-1');
     expect(events, hasLength(pinnedEventCount));
 
-    expect(gameSimulationVersion, 6);
-    expect(gameFingerprintVersion, 4);
+    expect(gameSimulationVersion, 7);
+    expect(gameFingerprintVersion, 5);
     expect(gameRulesVersion, 3);
     expect(gameEventSchemaVersion, 3);
     expect(gameActionDurationModelVersion, 2);

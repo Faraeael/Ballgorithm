@@ -119,10 +119,10 @@ void main() {
 
   group('M005 versions and rules', () {
     test('version identifiers are the frozen M005 values', () {
-      expect(gameSimulationVersion, 6);
+      expect(gameSimulationVersion, 7);
       expect(gameRulesVersion, 3);
       expect(gameEventSchemaVersion, 3);
-      expect(gameFingerprintVersion, 4);
+      expect(gameFingerprintVersion, 5);
       expect(gameActionDurationModelVersion, 2);
       expect(GameRules.standard.foulOutLimit, 6);
       expect(GameRules.standard.substitutionPolicyVersion, 1);
@@ -414,23 +414,24 @@ void main() {
     expect(result.eventSchemaVersion, 3);
   });
 
-  test('a no-disqualification game equals the pre-participation baseline', () {
+  test('a no-disqualification game equals the v7 baseline', () {
     final input = buildInput(seed: 15);
     final result = GameSimulator().simulate(input);
     expect(result.events.whereType<Substitution>(), isEmpty);
-    // Event array captured from commit d29d1ff (pre-T04). M005 T04 keeps the
-    // events identical; only the fingerprint header moved to version 4.
+    // M006 T04: simulation 7 intentionally changes who shoots and from where,
+    // so the pre-M006 event array and fingerprint no longer apply. The v6
+    // digest `7a82d20e…`/`e3713d92…` is preserved in the M006 T04 evidence.
     expect(
       result.inputFingerprint,
-      'e3713d927eb3024baaa2ff19f8b1ccc73c3b12c44b4b2bc31e6e40da97e63e65',
+      '958b3a7222c88e56a0806462e3f7c845097c097bdaa83b947ec1741c1c897dca',
     );
-    expect(result.events, hasLength(839));
+    expect(result.events, hasLength(817));
     final encoded = jsonEncode(
       result.events.map((event) => event.toJson()).toList(),
     );
     expect(
       sha256.convert(utf8.encode(encoded)).toString(),
-      '7a82d20efcb58a512cb081f2235f612ae35729e267e81faa12d6ce42e9e8d35c',
+      '0697e5746b5d26e7571e4d049eda530f719ec6e74b53107795362ea8449e2514',
     );
   });
 }

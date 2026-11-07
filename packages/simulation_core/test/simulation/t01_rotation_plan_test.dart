@@ -671,8 +671,8 @@ void main() {
     });
 
     test('version identifiers follow the frozen M005 boundary', () {
-      expect(gameSimulationVersion, 6);
-      expect(gameFingerprintVersion, 4);
+      expect(gameSimulationVersion, 7);
+      expect(gameFingerprintVersion, 5);
       expect(gameRulesVersion, 3);
       expect(gameEventSchemaVersion, 3);
       expect(gameActionDurationModelVersion, 2);

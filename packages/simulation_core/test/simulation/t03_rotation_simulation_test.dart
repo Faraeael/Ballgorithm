@@ -675,7 +675,7 @@ void main() {
   test('an overtime foul-out precedes tactics and reshapes the next period', () {
     final rules = GameRules.standard;
     final input = plannedInput(
-      seed: 4329,
+      seed: 5438,
       homePreset: RotationPreset.starterHeavy,
       awayPreset: RotationPreset.starterHeavy,
     );
@@ -859,7 +859,7 @@ void main() {
 
     final replay = GameSimulator().simulate(
       plannedInput(
-        seed: 4329,
+        seed: 5438,
         homePreset: RotationPreset.starterHeavy,
         awayPreset: RotationPreset.starterHeavy,
       ),

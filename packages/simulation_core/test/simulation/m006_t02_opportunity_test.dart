@@ -1,4 +1,5 @@
 import 'package:simulation_core/simulation_core.dart';
+import 'package:simulation_core/src/simulation/basis_point_weights.dart';
 import 'package:test/test.dart';
 
 PlayerAttributes attributes({
@@ -102,7 +103,7 @@ void main() {
     expect(roles.roleOf(const PlayerId('pg')), OffensiveRole.primary);
     expect(roles.roleOf(const PlayerId('sg')), OffensiveRole.secondary);
 
-    final result = OffensiveOpportunity.applyRoleMultipliers(
+    final result = OffensiveOpportunity.adjustedUsageWeights(
       rawUsageWeights: const [100, 100, 100, 100, 100],
       activeLineup: lineup,
       roles: roles,
@@ -117,16 +118,17 @@ void main() {
     final team = teamOf(players);
     final lineup = lineupOf(team, players);
     final roles = OffensiveRoleRanking.derive(lineup);
+    final raw = BasketballProbabilityModel().rawShotUsageWeights(lineup);
     final result = OffensiveOpportunity.adjustedUsageWeights(
+      rawUsageWeights: raw,
       activeLineup: lineup,
       roles: roles,
     );
     expect(result, hasLength(5));
     expect(result.fold<int>(0, (a, b) => a + b), 10000);
-    final raw = BasketballProbabilityModel().rawShotUsageWeights(lineup);
     expect(
       result,
-      OffensiveOpportunity.applyRoleMultipliers(
+      OffensiveOpportunity.adjustedUsageWeights(
         rawUsageWeights: raw,
         activeLineup: lineup,
         roles: roles,
@@ -147,7 +149,7 @@ void main() {
     final lineup = lineupOf(team, players);
     final roles = OffensiveRoleRanking.derive(lineup);
     expect(roles.primary, const PlayerId('sf'));
-    final result = OffensiveOpportunity.applyRoleMultipliers(
+    final result = OffensiveOpportunity.adjustedUsageWeights(
       rawUsageWeights: const [100, 100, 100, 100, 100],
       activeLineup: lineup,
       roles: roles,
@@ -166,13 +168,21 @@ void main() {
       players[2],
       players[1],
     ];
+    final firstLineup = lineupOf(teamOf(players), players);
+    final secondLineup = lineupOf(teamOf(shuffled), players);
     final first = OffensiveOpportunity.adjustedUsageWeights(
-      activeLineup: lineupOf(teamOf(players), players),
-      roles: OffensiveRoleRanking.derive(lineupOf(teamOf(players), players)),
+      rawUsageWeights: BasketballProbabilityModel().rawShotUsageWeights(
+        firstLineup,
+      ),
+      activeLineup: firstLineup,
+      roles: OffensiveRoleRanking.derive(firstLineup),
     );
     final second = OffensiveOpportunity.adjustedUsageWeights(
-      activeLineup: lineupOf(teamOf(shuffled), players),
-      roles: OffensiveRoleRanking.derive(lineupOf(teamOf(shuffled), players)),
+      rawUsageWeights: BasketballProbabilityModel().rawShotUsageWeights(
+        secondLineup,
+      ),
+      activeLineup: secondLineup,
+      roles: OffensiveRoleRanking.derive(secondLineup),
     );
     expect(second, first);
   });
@@ -186,7 +196,7 @@ void main() {
     final raw = [90, 80, 70, 60, 50];
     final rawBefore = List<int>.of(raw);
 
-    OffensiveOpportunity.applyRoleMultipliers(
+    OffensiveOpportunity.adjustedUsageWeights(
       rawUsageWeights: raw,
       activeLineup: lineup,
       roles: roles,
@@ -205,6 +215,7 @@ void main() {
     final rng = DeterministicRandom(20261028);
     final before = rng.drawCount;
     OffensiveOpportunity.adjustedUsageWeights(
+      rawUsageWeights: BasketballProbabilityModel().rawShotUsageWeights(lineup),
       activeLineup: lineup,
       roles: roles,
     );
@@ -256,6 +267,9 @@ void main() {
 
     expect(
       () => OffensiveOpportunity.adjustedUsageWeights(
+        rawUsageWeights: BasketballProbabilityModel().rawShotUsageWeights(
+          lineupB,
+        ),
         activeLineup: lineupB,
         roles: rolesA,
       ),
@@ -275,7 +289,7 @@ void main() {
     final lineup = lineupOf(team, players);
     final roles = OffensiveRoleRanking.derive(lineup);
     expect(
-      () => OffensiveOpportunity.applyRoleMultipliers(
+      () => OffensiveOpportunity.adjustedUsageWeights(
         rawUsageWeights: const [100, 100, 100],
         activeLineup: lineup,
         roles: roles,
@@ -315,10 +329,16 @@ void main() {
     final beforeLineup = lineupOf(team, [creator, ...others]);
     final afterLineup = lineupOf(team, [bench, ...others]);
     final before = OffensiveOpportunity.adjustedUsageWeights(
+      rawUsageWeights: BasketballProbabilityModel().rawShotUsageWeights(
+        beforeLineup,
+      ),
       activeLineup: beforeLineup,
       roles: OffensiveRoleRanking.derive(beforeLineup),
     );
     final after = OffensiveOpportunity.adjustedUsageWeights(
+      rawUsageWeights: BasketballProbabilityModel().rawShotUsageWeights(
+        afterLineup,
+      ),
       activeLineup: afterLineup,
       roles: OffensiveRoleRanking.derive(afterLineup),
     );
@@ -341,6 +361,7 @@ void main() {
       offense: lineup,
     );
     OffensiveOpportunity.adjustedUsageWeights(
+      rawUsageWeights: BasketballProbabilityModel().rawShotUsageWeights(lineup),
       activeLineup: lineup,
       roles: OffensiveRoleRanking.derive(lineup),
     );
@@ -353,17 +374,20 @@ void main() {
     expect(after, before);
   });
 
-  test('production v6 usage weights equal the normalised raw vector', () {
+  test('production usage weights are the role-adjusted policy output', () {
     final model = BasketballProbabilityModel();
     final players = five();
     final team = teamOf(players);
     final lineup = lineupOf(team, players);
-    expect(
-      model.shotUsageWeights(lineup),
-      BasketballProbabilityModel.normalizeBasisPointWeights(
-        model.rawShotUsageWeights(lineup),
-      ),
+    final roles = OffensiveRoleRanking.derive(lineup);
+    final raw = model.rawShotUsageWeights(lineup);
+    final expected = OffensiveOpportunity.adjustedUsageWeights(
+      rawUsageWeights: raw,
+      activeLineup: lineup,
+      roles: roles,
     );
+    expect(model.shotUsageWeights(lineup), expected);
+    expect(expected, isNot(normalizeBasisPointWeights(raw)));
     expect(model.shotUsageWeights(lineup).fold<int>(0, (a, b) => a + b), 10000);
   });
 }

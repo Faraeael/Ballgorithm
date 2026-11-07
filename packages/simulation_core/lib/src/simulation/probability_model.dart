@@ -4,8 +4,12 @@ import '../generation/deterministic_random.dart';
 import '../models/ids.dart';
 import '../models/player.dart';
 import 'action_intent.dart';
+import 'basis_point_weights.dart';
 import 'court_lineup.dart';
 import 'game_rules.dart';
+import 'offensive_opportunity.dart';
+import 'offensive_role.dart';
+import 'shot_preference.dart';
 
 /// Provisional, uncalibrated ratings-based basketball decision model (T008).
 ///
@@ -55,13 +59,18 @@ import 'game_rules.dart';
 ///
 /// - **Shot usage** (`shotUsageWeights`): position base PG 260, SG 240, SF 220,
 ///   PF 190, C 170; + `max(0, bestShotRating - 50) * 3`;
-///   + `(ballHandling - 50) * 2`; + `(basketballIQ - 50)`; floor 60.
-/// - **Zone choice** (`shotZoneWeights`): inside 2400 + `(insideScoring-50)*22`
-///   + `(athleticism-50)*10` + position bonus; midrange 2500 +
-///   `(midrange-50)*26` + position bonus; three 3600 + `(threePoint-50)*24` +
-///   position bonus; phase modifiers. Position bonuses (PG→C): inside
+///   + `(ballHandling - 50) * 2`; + `(basketballIQ - 50)`; floor 60. M006
+///   (simulation 7) then multiplies the raw weights by the role factor
+///   (primary 1.35, secondary 1.15, neutral 1.00) before one normalisation.
+/// - **Zone choice** (`shotZoneWeights`, M006 policy since simulation 7):
+///   inside 2400 + `(insideScoring-50)*22` + `(athleticism-50)*10` + position
+///   bonus; midrange 2500 + `(midrange-50)*26` + position bonus; three 3600 +
+///   `ability(threePoint)` + position bonus + phase bonus, where
+///   `ability = 70*(p-50)` below 50 and `30*(p-50)` at or above; every raw
+///   weight is floored at 200. Position bonuses (PG→C): inside
 ///   `-400,-250,0,600,900`, midrange `100,200,150,0,-300`, three
-///   `250,350,200,-400,-900`.
+///   `250,350,200,-400,-900`. Phase modifiers: inside `700,0,-300`, midrange
+///   `-300,0,100`, three `-400,0,200`.
 /// - **Make** (`shotMakeBasisPoints`): base 5300 inside, 4000 midrange, 3300
 ///   three; + `(zoneRating-50)*40`; + `(basketballIQ-50)*8`;
 ///   + `(teamAvgPassing-50)*4` assist quality; + `(athleticism-50)*6` inside
@@ -152,28 +161,16 @@ final class BasketballProbabilityModel {
 
   static const int _maxBasisPoints = 10000;
 
-  /// Zone weights use their own scale; 3600 is the shared three-point base.
-  static const int _threePointBaseWeight = 3600;
-
-  /// Every raw zone weight is floored here before normalisation.
-  static const int _minimumZoneWeight = 200;
-
   // --- Positional baselines, indexed PG, SG, SF, PF, C. -------------------
 
   static const List<int> _usagePositionBase = [260, 240, 220, 190, 170];
   static const List<int> _handlePositionBase = [420, 320, 280, 220, 180];
-  static const List<int> _insidePositionBonus = [-400, -250, 0, 600, 900];
-  static const List<int> _midrangePositionBonus = [100, 200, 150, 0, -300];
-  static const List<int> _threePositionBonus = [250, 350, 200, -400, -900];
   static const List<int> _assistPositionBonus = [300, 150, 100, 60, 40];
   static const List<int> _blockPositionBonus = [20, 40, 120, 260, 380];
   static const List<int> _stealPositionBonus = [200, 160, 120, 80, 40];
   static const List<int> _reboundPositionBonus = [0, 40, 100, 220, 300];
 
   /// Phase modifiers indexed [PhaseKind.values].
-  static const List<int> _insidePhaseBonus = [700, 0, -300];
-  static const List<int> _midrangePhaseBonus = [-300, 0, 100];
-  static const List<int> _threePhaseBonus = [-400, 0, 200];
   static const List<int> _turnoverPhaseBonus = [250, 100, 0];
   static const List<int> _reboundZoneBonus = [100, 0, 150];
 
@@ -509,12 +506,11 @@ final class BasketballProbabilityModel {
     return value;
   }
 
-  /// Unnormalised v6 shooter-usage weights in canonical court-slot order.
+  /// Unnormalised raw shooter-usage weights in canonical court-slot order.
   ///
-  /// This is the single source of the raw usage formula. [shotUsageWeights]
-  /// normalises it, and the dormant M006 opportunity policy consumes the same
-  /// raw vector before applying role multipliers, so the two paths can never
-  /// drift apart.
+  /// This is the single source of the raw usage formula; [shotUsageWeights]
+  /// applies the M006 role multipliers and normalises the result, so the two
+  /// can never drift apart.
   List<int> rawShotUsageWeights(CourtLineup offense) => [
     for (final slot in offense.slots)
       max(
@@ -537,15 +533,17 @@ final class BasketballProbabilityModel {
       ),
   ];
 
-  /// Normalized shot-usage weights summing to 10000.
-  List<int> shotUsageWeights(CourtLineup offense) =>
-      _normalize(rawShotUsageWeights(offense));
-
-  /// The model's canonical proportional normalisation to 10000 basis points.
+  /// Normalized M006 shooter-usage weights summing to 10000.
   ///
-  /// Exposed for the dormant M006 policy so it reuses the exact convention of
-  /// [shotUsageWeights] and [shotZoneWeights] instead of duplicating it.
-  static List<int> normalizeBasisPointWeights(List<int> raw) => _normalize(raw);
+  /// Raw v6 usage weights shaped by the approved M006 opportunity factors for
+  /// the five on court, in canonical court-slot order. The single
+  /// shooter-selection draw consumes this vector unchanged.
+  List<int> shotUsageWeights(CourtLineup offense) =>
+      OffensiveOpportunity.adjustedUsageWeights(
+        rawUsageWeights: rawShotUsageWeights(offense),
+        activeLineup: offense,
+        roles: OffensiveRoleRanking.derive(offense),
+      );
 
   /// Normalized zone weights `[inside, midrange, three]` summing to 10000.
   List<int> shotZoneWeights({
@@ -561,63 +559,10 @@ final class BasketballProbabilityModel {
     required Player shooter,
     required int slotIndex,
     required PhaseKind phase,
-  }) => _normalize(
-    rawShotZoneWeights(shooter: shooter, slotIndex: slotIndex, phase: phase),
-  );
-
-  /// Raw, unnormalised v6 zone weights `[inside, midrange, three]`.
-  ///
-  /// Extracted behaviour-preservingly from [_shotZoneWeightsForSlot] so the
-  /// dormant M006 preference policy reuses the inside and midrange formulas
-  /// verbatim instead of restating the bonus tables.
-  static List<int> rawShotZoneWeights({
-    required Player shooter,
-    required int slotIndex,
-    required PhaseKind phase,
-  }) {
-    final a = shooter.attributes;
-    final position = slotIndex;
-    return <int>[
-      max(
-        _minimumZoneWeight,
-        2400 +
-            (a.insideScoring - 50) * 22 +
-            (a.athleticism - 50) * 10 +
-            _insidePositionBonus[position] +
-            _insidePhaseBonus[phase.index],
-      ),
-      max(
-        _minimumZoneWeight,
-        2500 +
-            (a.midrange - 50) * 26 +
-            _midrangePositionBonus[position] +
-            _midrangePhaseBonus[phase.index],
-      ),
-      max(
-        _minimumZoneWeight,
-        _threePointBaseWeight +
-            (a.threePoint - 50) * 24 +
-            _threePositionBonus[position] +
-            _threePhaseBonus[phase.index],
-      ),
-    ];
-  }
-
-  /// Raw three-point zone weight for a supplied ability term.
-  ///
-  /// The v6 base weight, slot and phase bonuses and the 200 floor, with the
-  /// ability term supplied by the caller. The dormant M006-T03 policy passes its
-  /// piecewise 70/30 curve here instead of v6's linear `(threePoint - 50) * 24`.
-  static int rawThreePointWeight({
-    required int abilityBasisPoints,
-    required int slotIndex,
-    required PhaseKind phase,
-  }) => max(
-    _minimumZoneWeight,
-    _threePointBaseWeight +
-        abilityBasisPoints +
-        _threePositionBonus[slotIndex] +
-        _threePhaseBonus[phase.index],
+  }) => DerivedShotPreference.zoneWeights(
+    shooter: shooter,
+    slotIndex: slotIndex,
+    phase: phase,
   );
 
   /// Bounded two/three-point conversion probability.
@@ -947,7 +892,7 @@ final class BasketballProbabilityModel {
   }
 
   static int _pickWeightedIndex(DeterministicRandom rng, List<int> weights) {
-    final normalized = _normalize(weights);
+    final normalized = normalizeBasisPointWeights(weights);
     final draw = rng.nextInt(_maxBasisPoints);
     var running = 0;
     for (var i = 0; i < normalized.length; i++) {
@@ -955,31 +900,6 @@ final class BasketballProbabilityModel {
       if (draw < running) return i;
     }
     return normalized.length - 1;
-  }
-
-  /// Integer normalization to exactly 10000; the rounding remainder goes to the
-  /// last positive slot so an excluded (zero-weight) player can never be picked.
-  static List<int> _normalize(List<int> raw) {
-    final total = raw.fold(0, (a, b) => a + b);
-    if (total <= 0) {
-      throw ArgumentError.value(raw, 'weights', 'need a positive weight');
-    }
-    var lastPositive = raw.length - 1;
-    while (lastPositive > 0 && raw[lastPositive] == 0) {
-      lastPositive--;
-    }
-    final normalized = List<int>.filled(raw.length, 0);
-    var assigned = 0;
-    for (var i = 0; i < raw.length; i++) {
-      if (i == lastPositive) {
-        normalized[i] = _maxBasisPoints - assigned;
-      } else if (raw[i] > 0) {
-        final share = raw[i] * _maxBasisPoints ~/ total;
-        normalized[i] = share;
-        assigned += share;
-      }
-    }
-    return normalized;
   }
 
   /// Positive min-one largest-remainder allocation to exactly [budget].

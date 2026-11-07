@@ -638,11 +638,13 @@ void main() {
     depleted = simulateRequest(depletedRequest);
 
     // T08 slot 97: final-horn disqualification without replacement.
+    // M006 T04: seed migrated from 20098, which no longer reaches the horn
+    // foul-out under simulation 7; the scenario predicate is unchanged.
     hornRequest = GameRequest(
       league: league,
       homeTeamId: league.teams[0].id,
       awayTeamId: league.teams[1].id,
-      seed: 20098,
+      seed: 5290,
     );
     horn = simulateRequest(hornRequest);
   });
