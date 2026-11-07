@@ -152,6 +152,12 @@ final class BasketballProbabilityModel {
 
   static const int _maxBasisPoints = 10000;
 
+  /// Zone weights use their own scale; 3600 is the shared three-point base.
+  static const int _threePointBaseWeight = 3600;
+
+  /// Every raw zone weight is floored here before normalisation.
+  static const int _minimumZoneWeight = 200;
+
   // --- Positional baselines, indexed PG, SG, SF, PF, C. -------------------
 
   static const List<int> _usagePositionBase = [260, 240, 220, 190, 170];
@@ -555,12 +561,25 @@ final class BasketballProbabilityModel {
     required Player shooter,
     required int slotIndex,
     required PhaseKind phase,
+  }) => _normalize(
+    rawShotZoneWeights(shooter: shooter, slotIndex: slotIndex, phase: phase),
+  );
+
+  /// Raw, unnormalised v6 zone weights `[inside, midrange, three]`.
+  ///
+  /// Extracted behaviour-preservingly from [_shotZoneWeightsForSlot] so the
+  /// dormant M006 preference policy reuses the inside and midrange formulas
+  /// verbatim instead of restating the bonus tables.
+  static List<int> rawShotZoneWeights({
+    required Player shooter,
+    required int slotIndex,
+    required PhaseKind phase,
   }) {
     final a = shooter.attributes;
     final position = slotIndex;
-    final raw = <int>[
+    return <int>[
       max(
-        200,
+        _minimumZoneWeight,
         2400 +
             (a.insideScoring - 50) * 22 +
             (a.athleticism - 50) * 10 +
@@ -568,22 +587,38 @@ final class BasketballProbabilityModel {
             _insidePhaseBonus[phase.index],
       ),
       max(
-        200,
+        _minimumZoneWeight,
         2500 +
             (a.midrange - 50) * 26 +
             _midrangePositionBonus[position] +
             _midrangePhaseBonus[phase.index],
       ),
       max(
-        200,
-        3600 +
+        _minimumZoneWeight,
+        _threePointBaseWeight +
             (a.threePoint - 50) * 24 +
             _threePositionBonus[position] +
             _threePhaseBonus[phase.index],
       ),
     ];
-    return _normalize(raw);
   }
+
+  /// Raw three-point zone weight for a supplied ability term.
+  ///
+  /// The v6 base weight, slot and phase bonuses and the 200 floor, with the
+  /// ability term supplied by the caller. The dormant M006-T03 policy passes its
+  /// piecewise 70/30 curve here instead of v6's linear `(threePoint - 50) * 24`.
+  static int rawThreePointWeight({
+    required int abilityBasisPoints,
+    required int slotIndex,
+    required PhaseKind phase,
+  }) => max(
+    _minimumZoneWeight,
+    _threePointBaseWeight +
+        abilityBasisPoints +
+        _threePositionBonus[slotIndex] +
+        _threePhaseBonus[phase.index],
+  );
 
   /// Bounded two/three-point conversion probability.
   int shotMakeBasisPoints({

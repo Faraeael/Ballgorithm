@@ -36,3 +36,4 @@ export 'src/simulation/probability_model.dart';
 export 'src/simulation/rotation_plan.dart';
 export 'src/simulation/rotation_policy.dart';
 export 'src/simulation/rotation_window_history.dart';
+export 'src/simulation/shot_preference.dart';
