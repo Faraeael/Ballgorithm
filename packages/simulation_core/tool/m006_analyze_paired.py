@@ -403,16 +403,20 @@ def main():
         pop_a_exp_any = sum(int(r["center_exposure_any"]) for r in paired_rows)
         pop_c_exp = sum(int(r["stretch_eligible"]) for r in paired_rows)
 
-        pop_b_defined_suff = pop_b_defined_count >= int(0.80 * N_manifest)
-        pop_b_exposure_suff = pop_b_exp_any >= int(0.64 * N_manifest) # 160 / 250 = 64.0%
+        req_b_defined = int(math.ceil(0.80 * N_manifest)) # 200 for N=250
+        req_b_exposure = int(math.ceil(0.60 * N_manifest)) # 150 for N=250
+
+        pop_b_defined_suff = pop_b_defined_count >= req_b_defined
+        # Corrigendum 1A: Gate 2 evaluates SAME registered Center ID >= 10 FGA in both arms
+        pop_b_exposure_suff = pop_b_exp_same >= req_b_exposure
 
         summary_data["sufficiency"] = {
             "population_b_defined_count": pop_b_defined_count,
-            "population_b_defined_required": int(0.80 * N_manifest),
+            "population_b_defined_required": req_b_defined,
             "population_b_defined_pass": pop_b_defined_suff,
-            "population_b_exposure_any_count": pop_b_exp_any,
             "population_b_exposure_same_count": pop_b_exp_same,
-            "population_b_exposure_required": int(0.64 * N_manifest),
+            "population_b_exposure_any_count": pop_b_exp_any,
+            "population_b_exposure_required": req_b_exposure,
             "population_b_exposure_pass": pop_b_exposure_suff,
             "population_a_exposure_count": pop_a_exp_any,
             "population_c_exposure_count": pop_c_exp,

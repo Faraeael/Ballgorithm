@@ -294,5 +294,39 @@ class TestConfirmatoryTooling(unittest.TestCase):
         self.assertEqual(res2.returncode, 2)
         self.assertIn("invalid context flag", res2.stderr)
 
+    def test_14_any_center_vs_same_center_eligibility_enforced(self):
+        # Construct asymmetric games: C1 >= 10 in v6, C2 >= 10 in v7
+        asym_v6 = copy.deepcopy(self.v6_b_games)
+        asym_v7 = copy.deepcopy(self.v7_b_games)
+        for g in asym_v6:
+            g["regCenter1BigFga"] = 14
+            g["regCenter2BigFga"] = 4
+        for g in asym_v7:
+            g["regCenter1BigFga"] = 4
+            g["regCenter2BigFga"] = 14
+
+        f6 = self.dpath / "asym_v6.json"
+        f7 = self.dpath / "asym_v7.json"
+        f6.write_text(json.dumps(asym_v6))
+        f7.write_text(json.dumps(asym_v7))
+
+        sum_b = self.dpath / "sum_b_asym.json"
+        res = self.run_analyzer(f6, f7, self.manifest_b, self.dpath / "p_b.csv", "B", sum_b)
+        self.assertEqual(res.returncode, 0)
+        data_b = json.loads(sum_b.read_text())
+
+        # Any center is 10/10 (100%), but same center is 0/10 (0%)!
+        self.assertEqual(data_b["sufficiency"]["population_b_exposure_any_count"], 10)
+        self.assertEqual(data_b["sufficiency"]["population_b_exposure_same_count"], 0)
+        self.assertFalse(data_b["sufficiency"]["population_b_exposure_pass"])
+        self.assertFalse(data_b["sufficiency"]["context_sufficient"])
+
+        # Finalizer must reject as INSUFFICIENT under Corrigendum 1A same-center rule
+        sum_a = self.dpath / "sum_a.json"
+        res_fin = self.run_finalizer(sum_a, sum_b)
+        self.assertEqual(res_fin.returncode, 1)
+        dec = json.loads((self.dpath / "decision.json").read_text())
+        self.assertEqual(dec["verdict"], "INSUFFICIENT")
+
 if __name__ == "__main__":
     unittest.main()

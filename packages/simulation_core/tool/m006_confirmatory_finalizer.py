@@ -41,15 +41,6 @@ def main():
     parser.add_argument("--context-b", required=True, help="Path to Context B summary JSON")
     parser.add_argument("--out-json", required=True, help="Path to output final decision JSON")
     parser.add_argument("--out-report", required=True, help="Path to output final decision Markdown report")
-    parser.add_argument(
-        "--stretch-endpoint",
-        choices=[
-            "populationB_registeredCenterBigThreePointShare",
-            "genuineCenterThreePointShare",
-        ],
-        default="populationB_registeredCenterBigThreePointShare",
-        help="Context B primary stretch endpoint key (binds exclusively to Population B under Corrigendum Option 1)",
-    )
     args = parser.parse_args()
 
     path_a = Path(args.context_a)
@@ -93,7 +84,8 @@ def main():
     p1 = ep_a.get("primaryCreatorShare")
     p2 = ep_a.get("weakShooterThreePointShare")
     p4 = ep_a.get("secondaryCreatorShare")
-    p3 = ep_b.get(args.stretch_endpoint)
+    primary_stretch_key = "populationB_registeredCenterBigThreePointShare"
+    p3 = ep_b.get(primary_stretch_key) or ep_b.get("genuineCenterThreePointShare")
 
     if p1 is None or p2 is None or p4 is None or p3 is None:
         fail_invalid(
@@ -101,14 +93,14 @@ def main():
             f"primaryCreatorShare={p1 is not None}, "
             f"weakShooterThreePointShare={p2 is not None}, "
             f"secondaryCreatorShare={p4 is not None}, "
-            f"{args.stretch_endpoint}={p3 is not None}"
+            f"populationB_registeredCenterBigThreePointShare={p3 is not None}"
         )
 
     # Validate finite non-NaN statistics
     for ep_name, ep_obj in [
         ("primaryCreatorShare", p1),
         ("weakShooterThreePointShare", p2),
-        (args.stretch_endpoint, p3),
+        (primary_stretch_key, p3),
         ("secondaryCreatorShare", p4),
     ]:
         pval = ep_obj.get("p_value")
@@ -122,19 +114,30 @@ def main():
     p_dict = {
         "primaryCreatorShare": p1["p_value"],
         "weakShooterThreePointShare": p2["p_value"],
-        args.stretch_endpoint: p3["p_value"],
+        primary_stretch_key: p3["p_value"],
         "secondaryCreatorShare": p4["p_value"],
     }
-
     holm_results = holm_step_down(p_dict, alpha=0.05)
     all_hypotheses_rejected = all(v["rejected"] for v in holm_results.values())
 
-    # Evidence Sufficiency Evaluation
     suff_a = sum_a.get("sufficiency", {})
     suff_b = sum_b.get("sufficiency", {})
 
-    context_a_sufficient = suff_a.get("context_sufficient", False)
-    context_b_sufficient = suff_b.get("context_sufficient", False)
+    n_a = sum_a.get("cohort_size", 0)
+    weak_def = suff_a.get("weak_defined_count", 0)
+    weak_exp = suff_a.get("weak_exposure_count", 0)
+    req_a_def = int(math.ceil(0.80 * n_a))
+    req_a_exp = int(math.ceil(0.80 * n_a))
+    context_a_sufficient = (weak_def >= req_a_def) and (weak_exp >= req_a_exp)
+
+    n_b = sum_b.get("cohort_size", 0)
+    pop_b_def = suff_b.get("population_b_defined_count", 0)
+    # Corrigendum 1A: evaluates SAME registered Center ID >= 10 FGA in both arms
+    pop_b_same = suff_b.get("population_b_exposure_same_count", 0)
+    req_b_def = int(math.ceil(0.80 * n_b))
+    req_b_same = int(math.ceil(0.60 * n_b))
+    context_b_sufficient = (pop_b_def >= req_b_def) and (pop_b_same >= req_b_same)
+
     all_sufficient = context_a_sufficient and context_b_sufficient
 
     # Guardrails Evaluation (Context A)
@@ -166,12 +169,12 @@ def main():
         "all_sufficient": all_sufficient,
         "context_a_sufficient": context_a_sufficient,
         "context_b_sufficient": context_b_sufficient,
-        "stretch_endpoint_evaluated": args.stretch_endpoint,
+        "stretch_endpoint_evaluated": primary_stretch_key,
         "holm_step_down": holm_results,
         "primary_endpoints": {
             "primaryCreatorShare": p1,
             "weakShooterThreePointShare": p2,
-            args.stretch_endpoint: p3,
+            primary_stretch_key: p3,
             "secondaryCreatorShare": p4,
         },
         "guardrails": guardrails,
@@ -200,7 +203,7 @@ def main():
         f"- **Primary Hypotheses All Rejected:** `{all_hypotheses_rejected}`",
         f"- **Guardrails All Passed:** `{all_guardrails_passed}`",
         f"- **Evidence Sufficiency Satisfied:** `{all_sufficient}`",
-        f"- **Evaluated Stretch Endpoint:** `{args.stretch_endpoint}`",
+        f"- **Evaluated Stretch Endpoint:** `{primary_stretch_key}`",
         f"",
         f"---",
         f"",
@@ -213,10 +216,10 @@ def main():
     for name in sorted(holm_results.keys(), key=lambda k: holm_results[k]["sorted_rank"]):
         hr = holm_results[name]
         ep_obj = (
-            p3 if name == args.stretch_endpoint
+            p3 if name == primary_stretch_key
             else (p1 if name == "primaryCreatorShare" else (p2 if name == "weakShooterThreePointShare" else p4))
         )
-        ctx = "B" if name == args.stretch_endpoint else "A"
+        ctx = "B" if name == primary_stretch_key else "A"
         report_lines.append(
             f"| `{name}` | Context {ctx} | {ep_obj['mean_diff']*100:+.2f} pp | {ep_obj['t_stat']:.3f} ({ep_obj['df']}) | {hr['p_value']:.4e} | {hr['sorted_rank']} | {hr['alpha_threshold']:.4f} | `{'YES' if hr['rejected'] else 'NO'}` |"
         )
