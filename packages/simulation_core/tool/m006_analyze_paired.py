@@ -3,8 +3,9 @@ import csv
 import hashlib
 import json
 import math
-import random
+import sys
 from pathlib import Path
+import numpy as np
 from scipy import stats
 
 def sha256_file(path):
@@ -14,62 +15,106 @@ def sha256_file(path):
             h.update(chunk)
     return h.hexdigest()
 
-def holm_step_down(p_values_dict, alpha=0.05):
-    """
-    Correct dynamic Holm-Bonferroni step-down procedure.
-    p_values_dict: dict of {name: p_value}
-    Sorts p-values ascending and stops rejecting at first non-rejection.
-    """
-    K = len(p_values_dict)
-    sorted_items = sorted(p_values_dict.items(), key=lambda x: x[1])
-
-    results = {}
-    stopped = False
-    for rank_0, (name, p_val) in enumerate(sorted_items):
-        rank = rank_0 + 1
-        threshold = alpha / (K - rank + 1)
-        if not stopped and p_val <= threshold:
-            rejected = True
-        else:
-            rejected = False
-            stopped = True
-
-        results[name] = {
-            "p_value": p_val,
-            "sorted_rank": rank,
-            "alpha_threshold": threshold,
-            "rejected": rejected,
-        }
-    return results
+def fail(msg, code=1):
+    sys.stderr.write(f"VALIDATION ERROR: {msg}\n")
+    sys.exit(code)
 
 def main():
-    parser = argparse.ArgumentParser(description="M006 Confirmatory Paired Analysis Tool")
+    parser = argparse.ArgumentParser(description="M006 Hardened Paired Analysis Tool")
     parser.add_argument("--v6", required=True, help="Path to v6 results JSON")
     parser.add_argument("--v7", required=True, help="Path to v7 results JSON")
     parser.add_argument("--manifest", required=True, help="Path to manifest CSV")
     parser.add_argument("--paired-csv", required=True, help="Path to output paired seeds CSV")
-    parser.add_argument("--context", choices=["A", "B"], default="A", help="Evaluation context (A or B)")
-    parser.add_argument("--bootstrap-seed", type=int, default=20261109, help="PRNG seed for bootstrap")
-    parser.add_argument("--bootstrap-rounds", type=int, default=10000, help="Number of bootstrap resamples")
+    parser.add_argument("--context", choices=["A", "B"], required=True, help="Evaluation context (A or B)")
+    parser.add_argument("--summary-out", required=True, help="Path to output context summary JSON")
+    parser.add_argument("--expected-manifest-sha", help="Expected SHA-256 of manifest")
+    parser.add_argument("--expected-size", type=int, help="Expected number of games in cohort")
     args = parser.parse_args()
 
-    v6_games = json.loads(Path(args.v6).read_text())
-    v7_games = json.loads(Path(args.v7).read_text())
+    manifest_path = Path(args.manifest)
+    if not manifest_path.exists():
+        fail(f"Manifest not found: {args.manifest}")
 
-    assert len(v6_games) == len(v7_games), "Game count mismatch"
-    N = len(v6_games)
+    manifest_sha = sha256_file(manifest_path)
+    if args.expected_manifest_sha and manifest_sha != args.expected_manifest_sha:
+        fail(f"Manifest SHA mismatch: got {manifest_sha}, expected {args.expected_manifest_sha}")
 
-    v6_by_seed = {g["seed"]: g for g in v6_games}
-    v7_by_seed = {g["seed"]: g for g in v7_games}
-
-    with open(args.manifest, newline="") as mf:
+    # Read manifest
+    with open(manifest_path, newline="") as mf:
         manifest_rows = list(csv.DictReader(mf))
-    manifest_seeds = [int(r["seed"]) for r in manifest_rows]
 
-    # Check reducer and accounting validity
-    v6_valid = all(g.get("accountingConsistent", False) for g in v6_games)
-    v7_valid = all(g.get("accountingConsistent", False) for g in v7_games)
+    N_manifest = len(manifest_rows)
+    if args.expected_size and N_manifest != args.expected_size:
+        fail(f"Manifest row count {N_manifest} != expected {args.expected_size}")
 
+    manifest_seeds = []
+    manifest_by_seed = {}
+    for r in manifest_rows:
+        try:
+            s = int(r["seed"])
+        except (ValueError, KeyError):
+            fail(f"Invalid seed in manifest row: {r}")
+        if s in manifest_by_seed:
+            fail(f"Duplicate seed in manifest: {s}")
+        manifest_seeds.append(s)
+        manifest_by_seed[s] = r
+
+    # Load exports
+    v6_path = Path(args.v6)
+    v7_path = Path(args.v7)
+    if not v6_path.exists():
+        fail(f"v6 export not found: {args.v6}")
+    if not v7_path.exists():
+        fail(f"v7 export not found: {args.v7}")
+
+    v6_sha = sha256_file(v6_path)
+    v7_sha = sha256_file(v7_path)
+
+    try:
+        v6_games = json.loads(v6_path.read_text())
+    except Exception as e:
+        fail(f"Failed to parse v6 JSON: {e}")
+
+    try:
+        v7_games = json.loads(v7_path.read_text())
+    except Exception as e:
+        fail(f"Failed to parse v7 JSON: {e}")
+
+    if len(v6_games) != N_manifest:
+        fail(f"v6 export has {len(v6_games)} games, expected {N_manifest}")
+    if len(v7_games) != N_manifest:
+        fail(f"v7 export has {len(v7_games)} games, expected {N_manifest}")
+
+    # Index by seed and validate uniqueness
+    v6_by_seed = {}
+    for g in v6_games:
+        s = g.get("seed")
+        if s is None or not isinstance(s, int):
+            fail(f"Missing or non-integer seed in v6 export: {g}")
+        if s in v6_by_seed:
+            fail(f"Duplicate seed in v6 export: {s}")
+        v6_by_seed[s] = g
+
+    v7_by_seed = {}
+    for g in v7_games:
+        s = g.get("seed")
+        if s is None or not isinstance(s, int):
+            fail(f"Missing or non-integer seed in v7 export: {g}")
+        if s in v7_by_seed:
+            fail(f"Duplicate seed in v7 export: {s}")
+        v7_by_seed[s] = g
+
+    # Validate exact seed set equality
+    manifest_set = set(manifest_seeds)
+    if set(v6_by_seed.keys()) != manifest_set:
+        diff = manifest_set.symmetric_difference(v6_by_seed.keys())
+        fail(f"v6 export seed set mismatch with manifest. Symmetric diff: {diff}")
+    if set(v7_by_seed.keys()) != manifest_set:
+        diff = manifest_set.symmetric_difference(v7_by_seed.keys())
+        fail(f"v7 export seed set mismatch with manifest. Symmetric diff: {diff}")
+
+    # Verify per-game integrity and pair by seed
+    paired_rows = []
     fieldnames = [
         "seed", "gameId",
         "v6_pts", "v7_pts", "diff_pts",
@@ -85,24 +130,58 @@ def main():
         "v6_neutral_share", "v7_neutral_share", "diff_neutral_share",
         "v6_weak_3p_share", "v7_weak_3p_share", "diff_weak_3p_share", "weak_eligible",
         "v6_stretch_3p_share", "v7_stretch_3p_share", "diff_stretch_3p_share", "stretch_eligible",
+        "v6_center_3p_share", "v7_center_3p_share", "diff_center_3p_share",
+        "center_exposure_any", "center_exposure_same",
     ]
 
-    paired_rows = []
-    for seed in manifest_seeds:
-        g6 = v6_by_seed[seed]
-        g7 = v7_by_seed[seed]
+    all_v6_accounting_valid = True
+    all_v7_accounting_valid = True
 
-        w_diff = None
-        if g6["weakShooterThreePointShare"] is not None and g7["weakShooterThreePointShare"] is not None:
-            w_diff = g7["weakShooterThreePointShare"] - g6["weakShooterThreePointShare"]
+    for s in manifest_seeds:
+        g6 = v6_by_seed[s]
+        g7 = v7_by_seed[s]
+        m_row = manifest_by_seed[s]
 
-        s_diff = None
-        if g6["stretchBigThreePointShare"] is not None and g7["stretchBigThreePointShare"] is not None:
-            s_diff = g7["stretchBigThreePointShare"] - g6["stretchBigThreePointShare"]
+        # Verify matching game ID
+        m_gid = m_row.get("gameId")
+        if g6.get("gameId") != m_gid or g7.get("gameId") != m_gid:
+            fail(f"Game ID mismatch for seed {s}: manifest={m_gid}, v6={g6.get('gameId')}, v7={g7.get('gameId')}")
+
+        # Accounting validation
+        if not g6.get("accountingConsistent", False):
+            all_v6_accounting_valid = False
+            fail(f"v6 accounting inconsistent for seed {s}")
+        if not g7.get("accountingConsistent", False):
+            all_v7_accounting_valid = False
+            fail(f"v7 accounting inconsistent for seed {s}")
+
+        # Metrics pairing
+        w6 = g6.get("weakShooterThreePointShare")
+        w7 = g7.get("weakShooterThreePointShare")
+        w_diff = (w7 - w6) if (w6 is not None and w7 is not None) else None
+
+        s6 = g6.get("stretchBigThreePointShare")
+        s7 = g7.get("stretchBigThreePointShare")
+        s_diff = (s7 - s6) if (s6 is not None and s7 is not None) else None
+
+        c6 = g6.get("stretchCenterThreePointShare")
+        c7 = g7.get("stretchCenterThreePointShare")
+        c_diff = (c7 - c6) if (c6 is not None and c7 is not None) else None
+
+        # Genuine center exposure checks
+        c1_6 = g6.get("center1Fga", 0)
+        c1_7 = g7.get("center1Fga", 0)
+        c2_6 = g6.get("center2Fga", 0)
+        c2_7 = g7.get("center2Fga", 0)
+
+        # Interpretation 1: At least one center >= 10 in v6 and at least one center >= 10 in v7
+        center_exposure_any = 1 if ((c1_6 >= 10 or c2_6 >= 10) and (c1_7 >= 10 or c2_7 >= 10)) else 0
+        # Interpretation 2: The SAME qualifying center >= 10 in both arms
+        center_exposure_same = 1 if ((c1_6 >= 10 and c1_7 >= 10) or (c2_6 >= 10 and c2_7 >= 10)) else 0
 
         paired_rows.append({
-            "seed": seed,
-            "gameId": g6["gameId"],
+            "seed": s,
+            "gameId": m_gid,
             "v6_pts": g6["totalPoints"],
             "v7_pts": g7["totalPoints"],
             "diff_pts": g7["totalPoints"] - g6["totalPoints"],
@@ -136,14 +215,19 @@ def main():
             "v6_neutral_share": f"{g6['neutralShare']:.5f}",
             "v7_neutral_share": f"{g7['neutralShare']:.5f}",
             "diff_neutral_share": f"{g7['neutralShare'] - g6['neutralShare']:.5f}",
-            "v6_weak_3p_share": f"{g6['weakShooterThreePointShare']:.5f}" if g6['weakShooterThreePointShare'] is not None else "",
-            "v7_weak_3p_share": f"{g7['weakShooterThreePointShare']:.5f}" if g7['weakShooterThreePointShare'] is not None else "",
+            "v6_weak_3p_share": f"{w6:.5f}" if w6 is not None else "",
+            "v7_weak_3p_share": f"{w7:.5f}" if w7 is not None else "",
             "diff_weak_3p_share": f"{w_diff:.5f}" if w_diff is not None else "",
-            "weak_eligible": "1" if (g6["weakEligible"] and g7["weakEligible"]) else "0",
-            "v6_stretch_3p_share": f"{g6['stretchBigThreePointShare']:.5f}" if g6['stretchBigThreePointShare'] is not None else "",
-            "v7_stretch_3p_share": f"{g7['stretchBigThreePointShare']:.5f}" if g7['stretchBigThreePointShare'] is not None else "",
+            "weak_eligible": "1" if (g6.get("weakEligible", False) and g7.get("weakEligible", False)) else "0",
+            "v6_stretch_3p_share": f"{s6:.5f}" if s6 is not None else "",
+            "v7_stretch_3p_share": f"{s7:.5f}" if s7 is not None else "",
             "diff_stretch_3p_share": f"{s_diff:.5f}" if s_diff is not None else "",
-            "stretch_eligible": "1" if (g6["stretchEligible"] and g7["stretchEligible"]) else "0",
+            "stretch_eligible": "1" if (g6.get("stretchEligible", False) and g7.get("stretchEligible", False)) else "0",
+            "v6_center_3p_share": f"{c6:.5f}" if c6 is not None else "",
+            "v7_center_3p_share": f"{c7:.5f}" if c7 is not None else "",
+            "diff_center_3p_share": f"{c_diff:.5f}" if c_diff is not None else "",
+            "center_exposure_any": str(center_exposure_any),
+            "center_exposure_same": str(center_exposure_same),
         })
 
     paired_csv_path = Path(args.paired_csv)
@@ -153,122 +237,175 @@ def main():
         writer.writeheader()
         writer.writerows(paired_rows)
 
-    manifest_sha = sha256_file(args.manifest)
-    v6_sha = sha256_file(args.v6)
-    v7_sha = sha256_file(args.v7)
-    paired_sha = sha256_file(args.paired_csv)
+    paired_sha = sha256_file(paired_csv_path)
 
-    print("M006 CONFIRMATORY EVALUATION AUDIT:")
-    print(f"Context: {args.context} (N={N})")
-    print(f"Manifest: {args.manifest} (SHA-256: {manifest_sha})")
-    print(f"v6 Export: {args.v6} (SHA-256: {v6_sha})")
-    print(f"v7 Export: {args.v7} (SHA-256: {v7_sha})")
-    print(f"Paired CSV: {args.paired_csv} (SHA-256: {paired_sha})")
-    print(f"Accounting & Reducer Validity: v6={v6_valid}, v7={v7_valid}")
+    # Statistical Evaluation
+    summary_data = {
+        "context": args.context,
+        "cohort_size": N_manifest,
+        "manifest_path": str(manifest_path),
+        "manifest_sha256": manifest_sha,
+        "v6_export_path": str(v6_path),
+        "v6_export_sha256": v6_sha,
+        "v7_export_path": str(v7_path),
+        "v7_export_sha256": v7_sha,
+        "paired_csv_path": str(paired_csv_path),
+        "paired_csv_sha256": paired_sha,
+        "all_v6_accounting_valid": all_v6_accounting_valid,
+        "all_v7_accounting_valid": all_v7_accounting_valid,
+        "endpoints": {},
+        "guardrails": {},
+        "sufficiency": {},
+        "valid": True,
+    }
 
-    # Primary Endpoints Evaluation
-    # Context A has Endpoints 1, 2, 4; Context B has Endpoint 3
+    def calc_t_test(diffs, delta0, direction="upper"):
+        n = len(diffs)
+        if n < 2:
+            return None
+        m = float(np.mean(diffs))
+        s = float(np.std(diffs, ddof=1))
+        se = s / math.sqrt(n)
+        if se == 0:
+            return None
+        t = (m - delta0) / se
+        df = n - 1
+        if direction == "upper":
+            p = float(1 - stats.t.cdf(t, df=df))
+        elif direction == "lower":
+            p = float(stats.t.cdf(t, df=df))
+        else:
+            raise ValueError(direction)
+        return {
+            "n": n,
+            "mean_diff": m,
+            "sd_diff": s,
+            "se_diff": se,
+            "delta0": delta0,
+            "t_stat": t,
+            "df": df,
+            "p_value": p,
+        }
+
     if args.context == "A":
-        # Extract per-game differences for all defined pairs
-        def get_diffs(key):
-            diffs = []
-            for g6, g7 in zip(v6_games, v7_games):
-                v6_val = g6[key]
-                v7_val = g7[key]
+        # Context A: Endpoints 1 (Primary), 2 (Weak 3P), 4 (Secondary)
+        # Helper to get diffs
+        def diffs_for(key):
+            d_list = []
+            for s in manifest_seeds:
+                g6 = v6_by_seed[s]
+                g7 = v7_by_seed[s]
+                v6_val = g6.get(key)
+                v7_val = g7.get(key)
                 if v6_val is not None and v7_val is not None:
-                    diffs.append(v7_val - v6_val)
-            return diffs
+                    d_list.append(v7_val - v6_val)
+            return d_list
 
-        p1_diffs = get_diffs("primaryShare")
-        p2_diffs = get_diffs("weakShooterThreePointShare")
-        p4_diffs = get_diffs("secondaryShare")
+        prim_diffs = diffs_for("primaryShare")
+        sec_diffs = diffs_for("secondaryShare")
+        weak_diffs = diffs_for("weakShooterThreePointShare")
 
-        # Insufficiency check
-        weak_exposure_count = sum(1 for g6, g7 in zip(v6_games, v7_games) if g6["weakEligible"] and g7["weakEligible"])
-        print(f"\nContext A Insufficiency Checks:")
-        print(f"  Defined weak-shooter games: {len(p2_diffs)} / {N} (requirement: >= 600/750)")
-        print(f"  Paired weak FGA >= 20 exposure: {weak_exposure_count} / {N} (requirement: >= 600/750)")
+        # Insufficiency gates
+        weak_defined_count = len(weak_diffs)
+        weak_exposure_count = sum(int(r["weak_eligible"]) for r in paired_rows)
 
-        # One-sided paired t-tests
-        # Endpoint 1: H0: delta <= +0.030, H1: delta > +0.030
-        mean_p1 = sum(p1_diffs) / len(p1_diffs)
-        sd_p1 = stats.tstd(p1_diffs)
-        se_p1 = sd_p1 / math.sqrt(len(p1_diffs))
-        t_p1 = (mean_p1 - 0.030) / se_p1
-        df_p1 = len(p1_diffs) - 1
-        pval_p1 = 1 - stats.t.cdf(t_p1, df=df_p1)
+        weak_defined_suff = weak_defined_count >= int(0.80 * N_manifest)
+        weak_exposure_suff = weak_exposure_count >= int(0.80 * N_manifest)
 
-        # Endpoint 2: H0: delta >= -0.035, H1: delta < -0.035
-        mean_p2 = sum(p2_diffs) / len(p2_diffs)
-        sd_p2 = stats.tstd(p2_diffs)
-        se_p2 = sd_p2 / math.sqrt(len(p2_diffs))
-        t_p2 = (mean_p2 - (-0.035)) / se_p2
-        df_p2 = len(p2_diffs) - 1
-        pval_p2 = stats.t.cdf(t_p2, df=df_p2)
+        summary_data["sufficiency"] = {
+            "weak_defined_count": weak_defined_count,
+            "weak_defined_required": int(0.80 * N_manifest),
+            "weak_defined_pass": weak_defined_suff,
+            "weak_exposure_count": weak_exposure_count,
+            "weak_exposure_required": int(0.80 * N_manifest),
+            "weak_exposure_pass": weak_exposure_suff,
+            "context_sufficient": weak_defined_suff and weak_exposure_suff,
+        }
 
-        # Endpoint 4: H0: delta <= +0.005, H1: delta > +0.005
-        mean_p4 = sum(p4_diffs) / len(p4_diffs)
-        sd_p4 = stats.tstd(p4_diffs)
-        se_p4 = sd_p4 / math.sqrt(len(p4_diffs))
-        t_p4 = (mean_p4 - 0.005) / se_p4
-        df_p4 = len(p4_diffs) - 1
-        pval_p4 = 1 - stats.t.cdf(t_p4, df=df_p4)
+        # T-tests
+        summary_data["endpoints"]["primaryCreatorShare"] = calc_t_test(prim_diffs, 0.030, "upper")
+        summary_data["endpoints"]["weakShooterThreePointShare"] = calc_t_test(weak_diffs, -0.035, "lower")
+        summary_data["endpoints"]["secondaryCreatorShare"] = calc_t_test(sec_diffs, 0.005, "upper")
 
-        print("\nContext A Primary Endpoints (Paired Student's t-test):")
-        print(f"  Primary Creator Share: mean_diff={mean_p1*100:+.2f} pp, t={t_p1:.3f}, p={pval_p1:.4e} (H0: delta <= +3.0 pp)")
-        print(f"  Weak-Shooter 3PA Share: mean_diff={mean_p2*100:+.2f} pp, t={t_p2:.3f}, p={pval_p2:.4e} (H0: delta >= -3.5 pp)")
-        print(f"  Secondary Creator Share: mean_diff={mean_p4*100:+.2f} pp, t={t_p4:.3f}, p={pval_p4:.4e} (H0: delta <= +0.5 pp)")
-
-        # TOST Guardrails (alpha=0.05, 90% CI)
-        guardrails = [
-            ("totalPoints", "Points per game", 2.5),
-            ("possessions", "Pace (possessions)", 1.5),
-            ("eFG", "eFG%", 0.010),
-            ("turnoversPer100", "Turnovers per 100", 0.75),
-            ("fta", "Free throw attempts", 1.75),
+        # Guardrails: TOST at alpha=0.05 (90% CI)
+        guardrail_specs = [
+            ("totalPoints", "points", 2.5),
+            ("possessions", "pace", 1.5),
+            ("eFG", "efg", 0.010),
+            ("turnoversPer100", "tov100", 0.75),
+            ("fta", "fta", 1.75),
         ]
-        print("\nContext A Macroeconomic Guardrails (TOST Equivalence at alpha=0.05 / 90% CI):")
-        all_guard_passed = True
-        df_guard = N - 1
-        t_crit_90 = stats.t.ppf(0.95, df=df_guard)
-        for key, label, delta in guardrails:
-            diffs = get_diffs(key)
-            m = sum(diffs) / len(diffs)
-            s = stats.tstd(diffs)
-            se = s / math.sqrt(len(diffs))
+
+        df_g = N_manifest - 1
+        t_crit_90 = float(stats.t.ppf(0.95, df=df_g))
+
+        all_guards_pass = True
+        for key, name, delta in guardrail_specs:
+            g_diffs = diffs_for(key)
+            m = float(np.mean(g_diffs))
+            s = float(np.std(g_diffs, ddof=1))
+            se = s / math.sqrt(len(g_diffs))
             ci_low = m - t_crit_90 * se
             ci_high = m + t_crit_90 * se
             passed = ci_low >= -delta and ci_high <= delta
-            all_guard_passed &= passed
-            print(f"  {label:<22}: diff={m:+.4f}, 90% CI=[{ci_low:+.4f}, {ci_high:+.4f}], bounds=[{-delta:+.4f}, {+delta:+.4f}] => {'PASS' if passed else 'FAIL'}")
-
-        print(f"\nAll Guardrails Passed: {all_guard_passed}")
+            all_guards_pass &= passed
+            summary_data["guardrails"][name] = {
+                "metric_key": key,
+                "n": len(g_diffs),
+                "mean_diff": m,
+                "sd_diff": s,
+                "se": se,
+                "delta": delta,
+                "ci_90_low": ci_low,
+                "ci_90_high": ci_high,
+                "passed": passed,
+            }
+        summary_data["guardrails_all_passed"] = all_guards_pass
 
     elif args.context == "B":
-        # Context B has Endpoint 3: Stretch-Big 3PA Share non-inferiority
-        p3_diffs = []
-        for g6, g7 in zip(v6_games, v7_games):
-            v6_val = g6["stretchBigThreePointShare"]
-            v7_val = g7["stretchBigThreePointShare"]
-            if v6_val is not None and v7_val is not None:
-                p3_diffs.append(v7_val - v6_val)
+        # Context B: Endpoint 3 (Stretch-Big / Stretch-Center 3PA Share Non-Inferiority)
+        def diffs_for(key):
+            d_list = []
+            for s in manifest_seeds:
+                g6 = v6_by_seed[s]
+                g7 = v7_by_seed[s]
+                v6_val = g6.get(key)
+                v7_val = g7.get(key)
+                if v6_val is not None and v7_val is not None:
+                    d_list.append(v7_val - v6_val)
+            return d_list
 
-        stretch_exposure_count = sum(1 for g6, g7 in zip(v6_games, v7_games) if g6["stretchEligible"] and g7["stretchEligible"])
-        print(f"\nContext B Insufficiency Checks:")
-        print(f"  Defined stretch-center games: {len(p3_diffs)} / {N} (requirement: >= 200/250)")
-        print(f"  Paired stretch FGA >= 10 exposure: {stretch_exposure_count} / {N} (requirement: >= 160/250)")
+        c_diffs = diffs_for("stretchCenterThreePointShare")
+        sb_diffs = diffs_for("stretchBigThreePointShare")
 
-        # One-sided non-inferiority t-test
-        # H0: delta <= -0.015, H1: delta > -0.015
-        mean_p3 = sum(p3_diffs) / len(p3_diffs)
-        sd_p3 = stats.tstd(p3_diffs)
-        se_p3 = sd_p3 / math.sqrt(len(p3_diffs))
-        t_p3 = (mean_p3 - (-0.015)) / se_p3
-        df_p3 = len(p3_diffs) - 1
-        pval_p3 = 1 - stats.t.cdf(t_p3, df=df_p3)
+        c_defined_count = len(c_diffs)
+        exp_any_count = sum(int(r["center_exposure_any"]) for r in paired_rows)
+        exp_same_count = sum(int(r["center_exposure_same"]) for r in paired_rows)
+        sb_elig_count = sum(int(r["stretch_eligible"]) for r in paired_rows)
 
-        print("\nContext B Primary Endpoint (Paired Student's t-test):")
-        print(f"  Stretch-Big 3PA Share (Non-Inf): mean_diff={mean_p3*100:+.2f} pp, t={t_p3:.3f}, p={pval_p3:.4e} (H0: delta <= -1.5 pp)")
+        c_defined_suff = c_defined_count >= int(0.80 * N_manifest)
+        c_exposure_suff = exp_any_count >= int(0.64 * N_manifest) # 160 / 250 = 64%
+
+        summary_data["sufficiency"] = {
+            "stretch_center_defined_count": c_defined_count,
+            "stretch_center_defined_required": int(0.80 * N_manifest),
+            "stretch_center_defined_pass": c_defined_suff,
+            "exposure_any_center_count": exp_any_count,
+            "exposure_same_center_count": exp_same_count,
+            "stretch_big_elig_count": sb_elig_count,
+            "exposure_required": int(0.64 * N_manifest),
+            "exposure_pass": c_exposure_suff,
+            "context_sufficient": c_defined_suff and c_exposure_suff,
+        }
+
+        # T-tests for both genuine center and general stretch big
+        summary_data["endpoints"]["genuineCenterThreePointShare"] = calc_t_test(c_diffs, -0.015, "upper")
+        summary_data["endpoints"]["stretchBigThreePointShare"] = calc_t_test(sb_diffs, -0.015, "upper")
+
+    summary_out_path = Path(args.summary_out)
+    summary_out_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_out_path.write_text(json.dumps(summary_data, indent=2))
+    print(f"Context {args.context} analysis complete. Wrote summary to {summary_out_path}")
 
 if __name__ == "__main__":
     main()

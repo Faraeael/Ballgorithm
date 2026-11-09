@@ -103,6 +103,73 @@ void main(List<String> args) {
   stdout.writeln('Wrote results to $outPath');
 }
 
+League buildSyntheticStretchFiveLeague(League baseLeague) {
+  final team1CenterAttributes = PlayerAttributes(
+    insideScoring: 75,
+    midrange: 55,
+    threePoint: 80,
+    freeThrow: 75,
+    passing: 60,
+    ballHandling: 55,
+    perimeterDefense: 50,
+    interiorDefense: 65,
+    rebounding: 70,
+    athleticism: 60,
+    stamina: 70,
+    basketballIQ: 62,
+  );
+
+  final team2CenterAttributes = PlayerAttributes(
+    insideScoring: 70,
+    midrange: 65,
+    threePoint: 78,
+    freeThrow: 75,
+    passing: 55,
+    ballHandling: 50,
+    perimeterDefense: 50,
+    interiorDefense: 65,
+    rebounding: 70,
+    athleticism: 65,
+    stamina: 70,
+    basketballIQ: 60,
+  );
+
+  Player modCenter(Player orig, PlayerAttributes attributes) => Player(
+    id: orig.id,
+    firstName: orig.firstName,
+    lastName: orig.lastName,
+    position: orig.position,
+    attributes: attributes,
+  );
+
+  Team modTeam(Team orig, String cId, PlayerAttributes attributes) => Team(
+    id: orig.id,
+    name: orig.name,
+    abbreviation: orig.abbreviation,
+    roster: Roster([
+      for (final p in orig.players)
+        if (p.id.value == cId) modCenter(p, attributes) else p,
+    ]),
+  );
+
+  final home = modTeam(
+    baseLeague.teams.first,
+    'player-1-8',
+    team1CenterAttributes,
+  );
+  final away = modTeam(
+    baseLeague.teams[1],
+    'player-2-5',
+    team2CenterAttributes,
+  );
+  return League.create(
+    id: baseLeague.id,
+    name: baseLeague.name,
+    config: baseLeague.config,
+    teams: [home, away, ...baseLeague.teams.skip(2)],
+  );
+}
+
 GameInput _buildInput({
   required int seed,
   required String gameId,
@@ -115,49 +182,9 @@ GameInput _buildInput({
     GenerationConfig(seed: leagueSeed),
   );
 
-  League league = baseLeague;
-  if (isSynthetic) {
-    Player modCenter(Player orig, int three) => Player(
-      id: orig.id,
-      firstName: orig.firstName,
-      lastName: orig.lastName,
-      position: orig.position,
-      attributes: PlayerAttributes(
-        insideScoring: 75,
-        midrange: 55,
-        threePoint: three,
-        freeThrow: 75,
-        passing: 60,
-        ballHandling: 55,
-        perimeterDefense: 50,
-        interiorDefense: 65,
-        rebounding: 70,
-        athleticism: 60,
-        stamina: 70,
-        basketballIQ: 62,
-      ),
-    );
-
-    Team modTeam(Team orig, String cId, int three) => Team(
-      id: orig.id,
-      name: orig.name,
-      abbreviation: orig.abbreviation,
-      roster: Roster([
-        for (final p in orig.players)
-          if (p.id.value == cId) modCenter(p, three) else p,
-      ]),
-    );
-
-    final home = modTeam(baseLeague.teams.first, 'player-1-8', 80);
-    final away = modTeam(baseLeague.teams[1], 'player-2-5', 78);
-
-    league = League.create(
-      id: baseLeague.id,
-      name: baseLeague.name,
-      config: baseLeague.config,
-      teams: [home, away, ...baseLeague.teams.skip(2)],
-    );
-  }
+  final league = isSynthetic
+      ? buildSyntheticStretchFiveLeague(baseLeague)
+      : baseLeague;
 
   final home = league.teams.firstWhere((t) => t.id.value == homeId);
   final away = league.teams.firstWhere((t) => t.id.value == awayId);
@@ -206,6 +233,7 @@ final class _PlayerAcc {
   int points = 0, fgm = 0, fga = 0, threePm = 0, threePa = 0;
   int secondsPlayed = 0, primaryFga = 0, secondaryFga = 0, neutralFga = 0;
   int stretchBigFga = 0, stretchBigThreePa = 0;
+  int genuineCenterFga = 0, genuineCenterThreePa = 0;
 }
 
 final class _TeamAcc {
@@ -215,6 +243,7 @@ final class _TeamAcc {
   int primaryFga = 0, secondaryFga = 0, neutralFga = 0;
   int fta = 0, turnovers = 0, possessions = 0;
   int stretchBigFga = 0, stretchBigThreePa = 0;
+  int genuineCenterFga = 0, genuineCenterThreePa = 0;
   int weakShooterFga = 0, weakShooterThreePa = 0;
 }
 
@@ -353,6 +382,18 @@ Map<String, dynamic> _analyzeResult(GameResult result) {
           tMetric.stretchBigThreePa++;
         }
       }
+      final isGenuineCenter =
+          (player.id.value == 'player-1-8' ||
+              player.id.value == 'player-2-5') &&
+          occupiedSlot == Position.c;
+      if (isGenuineCenter) {
+        pMetric.genuineCenterFga++;
+        tMetric.genuineCenterFga++;
+        if (event.shotValue == 3) {
+          pMetric.genuineCenterThreePa++;
+          tMetric.genuineCenterThreePa++;
+        }
+      }
       if (player.attributes.threePoint < 40) {
         tMetric.weakShooterFga++;
         if (event.shotValue == 3) {
@@ -436,14 +477,28 @@ Map<String, dynamic> _analyzeResult(GameResult result) {
   final gameStretchFga = home.stretchBigFga + away.stretchBigFga;
   final gameStretch3Pa = home.stretchBigThreePa + away.stretchBigThreePa;
 
+  double? share(int num, int den) => den == 0 ? null : num / den;
+
+  final gameGenuineCenterFga = home.genuineCenterFga + away.genuineCenterFga;
+  final gameGenuineCenterThreePa =
+      home.genuineCenterThreePa + away.genuineCenterThreePa;
+  final gameGenuineCenterThreePointShare = share(
+    gameGenuineCenterThreePa,
+    gameGenuineCenterFga,
+  );
+
+  final c1Fga = players['player-1-8']?.genuineCenterFga ?? 0;
+  final c2Fga = players['player-2-5']?.genuineCenterFga ?? 0;
+  final centerExposureAny = (c1Fga >= 10 || c2Fga >= 10);
+  final center1Exposure = (c1Fga >= 10);
+  final center2Exposure = (c2Fga >= 10);
+  final centerExposureBoth = (c1Fga >= 10 && c2Fga >= 10);
   var maxStretchPlayerFga = 0;
   for (final p in players.values) {
     if (p.stretchBigFga > maxStretchPlayerFga) {
       maxStretchPlayerFga = p.stretchBigFga;
     }
   }
-
-  double? share(int num, int den) => den == 0 ? null : num / den;
 
   Map<String, dynamic> teamMap(_TeamAcc t) => {
     'teamId': t.teamId,
@@ -472,6 +527,12 @@ Map<String, dynamic> _analyzeResult(GameResult result) {
     'stretchBigFga': t.stretchBigFga,
     'stretchBigThreePa': t.stretchBigThreePa,
     'stretchBigThreePointShare': share(t.stretchBigThreePa, t.stretchBigFga),
+    'genuineCenterFga': t.genuineCenterFga,
+    'genuineCenterThreePa': t.genuineCenterThreePa,
+    'genuineCenterThreePointShare': share(
+      t.genuineCenterThreePa,
+      t.genuineCenterFga,
+    ),
   };
 
   return {
@@ -507,6 +568,15 @@ Map<String, dynamic> _analyzeResult(GameResult result) {
     'stretchBigThreePointShare': share(gameStretch3Pa, gameStretchFga),
     'stretchEligible': maxStretchPlayerFga >= 10,
     'maxStretchPlayerFga': maxStretchPlayerFga,
+    'stretchCenterFga': gameGenuineCenterFga,
+    'stretchCenterThreePa': gameGenuineCenterThreePa,
+    'stretchCenterThreePointShare': gameGenuineCenterThreePointShare,
+    'centerExposureAny': centerExposureAny,
+    'center1Exposure': center1Exposure,
+    'center2Exposure': center2Exposure,
+    'centerExposureBoth': centerExposureBoth,
+    'center1Fga': c1Fga,
+    'center2Fga': c2Fga,
     'accountingConsistent': consistent,
     'homeTeam': teamMap(home),
     'awayTeam': teamMap(away),
@@ -530,6 +600,8 @@ Map<String, dynamic> _analyzeResult(GameResult result) {
           'neutralFga': p.neutralFga,
           'stretchBigFga': p.stretchBigFga,
           'stretchBigThreePa': p.stretchBigThreePa,
+          'genuineCenterFga': p.genuineCenterFga,
+          'genuineCenterThreePa': p.genuineCenterThreePa,
         },
     ],
   };
