@@ -32,6 +32,8 @@ export 'src/simulation/game_versions.dart';
 export 'src/simulation/offensive_opportunity.dart';
 export 'src/simulation/offensive_role.dart';
 export 'src/simulation/phase_trace.dart';
+export 'src/simulation/shot_decision_trace.dart';
+export 'src/simulation/game_metrics.dart';
 export 'src/simulation/probability_model.dart';
 export 'src/simulation/rotation_plan.dart';
 export 'src/simulation/rotation_policy.dart';

@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'support.dart';
 import 'package:simulation_core/simulation_core.dart';
 import 'package:test/test.dart';
 
@@ -147,9 +150,96 @@ CourtLineup _lineupOf(List<Player> ordered) {
   return CourtLineup.create(team: team, slotOrderedPlayers: ordered);
 }
 
+List<int> _normalizeReference(List<int> values) {
+  final total = values.reduce((left, right) => left + right);
+  final lastPositive = values.lastIndexWhere((value) => value > 0);
+  final normalized = List<int>.filled(values.length, 0);
+  var assigned = 0;
+  for (var index = 0; index < values.length; index++) {
+    if (index == lastPositive) {
+      normalized[index] = 10000 - assigned;
+    } else if (values[index] > 0) {
+      normalized[index] = values[index] * 10000 ~/ total;
+      assigned += normalized[index];
+    }
+  }
+  return normalized;
+}
+
+List<int> _v6ZoneWeights(Player shooter, int slotIndex, PhaseKind phase) {
+  const slotThree = [250, 350, 200, -400, -900];
+  const phaseThree = [-400, 0, 200];
+  final current = DerivedShotPreference.rawZoneWeights(
+    shooter: shooter,
+    slotIndex: slotIndex,
+    phase: phase,
+  );
+  final three =
+      3600 +
+      24 * (shooter.attributes.threePoint - 50) +
+      slotThree[slotIndex] +
+      phaseThree[phase.index];
+  return _normalizeReference([
+    current[0],
+    current[1],
+    three < 200 ? 200 : three,
+  ]);
+}
+
 int _sum(List<int> values) => values.fold<int>(0, (a, b) => a + b);
 
 void main() {
+  group('passive shot decision observer', () {
+    test('observer preserves ledger, fingerprint and score bytes', () {
+      final input = buildInput(seed: 20261109);
+      final observations = <ShotDecisionTrace>[];
+      final plain = GameSimulator().simulate(input);
+      final observed = GameSimulator(
+        onShotDecision: observations.add,
+      ).simulate(input);
+
+      expect(observations, isNotEmpty);
+      expect(
+        jsonEncode(observed.ledger.toJson()),
+        jsonEncode(plain.ledger.toJson()),
+      );
+      expect(observed.inputFingerprint, plain.inputFingerprint);
+      expect(
+        [observed.homeScore, observed.awayScore],
+        [plain.homeScore, plain.awayScore],
+      );
+      expect(
+        observations.every(
+          (trace) =>
+              trace.rawUsageWeights.length == 5 &&
+              trace.adjustedUsageWeights.length == 5 &&
+              trace.normalizedZoneWeights.reduce((a, b) => a + b) == 10000 &&
+              trace.offensiveLineupIds.length == 5,
+        ),
+        isTrue,
+      );
+      expect(
+        () => observations.first.rawUsageWeights.add(1),
+        throwsUnsupportedError,
+      );
+      expect(
+        () => observations.first.offensiveLineupIds.add('mutate'),
+        throwsUnsupportedError,
+      );
+      expect(
+        () => observations.first.adjustedUsageWeights.add(1),
+        throwsUnsupportedError,
+      );
+      expect(
+        () => observations.first.rawZoneWeights.add(1),
+        throwsUnsupportedError,
+      );
+      expect(
+        () => observations.first.normalizedZoneWeights.add(1),
+        throwsUnsupportedError,
+      );
+    });
+  });
   final model = BasketballProbabilityModel();
 
   group('role-aware shooter selection', () {
@@ -416,5 +506,32 @@ void main() {
         before,
       );
     });
+    test(
+      'fixed-input v6 and v7 policy weights remain separately measurable',
+      () {
+        final lineup = _lineupOf([
+          _weakPg,
+          _roleFiller,
+          _creatorWing,
+          _eliteScorer,
+          _stretchCenter,
+        ]);
+        final rawUsage = model.rawShotUsageWeights(lineup);
+        final v6Usage = _normalizeReference(rawUsage);
+        final v7Usage = model.shotUsageWeights(lineup);
+        expect(v7Usage.reduce((a, b) => a + b), 10000);
+        expect(v7Usage, isNot(v6Usage));
+
+        final v6Zones = _v6ZoneWeights(_weakPg, 0, PhaseKind.halfCourt);
+        final v7Zones = DerivedShotPreference.zoneWeights(
+          shooter: _weakPg,
+          slotIndex: 0,
+          phase: PhaseKind.halfCourt,
+        );
+        expect(v6Zones.reduce((a, b) => a + b), 10000);
+        expect(v7Zones.reduce((a, b) => a + b), 10000);
+        expect(v7Zones, isNot(v6Zones));
+      },
+    );
   });
 }

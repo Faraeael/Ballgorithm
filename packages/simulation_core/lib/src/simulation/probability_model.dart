@@ -9,6 +9,7 @@ import 'court_lineup.dart';
 import 'game_rules.dart';
 import 'offensive_opportunity.dart';
 import 'offensive_role.dart';
+import 'shot_decision_trace.dart';
 import 'shot_preference.dart';
 
 /// Provisional, uncalibrated ratings-based basketball decision model (T008).
@@ -243,6 +244,7 @@ final class BasketballProbabilityModel {
     required TeamOnCourt defense,
     required PhaseKind phase,
     required DeterministicRandom rng,
+    void Function(ShotDecisionTrace trace)? onShotDecision,
   }) {
     final turnover = turnoverBasisPoints(
       offense: offense,
@@ -291,7 +293,7 @@ final class BasketballProbabilityModel {
         drawnByPlayerId: drawnBy.id,
       );
     }
-    return _selectShot(offense, defense, phase, rng);
+    return _selectShot(offense, defense, phase, rng, onShotDecision);
   }
 
   /// Final-tick deliberate attempt (OD-02): no A1 and no category draws.
@@ -302,8 +304,15 @@ final class BasketballProbabilityModel {
     required TeamOnCourt offense,
     required TeamOnCourt defense,
     required DeterministicRandom rng,
+    void Function(ShotDecisionTrace trace)? onShotDecision,
   }) {
-    return _selectShot(offense, defense, PhaseKind.halfCourt, rng);
+    return _selectShot(
+      offense,
+      defense,
+      PhaseKind.halfCourt,
+      rng,
+      onShotDecision,
+    );
   }
 
   OffensiveAction _selectTurnover(
@@ -338,19 +347,26 @@ final class BasketballProbabilityModel {
     TeamOnCourt defense,
     PhaseKind phase,
     DeterministicRandom rng,
+    void Function(ShotDecisionTrace trace)? onShotDecision,
   ) {
-    final shooter = _playerAt(
-      offense.lineup,
-      _pickWeightedIndex(rng, shotUsageWeights(offense.lineup)),
+    final roles = OffensiveRoleRanking.derive(offense.lineup);
+    final rawUsageWeights = rawShotUsageWeights(offense.lineup);
+    final adjustedUsageWeights = OffensiveOpportunity.adjustedUsageWeights(
+      rawUsageWeights: rawUsageWeights,
+      activeLineup: offense.lineup,
+      roles: roles,
     );
+    final shooterIndex = _pickWeightedIndex(rng, adjustedUsageWeights);
+    final shooter = _playerAt(offense.lineup, shooterIndex);
     final slotIndex = offense.lineup.slotIndexForPlayer(shooter.id);
     final defender = _playerAt(defense.lineup, slotIndex);
 
-    final zoneWeights = _shotZoneWeightsForSlot(
+    final rawZoneWeights = DerivedShotPreference.rawZoneWeights(
       shooter: shooter,
       slotIndex: slotIndex,
       phase: phase,
     );
+    final zoneWeights = normalizeBasisPointWeights(rawZoneWeights);
     final zoneDraw = rng.nextInt(_maxBasisPoints);
     var zone = ShotZone.three;
     if (zoneDraw < zoneWeights[0]) {
@@ -366,6 +382,28 @@ final class BasketballProbabilityModel {
       offense: offense.lineup,
     );
     final made = rng.nextInt(_maxBasisPoints) < makeBp;
+    final observer = onShotDecision;
+    if (observer != null) {
+      observer(
+        ShotDecisionTrace(
+          teamId: offense.teamId.value,
+          offensiveLineupIds: offense.lineup.playerIds,
+          primaryCreatorId: roles.primary.value,
+          secondaryCreatorId: roles.secondary.value,
+          shooterId: shooter.id.value,
+          shooterRole: roles.roleOf(shooter.id),
+          creationScore: roles.scoreFor(shooter.id),
+          rawUsageWeights: rawUsageWeights,
+          adjustedUsageWeights: adjustedUsageWeights,
+          phase: phase,
+          occupiedSlot: offense.lineup.slotAt(slotIndex),
+          rawZoneWeights: rawZoneWeights,
+          normalizedZoneWeights: zoneWeights,
+          selectedZone: zone,
+          shotSuccessBasisPoints: makeBp,
+        ),
+      );
+    }
 
     if (made) {
       final andOneBp = andOneBasisPoints(shooter: shooter, defender: defender);

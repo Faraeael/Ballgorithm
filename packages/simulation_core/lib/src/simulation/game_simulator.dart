@@ -13,6 +13,7 @@ import 'court_lineup.dart';
 import 'game_rules.dart';
 import 'game_validation.dart';
 import 'phase_trace.dart';
+import 'shot_decision_trace.dart';
 import 'game_versions.dart';
 import 'probability_model.dart';
 import 'rotation_plan.dart';
@@ -104,6 +105,7 @@ final class GameSimulator {
     this.onPhaseTrace,
     this.onReplacementDraw,
     this.onRotationDraw,
+    this.onShotDecision,
   }) : _injectedModel = probabilityModel;
 
   final BasketballProbabilityModel? _injectedModel;
@@ -119,6 +121,10 @@ final class GameSimulator {
   /// Optional passive tactical-decision observer (default disabled). It only
   /// reads the PRNG draw counter; the policy is deterministic.
   final void Function(RotationDrawTrace trace)? onRotationDraw;
+
+  /// Optional passive observer for selected field-goal decisions (default off).
+  /// Observations are excluded from ledgers and fingerprints.
+  final void Function(ShotDecisionTrace trace)? onShotDecision;
 
   /// Simulates and validates one game. Throws [GameValidationException] on any
   /// illegal state, incompatible injected model or bound; never returns a
@@ -138,6 +144,7 @@ final class GameSimulator {
         onPhaseTrace,
         onReplacementDraw,
         onRotationDraw,
+        onShotDecision,
       ).run();
     }
     _requireCompatibleA1(injected.rules, input.rules);
@@ -148,6 +155,7 @@ final class GameSimulator {
       onPhaseTrace,
       onReplacementDraw,
       onRotationDraw,
+      onShotDecision,
     ).run();
   }
 
@@ -297,6 +305,7 @@ final class _GameRun {
     this._trace,
     this._replacementDraw,
     this._rotationDraw,
+    this._shotDecision,
   ]) : rules = input.rules,
        rng = DeterministicRandom(input.normalizedSeed),
        fingerprint = GameFingerprint.of(input) {
@@ -309,6 +318,8 @@ final class _GameRun {
   final void Function(PhaseTraceRecord record)? _trace;
   final void Function(ReplacementDrawTrace trace)? _replacementDraw;
   final void Function(RotationDrawTrace trace)? _rotationDraw;
+
+  final void Function(ShotDecisionTrace trace)? _shotDecision;
   final GameRules rules;
 
   int _traceSequence = 0;
@@ -723,6 +734,7 @@ final class _GameRun {
           offense: _onCourt(_offense),
           defense: _onCourt(_opponentOf(_offense)),
           rng: rng,
+          onShotDecision: _shotDecision,
         );
         _clock = 0;
         _shotClock = shotClock - 1;
@@ -741,6 +753,7 @@ final class _GameRun {
           defense: _onCourt(_opponentOf(_offense)),
           phase: phase.kind,
           rng: rng,
+          onShotDecision: _shotDecision,
         );
         _clock -= duration;
         _shotClock = shotClock - duration;
