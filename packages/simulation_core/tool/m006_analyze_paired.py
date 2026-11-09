@@ -132,6 +132,8 @@ def main():
         "v6_stretch_3p_share", "v7_stretch_3p_share", "diff_stretch_3p_share", "stretch_eligible",
         "v6_center_3p_share", "v7_center_3p_share", "diff_center_3p_share",
         "center_exposure_any", "center_exposure_same",
+        "v6_reg_center_big_3p_share", "v7_reg_center_big_3p_share", "diff_reg_center_big_3p_share",
+        "reg_center_big_exposure_any", "reg_center_big_exposure_same",
     ]
 
     all_v6_accounting_valid = True
@@ -168,17 +170,26 @@ def main():
         c7 = g7.get("stretchCenterThreePointShare")
         c_diff = (c7 - c6) if (c6 is not None and c7 is not None) else None
 
-        # Genuine center exposure checks
+        # Population B: Registered Center across PF/C slots
+        rcb6 = g6.get("registeredCenterBigThreePointShare")
+        rcb7 = g7.get("registeredCenterBigThreePointShare")
+        rcb_diff = (rcb7 - rcb6) if (rcb6 is not None and rcb7 is not None) else None
+
+        # Genuine center exposure checks (Pop A: C slot only)
         c1_6 = g6.get("center1Fga", 0)
         c1_7 = g7.get("center1Fga", 0)
         c2_6 = g6.get("center2Fga", 0)
         c2_7 = g7.get("center2Fga", 0)
-
-        # Interpretation 1: At least one center >= 10 in v6 and at least one center >= 10 in v7
         center_exposure_any = 1 if ((c1_6 >= 10 or c2_6 >= 10) and (c1_7 >= 10 or c2_7 >= 10)) else 0
-        # Interpretation 2: The SAME qualifying center >= 10 in both arms
         center_exposure_same = 1 if ((c1_6 >= 10 and c1_7 >= 10) or (c2_6 >= 10 and c2_7 >= 10)) else 0
 
+        # Population B exposure checks (Registered Centers in PF/C slots)
+        c1_big_6 = g6.get("regCenter1BigFga", 0)
+        c1_big_7 = g7.get("regCenter1BigFga", 0)
+        c2_big_6 = g6.get("regCenter2BigFga", 0)
+        c2_big_7 = g7.get("regCenter2BigFga", 0)
+        reg_b_exp_any = 1 if ((c1_big_6 >= 10 or c2_big_6 >= 10) and (c1_big_7 >= 10 or c2_big_7 >= 10)) else 0
+        reg_b_exp_same = 1 if ((c1_big_6 >= 10 and c1_big_7 >= 10) or (c2_big_6 >= 10 and c2_big_7 >= 10)) else 0
         paired_rows.append({
             "seed": s,
             "gameId": m_gid,
@@ -228,6 +239,11 @@ def main():
             "diff_center_3p_share": f"{c_diff:.5f}" if c_diff is not None else "",
             "center_exposure_any": str(center_exposure_any),
             "center_exposure_same": str(center_exposure_same),
+            "v6_reg_center_big_3p_share": f"{rcb6:.5f}" if rcb6 is not None else "",
+            "v7_reg_center_big_3p_share": f"{rcb7:.5f}" if rcb7 is not None else "",
+            "diff_reg_center_big_3p_share": f"{rcb_diff:.5f}" if rcb_diff is not None else "",
+            "reg_center_big_exposure_any": str(reg_b_exp_any),
+            "reg_center_big_exposure_same": str(reg_b_exp_same),
         })
 
     paired_csv_path = Path(args.paired_csv)
@@ -377,30 +393,38 @@ def main():
 
         c_diffs = diffs_for("stretchCenterThreePointShare")
         sb_diffs = diffs_for("stretchBigThreePointShare")
+        diffs_pop_a = diffs_for("stretchCenterThreePointShare")
+        diffs_pop_b = diffs_for("registeredCenterBigThreePointShare")
+        diffs_pop_c = diffs_for("stretchBigThreePointShare")
 
-        c_defined_count = len(c_diffs)
-        exp_any_count = sum(int(r["center_exposure_any"]) for r in paired_rows)
-        exp_same_count = sum(int(r["center_exposure_same"]) for r in paired_rows)
-        sb_elig_count = sum(int(r["stretch_eligible"]) for r in paired_rows)
+        pop_b_defined_count = len(diffs_pop_b)
+        pop_b_exp_any = sum(int(r["reg_center_big_exposure_any"]) for r in paired_rows)
+        pop_b_exp_same = sum(int(r["reg_center_big_exposure_same"]) for r in paired_rows)
+        pop_a_exp_any = sum(int(r["center_exposure_any"]) for r in paired_rows)
+        pop_c_exp = sum(int(r["stretch_eligible"]) for r in paired_rows)
 
-        c_defined_suff = c_defined_count >= int(0.80 * N_manifest)
-        c_exposure_suff = exp_any_count >= int(0.64 * N_manifest) # 160 / 250 = 64%
+        pop_b_defined_suff = pop_b_defined_count >= int(0.80 * N_manifest)
+        pop_b_exposure_suff = pop_b_exp_any >= int(0.64 * N_manifest) # 160 / 250 = 64.0%
 
         summary_data["sufficiency"] = {
-            "stretch_center_defined_count": c_defined_count,
-            "stretch_center_defined_required": int(0.80 * N_manifest),
-            "stretch_center_defined_pass": c_defined_suff,
-            "exposure_any_center_count": exp_any_count,
-            "exposure_same_center_count": exp_same_count,
-            "stretch_big_elig_count": sb_elig_count,
-            "exposure_required": int(0.64 * N_manifest),
-            "exposure_pass": c_exposure_suff,
-            "context_sufficient": c_defined_suff and c_exposure_suff,
+            "population_b_defined_count": pop_b_defined_count,
+            "population_b_defined_required": int(0.80 * N_manifest),
+            "population_b_defined_pass": pop_b_defined_suff,
+            "population_b_exposure_any_count": pop_b_exp_any,
+            "population_b_exposure_same_count": pop_b_exp_same,
+            "population_b_exposure_required": int(0.64 * N_manifest),
+            "population_b_exposure_pass": pop_b_exposure_suff,
+            "population_a_exposure_count": pop_a_exp_any,
+            "population_c_exposure_count": pop_c_exp,
+            "context_sufficient": pop_b_defined_suff and pop_b_exposure_suff,
         }
 
-        # T-tests for both genuine center and general stretch big
-        summary_data["endpoints"]["genuineCenterThreePointShare"] = calc_t_test(c_diffs, -0.015, "upper")
-        summary_data["endpoints"]["stretchBigThreePointShare"] = calc_t_test(sb_diffs, -0.015, "upper")
+        # T-tests for Populations A, B, and C
+        summary_data["endpoints"]["populationA_stretchCenterThreePointShare"] = calc_t_test(diffs_pop_a, -0.015, "upper")
+        summary_data["endpoints"]["populationB_registeredCenterBigThreePointShare"] = calc_t_test(diffs_pop_b, -0.015, "upper")
+        summary_data["endpoints"]["populationC_stretchBigThreePointShare"] = calc_t_test(diffs_pop_c, -0.015, "upper")
+        # Primary binding alias for Corrigendum Option 1
+        summary_data["endpoints"]["genuineCenterThreePointShare"] = summary_data["endpoints"]["populationB_registeredCenterBigThreePointShare"]
 
     summary_out_path = Path(args.summary_out)
     summary_out_path.parent.mkdir(parents=True, exist_ok=True)

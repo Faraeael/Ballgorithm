@@ -55,8 +55,11 @@ class TestConfirmatoryTooling(unittest.TestCase):
                 "stretchBigThreePointShare": 0.36 if v == "v6" else 0.38,
                 "stretchEligible": True,
                 "stretchCenterThreePointShare": (0.35 if v == "v6" else 0.38) + v_jitter,
+                "registeredCenterBigThreePointShare": (0.35 if v == "v6" else 0.38) + v_jitter,
                 "center1Fga": 12,
                 "center2Fga": 11,
+                "regCenter1BigFga": 12,
+                "regCenter2BigFga": 11,
                 "accountingConsistent": True,
             }
 

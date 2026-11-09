@@ -86,7 +86,7 @@ void main(List<String> args) {
       throw StateError('Game $gameId failed to reach GameEnded');
     }
 
-    final analyzed = _analyzeResult(result);
+    final analyzed = analyzeResult(result);
     results.add(analyzed);
   }
 
@@ -234,6 +234,7 @@ final class _PlayerAcc {
   int secondsPlayed = 0, primaryFga = 0, secondaryFga = 0, neutralFga = 0;
   int stretchBigFga = 0, stretchBigThreePa = 0;
   int genuineCenterFga = 0, genuineCenterThreePa = 0;
+  int registeredCenterBigFga = 0, registeredCenterBigThreePa = 0;
 }
 
 final class _TeamAcc {
@@ -244,6 +245,7 @@ final class _TeamAcc {
   int fta = 0, turnovers = 0, possessions = 0;
   int stretchBigFga = 0, stretchBigThreePa = 0;
   int genuineCenterFga = 0, genuineCenterThreePa = 0;
+  int registeredCenterBigFga = 0, registeredCenterBigThreePa = 0;
   int weakShooterFga = 0, weakShooterThreePa = 0;
 }
 
@@ -272,7 +274,7 @@ Map<PlayerId, int> _deriveRoles(CourtLineup lineup) {
 Team _findTeam(GameResult result, TeamId id) =>
     result.input.league.teams.firstWhere((team) => team.id == id);
 
-Map<String, dynamic> _analyzeResult(GameResult result) {
+Map<String, dynamic> analyzeResult(GameResult result) {
   final playerById = <String, Player>{};
   final players = <String, _PlayerAcc>{};
   final teams = <String, _TeamAcc>{};
@@ -394,6 +396,18 @@ Map<String, dynamic> _analyzeResult(GameResult result) {
           tMetric.genuineCenterThreePa++;
         }
       }
+      final isRegisteredCenterBig =
+          (player.id.value == 'player-1-8' ||
+              player.id.value == 'player-2-5') &&
+          (occupiedSlot == Position.c || occupiedSlot == Position.pf);
+      if (isRegisteredCenterBig) {
+        pMetric.registeredCenterBigFga++;
+        tMetric.registeredCenterBigFga++;
+        if (event.shotValue == 3) {
+          pMetric.registeredCenterBigThreePa++;
+          tMetric.registeredCenterBigThreePa++;
+        }
+      }
       if (player.attributes.threePoint < 40) {
         tMetric.weakShooterFga++;
         if (event.shotValue == 3) {
@@ -487,12 +501,26 @@ Map<String, dynamic> _analyzeResult(GameResult result) {
     gameGenuineCenterFga,
   );
 
+  final gameRegisteredCenterBigFga =
+      home.registeredCenterBigFga + away.registeredCenterBigFga;
+  final gameRegisteredCenterBigThreePa =
+      home.registeredCenterBigThreePa + away.registeredCenterBigThreePa;
+  final gameRegisteredCenterBigThreePointShare = share(
+    gameRegisteredCenterBigThreePa,
+    gameRegisteredCenterBigFga,
+  );
+
   final c1Fga = players['player-1-8']?.genuineCenterFga ?? 0;
   final c2Fga = players['player-2-5']?.genuineCenterFga ?? 0;
   final centerExposureAny = (c1Fga >= 10 || c2Fga >= 10);
   final center1Exposure = (c1Fga >= 10);
   final center2Exposure = (c2Fga >= 10);
   final centerExposureBoth = (c1Fga >= 10 && c2Fga >= 10);
+
+  final c1BigFga = players['player-1-8']?.registeredCenterBigFga ?? 0;
+  final c2BigFga = players['player-2-5']?.registeredCenterBigFga ?? 0;
+  final regCenterBigExposureAny = (c1BigFga >= 10 || c2BigFga >= 10);
+  final regCenterBigExposureSame = (c1BigFga >= 10 && c2BigFga >= 10);
   var maxStretchPlayerFga = 0;
   for (final p in players.values) {
     if (p.stretchBigFga > maxStretchPlayerFga) {
@@ -532,6 +560,12 @@ Map<String, dynamic> _analyzeResult(GameResult result) {
     'genuineCenterThreePointShare': share(
       t.genuineCenterThreePa,
       t.genuineCenterFga,
+    ),
+    'registeredCenterBigFga': t.registeredCenterBigFga,
+    'registeredCenterBigThreePa': t.registeredCenterBigThreePa,
+    'registeredCenterBigThreePointShare': share(
+      t.registeredCenterBigThreePa,
+      t.registeredCenterBigFga,
     ),
   };
 
@@ -577,6 +611,14 @@ Map<String, dynamic> _analyzeResult(GameResult result) {
     'centerExposureBoth': centerExposureBoth,
     'center1Fga': c1Fga,
     'center2Fga': c2Fga,
+    'registeredCenterBigFga': gameRegisteredCenterBigFga,
+    'registeredCenterBigThreePa': gameRegisteredCenterBigThreePa,
+    'registeredCenterBigThreePointShare':
+        gameRegisteredCenterBigThreePointShare,
+    'regCenter1BigFga': c1BigFga,
+    'regCenter2BigFga': c2BigFga,
+    'regCenterBigExposureAny': regCenterBigExposureAny,
+    'regCenterBigExposureSame': regCenterBigExposureSame,
     'accountingConsistent': consistent,
     'homeTeam': teamMap(home),
     'awayTeam': teamMap(away),
@@ -602,6 +644,8 @@ Map<String, dynamic> _analyzeResult(GameResult result) {
           'stretchBigThreePa': p.stretchBigThreePa,
           'genuineCenterFga': p.genuineCenterFga,
           'genuineCenterThreePa': p.genuineCenterThreePa,
+          'registeredCenterBigFga': p.registeredCenterBigFga,
+          'registeredCenterBigThreePa': p.registeredCenterBigThreePa,
         },
     ],
   };

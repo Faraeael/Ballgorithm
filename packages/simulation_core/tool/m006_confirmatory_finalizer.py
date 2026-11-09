@@ -43,9 +43,12 @@ def main():
     parser.add_argument("--out-report", required=True, help="Path to output final decision Markdown report")
     parser.add_argument(
         "--stretch-endpoint",
-        choices=["genuineCenterThreePointShare", "stretchBigThreePointShare"],
-        default="genuineCenterThreePointShare",
-        help="Context B stretch endpoint key (default: genuineCenterThreePointShare)",
+        choices=[
+            "populationB_registeredCenterBigThreePointShare",
+            "genuineCenterThreePointShare",
+        ],
+        default="populationB_registeredCenterBigThreePointShare",
+        help="Context B primary stretch endpoint key (binds exclusively to Population B under Corrigendum Option 1)",
     )
     args = parser.parse_args()
 
