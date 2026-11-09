@@ -47,6 +47,7 @@ void main(List<String> args) {
   final leagueSeedIdx = header.indexOf('leagueSeed');
   final homeTeamIdx = header.indexOf('homeTeamId');
   final awayTeamIdx = header.indexOf('awayTeamId');
+  final typeIdx = header.indexOf('type');
 
   if (seedIdx < 0 || leagueSeedIdx < 0) {
     stderr.writeln('Invalid manifest header: ${lines.first}');
@@ -54,7 +55,9 @@ void main(List<String> args) {
   }
 
   final rows = lines.skip(1).where((line) => line.trim().isNotEmpty).toList();
-  stdout.writeln('Executing ${rows.length} games (label: ${label ?? "unspecified"})...');
+  stdout.writeln(
+    'Executing ${rows.length} games (label: ${label ?? "unspecified"})...',
+  );
 
   final simulator = GameSimulator();
   final results = <Map<String, dynamic>>[];
@@ -67,6 +70,8 @@ void main(List<String> args) {
     final leagueSeed = int.parse(parts[leagueSeedIdx].trim());
     final homeTeamId = homeTeamIdx >= 0 ? parts[homeTeamIdx].trim() : 'team-1';
     final awayTeamId = awayTeamIdx >= 0 ? parts[awayTeamIdx].trim() : 'team-2';
+    final isSynthetic =
+        typeIdx >= 0 && parts[typeIdx].trim() == 'synthetic-stretch-five';
 
     final input = _buildInput(
       seed: seed,
@@ -74,8 +79,8 @@ void main(List<String> args) {
       leagueSeed: leagueSeed,
       homeId: homeTeamId,
       awayId: awayTeamId,
+      isSynthetic: isSynthetic,
     );
-
     final result = simulator.simulate(input);
     if (result.events.isEmpty || result.events.last is! GameEnded) {
       throw StateError('Game $gameId failed to reach GameEnded');
@@ -104,10 +109,56 @@ GameInput _buildInput({
   required int leagueSeed,
   required String homeId,
   required String awayId,
+  bool isSynthetic = false,
 }) {
-  final league = const LeagueGenerator().generate(
+  final baseLeague = const LeagueGenerator().generate(
     GenerationConfig(seed: leagueSeed),
   );
+
+  League league = baseLeague;
+  if (isSynthetic) {
+    Player modCenter(Player orig, int three) => Player(
+      id: orig.id,
+      firstName: orig.firstName,
+      lastName: orig.lastName,
+      position: orig.position,
+      attributes: PlayerAttributes(
+        insideScoring: 75,
+        midrange: 55,
+        threePoint: three,
+        freeThrow: 75,
+        passing: 60,
+        ballHandling: 55,
+        perimeterDefense: 50,
+        interiorDefense: 65,
+        rebounding: 70,
+        athleticism: 60,
+        stamina: 70,
+        basketballIQ: 62,
+      ),
+    );
+
+    Team modTeam(Team orig, String cId, int three) => Team(
+      id: orig.id,
+      name: orig.name,
+      abbreviation: orig.abbreviation,
+      roster: Roster([
+        for (final p in orig.players)
+          if (p.id.value == cId) modCenter(p, three) else p,
+      ]),
+    );
+
+    final home = modTeam(baseLeague.teams.first, 'player-1-8', 80);
+    final away = modTeam(baseLeague.teams[1], 'player-2-5', 78);
+
+    league = League.create(
+      id: baseLeague.id,
+      name: baseLeague.name,
+      config: baseLeague.config,
+      teams: [home, away, ...baseLeague.teams.skip(2)],
+    );
+  }
+
   final home = league.teams.firstWhere((t) => t.id.value == homeId);
   final away = league.teams.firstWhere((t) => t.id.value == awayId);
   final rules = GameRules.standard;
@@ -405,8 +456,9 @@ Map<String, dynamic> _analyzeResult(GameResult result) {
     'turnovers': t.turnovers,
     'possessions': t.possessions,
     'eFG': t.fga == 0 ? null : (t.fgm + 0.5 * t.threePm) / t.fga,
-    'turnoversPer100':
-        t.possessions == 0 ? null : t.turnovers * 100 / t.possessions,
+    'turnoversPer100': t.possessions == 0
+        ? null
+        : t.turnovers * 100 / t.possessions,
     'threePointShare': share(t.threePa, t.fga),
     'primaryFga': t.primaryFga,
     'secondaryFga': t.secondaryFga,
@@ -419,8 +471,7 @@ Map<String, dynamic> _analyzeResult(GameResult result) {
     'weakShooterThreePointShare': share(t.weakShooterThreePa, t.weakShooterFga),
     'stretchBigFga': t.stretchBigFga,
     'stretchBigThreePa': t.stretchBigThreePa,
-    'stretchBigThreePointShare':
-        share(t.stretchBigThreePa, t.stretchBigFga),
+    'stretchBigThreePointShare': share(t.stretchBigThreePa, t.stretchBigFga),
   };
 
   return {
@@ -437,8 +488,9 @@ Map<String, dynamic> _analyzeResult(GameResult result) {
     'fta': gameFta,
     'turnovers': gameTov,
     'eFG': gameFga == 0 ? null : (gameFgm + 0.5 * game3Pm) / gameFga,
-    'turnoversPer100':
-        gamePossessions == 0 ? null : gameTov * 100 / gamePossessions,
+    'turnoversPer100': gamePossessions == 0
+        ? null
+        : gameTov * 100 / gamePossessions,
     'threePointShare': share(game3Pa, gameFga),
     'primaryFga': gamePrimaryFga,
     'secondaryFga': gameSecondaryFga,
@@ -470,8 +522,9 @@ Map<String, dynamic> _analyzeResult(GameResult result) {
           'threePa': p.threePa,
           'secondsPlayed': p.secondsPlayed,
           'minutes': p.secondsPlayed / 60,
-          'fgaPer36':
-              p.secondsPlayed < 240 ? null : p.fga * 2160 / p.secondsPlayed,
+          'fgaPer36': p.secondsPlayed < 240
+              ? null
+              : p.fga * 2160 / p.secondsPlayed,
           'primaryFga': p.primaryFga,
           'secondaryFga': p.secondaryFga,
           'neutralFga': p.neutralFga,
