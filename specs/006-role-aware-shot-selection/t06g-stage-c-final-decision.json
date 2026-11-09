@@ -1,0 +1,164 @@
+{
+  "verdict": "INSUFFICIENT",
+  "exit_code": 1,
+  "all_hypotheses_rejected": false,
+  "all_guardrails_passed": true,
+  "all_sufficient": false,
+  "context_a_sufficient": true,
+  "context_b_sufficient": false,
+  "stretch_endpoint_evaluated": "populationB_registeredCenterBigThreePointShare",
+  "holm_step_down": {
+    "primaryCreatorShare": {
+      "p_value": 0.0,
+      "sorted_rank": 1,
+      "alpha_threshold": 0.0125,
+      "rejected": true
+    },
+    "weakShooterThreePointShare": {
+      "p_value": 4.5690875814204734e-12,
+      "sorted_rank": 2,
+      "alpha_threshold": 0.016666666666666666,
+      "rejected": true
+    },
+    "populationB_registeredCenterBigThreePointShare": {
+      "p_value": 1.884304401289505e-06,
+      "sorted_rank": 3,
+      "alpha_threshold": 0.025,
+      "rejected": true
+    },
+    "secondaryCreatorShare": {
+      "p_value": 0.10846756358756837,
+      "sorted_rank": 4,
+      "alpha_threshold": 0.05,
+      "rejected": false
+    }
+  },
+  "primary_endpoints": {
+    "primaryCreatorShare": {
+      "n": 750,
+      "mean_diff": 0.048077623704433185,
+      "sd_diff": 0.032988269012116524,
+      "se_diff": 0.001204561271398992,
+      "delta0": 0.03,
+      "t_stat": 15.007641482145292,
+      "df": 749,
+      "p_value": 0.0
+    },
+    "weakShooterThreePointShare": {
+      "n": 750,
+      "mean_diff": -0.05669372736656904,
+      "sd_diff": 0.08574124104322424,
+      "se_diff": 0.0031308274551907797,
+      "delta0": -0.035,
+      "t_stat": -6.9290715240796015,
+      "df": 749,
+      "p_value": 4.5690875814204734e-12
+    },
+    "populationB_registeredCenterBigThreePointShare": {
+      "n": 250,
+      "mean_diff": 0.013902597992691387,
+      "sd_diff": 0.09662106134739934,
+      "se_diff": 0.006110852476012788,
+      "delta0": -0.015,
+      "t_stat": 4.729716206723054,
+      "df": 249,
+      "p_value": 1.884304401289505e-06
+    },
+    "secondaryCreatorShare": {
+      "n": 750,
+      "mean_diff": 0.006558611977225061,
+      "sd_diff": 0.03454096143545163,
+      "se_diff": 0.0012612575824075252,
+      "delta0": 0.005,
+      "t_stat": 1.2357602435578123,
+      "df": 749,
+      "p_value": 0.10846756358756837
+    }
+  },
+  "guardrails": {
+    "points": {
+      "metric_key": "totalPoints",
+      "n": 750,
+      "mean_diff": 0.46,
+      "sd_diff": 15.520015931887272,
+      "se": 0.5667108545822813,
+      "delta": 2.5,
+      "ci_90_low": -0.4733107598235053,
+      "ci_90_high": 1.3933107598235053,
+      "passed": true
+    },
+    "pace": {
+      "metric_key": "possessions",
+      "n": 750,
+      "mean_diff": -0.192,
+      "sd_diff": 8.153267465285353,
+      "se": 0.29771523387398374,
+      "delta": 1.5,
+      "ci_90_low": -0.6823044098965947,
+      "ci_90_high": 0.29830440989659474,
+      "passed": true
+    },
+    "efg": {
+      "metric_key": "eFG",
+      "n": 750,
+      "mean_diff": 0.0013113469454644102,
+      "sd_diff": 0.034180026765630145,
+      "se": 0.0012480781117110648,
+      "delta": 0.01,
+      "ci_90_low": -0.0007441011218198115,
+      "ci_90_high": 0.0033667950127486317,
+      "passed": true
+    },
+    "tov100": {
+      "metric_key": "turnoversPer100",
+      "n": 750,
+      "mean_diff": 0.026584525178320148,
+      "sd_diff": 1.9443750059398797,
+      "se": 0.0709985367335009,
+      "delta": 0.75,
+      "ci_90_low": -0.09034229513808847,
+      "ci_90_high": 0.14351134549472877,
+      "passed": true
+    },
+    "fta": {
+      "metric_key": "fta",
+      "n": 750,
+      "mean_diff": -0.44666666666666666,
+      "sd_diff": 8.504877000832401,
+      "se": 0.3105541988108526,
+      "delta": 1.75,
+      "ci_90_low": -0.9581154467896069,
+      "ci_90_high": 0.0647821134562736,
+      "passed": true
+    }
+  },
+  "sufficiency": {
+    "context_a": {
+      "weak_defined_count": 750,
+      "weak_defined_required": 600,
+      "weak_defined_pass": true,
+      "weak_exposure_count": 743,
+      "weak_exposure_required": 600,
+      "weak_exposure_pass": true,
+      "context_sufficient": true
+    },
+    "context_b": {
+      "population_b_defined_count": 250,
+      "population_b_defined_required": 200,
+      "population_b_defined_pass": true,
+      "population_b_exposure_same_count": 146,
+      "population_b_exposure_any_count": 147,
+      "population_b_exposure_required": 150,
+      "population_b_exposure_pass": false,
+      "population_a_exposure_count": 43,
+      "population_c_exposure_count": 177,
+      "context_sufficient": false
+    }
+  },
+  "provenance": {
+    "context_a_manifest_sha": "b9bd863af7a6cbd26ee0c8359d015a6e2088d7dfa1ef3d7ceb31a667a7fe9dd2",
+    "context_b_manifest_sha": "c48c008b4d74887b2b3f35000437221c6ab28848e4b9798a537604bb6f878235",
+    "context_a_paired_csv_sha": "3854d3d34bdde4c2b37376837fc1dfefd8d568d9f65d55b9a136daa54ab6c4ac",
+    "context_b_paired_csv_sha": "fe51babcb4558c14b14b910abe3405111d1a0487521238e28bb48cab6aba90cd"
+  }
+}
