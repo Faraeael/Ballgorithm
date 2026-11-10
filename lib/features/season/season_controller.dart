@@ -36,10 +36,26 @@ class SeasonController extends ChangeNotifier {
 
     try {
       final raw = await storage.read();
-      if (raw == null || raw.trim().isEmpty) {
+      if (raw == null) {
         _state = null;
+      } else if (raw.trim().isEmpty) {
+        throw const FormatException(
+          'Save file exists but is empty or contains only whitespace.',
+        );
       } else {
-        _state = SeasonCodec.decode(raw, existingLeague: league);
+        try {
+          _state = SeasonCodec.decode(raw, existingLeague: league);
+        } catch (decodeError) {
+          if (storage is FileSeasonStorage) {
+            final recovered = await (storage as FileSeasonStorage)
+                .recoverBackup();
+            if (recovered != null) {
+              _state = SeasonCodec.decode(recovered, existingLeague: league);
+              return;
+            }
+          }
+          rethrow;
+        }
       }
     } catch (e) {
       _errorMessage =
@@ -85,9 +101,7 @@ class SeasonController extends ChangeNotifier {
 
   /// Strictly validates user game result against pending fixture.
   void _validateUserGameResult(GameResult result, SeasonFixture fixture) {
-    final legacyId =
-        '${fixture.homeTeamId.value}-${fixture.awayTeamId.value}-${fixture.seed}';
-    if (result.input.gameId != fixture.id && result.input.gameId != legacyId) {
+    if (result.input.gameId != fixture.id) {
       throw ArgumentError(
         'Result fixture ID (${result.input.gameId}) does not match scheduled fixture (${fixture.id})',
       );

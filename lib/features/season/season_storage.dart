@@ -59,43 +59,76 @@ class FileSeasonStorage implements SeasonStorage {
   File get _tempFile => File('$filePath.tmp');
   File get _backupFile => File('$filePath.bak');
 
+  /// Attempts to restore the previous verified save from backup if present and non-empty.
+  Future<String?> recoverBackup() async {
+    final file = _file;
+    final backup = _backupFile;
+    if (await backup.exists()) {
+      try {
+        final backupContent = await backup.readAsString();
+        if (backupContent.trim().isNotEmpty) {
+          await _replaceFile(backup, file);
+          return backupContent;
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
   @override
   Future<String?> read() async {
     try {
       final file = _file;
-      final exists = await file.exists();
-
-      if (!exists) {
-        // Recovery check: Did an interrupted atomic promotion leave a backup?
-        final backup = _backupFile;
-        if (await backup.exists()) {
-          try {
-            await _replaceFile(backup, file);
-            return await file.readAsString();
-          } catch (e) {
-            throw SeasonStorageException(
-              'Failed to restore backup save file',
-              e,
-            );
-          }
+      final temp = _tempFile;
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        if (content.trim().isNotEmpty) {
+          return content;
         }
 
-        // Recovery check: Did an interrupted save leave a valid temp file?
-        final temp = _tempFile;
+        // Active file exists but is empty/whitespace.
+        // Attempt recovery from valid backup before returning unreadable content.
+        final recovered = await recoverBackup();
+        if (recovered != null) {
+          return recovered;
+        }
+
+        // Recovery check: did an interrupted save leave a valid temp file?
         if (await temp.exists()) {
           try {
-            await _replaceFile(temp, file);
-            return await file.readAsString();
-          } catch (e) {
-            throw SeasonStorageException('Failed to restore temp save file', e);
-          }
+            final tempContent = await temp.readAsString();
+            if (tempContent.trim().isNotEmpty) {
+              await _replaceFile(temp, file);
+              return tempContent;
+            }
+          } catch (_) {}
         }
 
-        // Neither active, backup, nor temp exists: genuinely missing save
-        return null;
+        // Active file exists but is empty, and no backup was recoverable.
+        // Return raw content so controller handles it as corrupted/empty save, NOT missing.
+        return content;
       }
 
-      return await file.readAsString();
+      // Active file does NOT exist.
+      // Recovery check 1: backup exists
+      final recovered = await recoverBackup();
+      if (recovered != null) {
+        return recovered;
+      }
+
+      // Recovery check 2: temp exists
+      if (await temp.exists()) {
+        try {
+          final tempContent = await temp.readAsString();
+          if (tempContent.trim().isNotEmpty) {
+            await _replaceFile(temp, file);
+            return tempContent;
+          }
+        } catch (_) {}
+      }
+
+      // Genuinely missing save
+      return null;
     } on FileSystemException catch (e) {
       throw SeasonStorageException(
         'File system error reading save: ${e.message}',
@@ -120,26 +153,35 @@ class FileSeasonStorage implements SeasonStorage {
       // 2. Write completely to temp file in same directory and flush
       await temp.writeAsString(data, flush: true);
 
-      // 3. Atomic promotion with backup
+      // 3. Atomic promotion with backup preservation
       final fileExists = await file.exists();
       if (fileExists) {
-        // Move current to backup
-        if (await backup.exists()) {
-          await backup.delete();
-        }
+        // Move current verified save to backup
         await _replaceFile(file, backup);
 
         try {
-          // Promote temp to active
+          // Promote temp to active file
           await _replaceFile(temp, file);
-          // Promotion succeeded, remove backup
-          if (await backup.exists()) {
-            await backup.delete();
+
+          // Verify destination is non-empty before deleting backup
+          if (await file.exists() && await file.length() > 0) {
+            if (await backup.exists()) {
+              try {
+                await backup.delete();
+              } catch (_) {}
+            }
           }
         } catch (promoteError) {
-          // Promotion failed: restore backup to active file
-          if (!await file.exists() && await backup.exists()) {
-            await _replaceFile(backup, file);
+          // Promotion failed: clean up partial destination and restore backup
+          if (await file.exists()) {
+            try {
+              await file.delete();
+            } catch (_) {}
+          }
+          if (await backup.exists()) {
+            try {
+              await _replaceFile(backup, file);
+            } catch (_) {}
           }
           throw SeasonStorageException(
             'Failed to promote temp save file: $promoteError',
@@ -188,6 +230,8 @@ class FileSeasonStorage implements SeasonStorage {
     }
   }
 
+  /// Platform-safe file replace: handles Windows replace semantics where
+  /// File.rename throws when target exists.
   Future<void> _replaceFile(File source, File target) async {
     if (await target.exists()) {
       await target.delete();
@@ -195,8 +239,19 @@ class FileSeasonStorage implements SeasonStorage {
     try {
       await source.rename(target.path);
     } on FileSystemException {
-      await source.copy(target.path);
-      await source.delete();
+      // Non-atomic copy fallback (handles cross-mount or rename locks)
+      try {
+        await source.copy(target.path);
+        await source.delete();
+      } catch (copyError) {
+        // If copy fails halfway, clean up partial target to prevent corrupt active save
+        if (await target.exists()) {
+          try {
+            await target.delete();
+          } catch (_) {}
+        }
+        rethrow;
+      }
     }
   }
 }

@@ -97,6 +97,34 @@ void main() {
       // Verify promoted to active file
       expect(File(savePath).existsSync(), isTrue);
     });
+    test(
+      'interrupted temporary-file write leaves active save untouched',
+      () async {
+        final savePath = '${tempDir.path}/save.json';
+        final storage = FileSeasonStorage(filePath: savePath);
+
+        await storage.write('{"valid": "active"}');
+
+        // Simulate partial/interrupted temp write
+        final tempFile = File('$savePath.tmp');
+        await tempFile.writeAsString('{"partial": "temp');
+
+        final content = await storage.read();
+        expect(content, '{"valid": "active"}');
+      },
+    );
+
+    test('empty active file with valid backup recovers from backup', () async {
+      final savePath = '${tempDir.path}/save.json';
+      final storage = FileSeasonStorage(filePath: savePath);
+
+      // Active file exists but is 0 bytes; backup exists and is valid
+      await File(savePath).writeAsString('');
+      await File('$savePath.bak').writeAsString('{"valid": "backup"}');
+
+      final content = await storage.read();
+      expect(content, '{"valid": "backup"}');
+    });
 
     test('clear removes active file, backup, and temp', () async {
       final savePath = '${tempDir.path}/save.json';
@@ -256,9 +284,102 @@ void main() {
         throwsA(isA<ArgumentError>()),
       );
 
+      // Case C: Exact match of teams and seed, but missing scheduled fixture ID (legacy format)
+      final legacyIdReq = GameRequest(
+        gameId:
+            '${fixture.homeTeamId.value}-${fixture.awayTeamId.value}-${fixture.seed}',
+        league: league,
+        homeTeamId: fixture.homeTeamId,
+        awayTeamId: fixture.awayTeamId,
+        seed: fixture.seed,
+      );
+      final legacyResult = await _headlessRunner(legacyIdReq);
+      await expectLater(
+        () => controller.commitRoundWithUserResult(legacyResult),
+        throwsA(isA<ArgumentError>()),
+      );
+
       // Verify state was not modified
       expect(controller.state!.currentRoundNumber, 1);
       controller.dispose();
+    });
+
+    test(
+      'existing zero-byte or whitespace save is treated as unreadable error, not missing',
+      () async {
+        final savePath = '${tempDir.path}/season_empty.json';
+        // Create existing 0-byte file
+        await File(savePath).writeAsString('');
+
+        final storage = FileSeasonStorage(filePath: savePath);
+        final controller = SeasonController(
+          league: league,
+          storage: storage,
+          gameRunner: _headlessRunner,
+        );
+
+        await controller.loadSeason();
+
+        // Must NOT treat as missing save (must not enable franchise select)
+        expect(controller.hasActiveSeason, isFalse);
+        expect(controller.errorMessage, isNotNull);
+        expect(
+          controller.errorMessage,
+          contains('empty or contains only whitespace'),
+        );
+        // File must NOT be deleted
+        expect(File(savePath).existsSync(), isTrue);
+
+        controller.dispose();
+      },
+    );
+
+    test('corrupted active save recovers from backup on app restart', () async {
+      final savePath = '${tempDir.path}/season_corrupt_recover.json';
+      final storage1 = FileSeasonStorage(filePath: savePath);
+      final controller1 = SeasonController(
+        league: league,
+        storage: storage1,
+        gameRunner: _headlessRunner,
+      );
+
+      // Start season and complete Round 1
+      await controller1.startNewSeason(league.teams.first.id);
+      final fixture1 = controller1.state!.nextUserFixture!;
+      final userReq1 = GameRequest(
+        gameId: fixture1.id,
+        league: league,
+        homeTeamId: fixture1.homeTeamId,
+        awayTeamId: fixture1.awayTeamId,
+        seed: fixture1.seed,
+      );
+      final userResult1 = await _headlessRunner(userReq1);
+      await controller1.commitRoundWithUserResult(userResult1);
+      expect(controller1.state!.currentRoundNumber, 2);
+
+      final validRound1Json = SeasonCodec.encode(controller1.state!);
+      controller1.dispose();
+
+      // Corrupt active save file, but leave valid Round 1 in backup file
+      await File(savePath).writeAsString('{"corrupted_json": true');
+      await File('$savePath.bak').writeAsString(validRound1Json);
+
+      // Reopen app with new controller instance
+      final storage2 = FileSeasonStorage(filePath: savePath);
+      final controller2 = SeasonController(
+        league: league,
+        storage: storage2,
+        gameRunner: _headlessRunner,
+      );
+
+      await controller2.loadSeason();
+
+      // Successfully recovered from backup to Round 2!
+      expect(controller2.hasActiveSeason, isTrue);
+      expect(controller2.state!.currentRoundNumber, 2);
+      expect(controller2.errorMessage, isNull);
+
+      controller2.dispose();
     });
 
     test(
