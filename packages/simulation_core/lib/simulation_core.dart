@@ -4,7 +4,8 @@ library;
 export 'src/domain_versions.dart';
 export 'src/generation/deterministic_random.dart';
 export 'src/generation/league_generator.dart';
-export 'src/generation/name_corpus.dart' show namePairCapacity, teamCatalog;
+export 'src/generation/name_corpus.dart'
+    show namePairCapacity, teamCatalog, TeamSeed;
 export 'src/models/franchise_situation.dart';
 export 'src/models/generation_config.dart';
 export 'src/models/ids.dart';
@@ -49,3 +50,4 @@ export 'src/season/season_schedule.dart';
 export 'src/season/season_standing.dart';
 export 'src/season/season_state.dart';
 export 'src/season/season_codec.dart';
+export 'src/career/career_setup.dart';

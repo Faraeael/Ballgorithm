@@ -22,7 +22,11 @@ final class LeagueGenerator {
   /// Mean rating before positional offsets and noise.
   static const int baseRating = 52;
 
-  League generate(GenerationConfig config) {
+  League generate(
+    GenerationConfig config, {
+    TeamId? userTeamId,
+    FranchiseSituation? userSituation,
+  }) {
     config.validateForEngine().throwIfInvalid();
     final requestedPlayers = config.teamCount * config.playersPerTeam;
     if (requestedPlayers > namePairCapacity) {
@@ -88,6 +92,19 @@ final class LeagueGenerator {
       final situationRng = DeterministicRandom(config.seed ^ 0x51704710);
       situationRng.shuffle(situations);
 
+      if (userTeamId != null && userSituation != null) {
+        final userIndex = teamCatalog.indexWhere(
+          (t) => t.id == userTeamId.value,
+        );
+        if (userIndex != -1 && situations[userIndex] != userSituation) {
+          final swapIndex = situations.indexWhere((s) => s == userSituation);
+          if (swapIndex != -1) {
+            final temp = situations[userIndex];
+            situations[userIndex] = situations[swapIndex];
+            situations[swapIndex] = temp;
+          }
+        }
+      }
       for (var t = 0; t < config.teamCount; t++) {
         final seedTeam = teamCatalog[t];
         final situation = situations[t];

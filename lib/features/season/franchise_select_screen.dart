@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
 
+import '../career/career_setup_screens.dart';
 import '../game/game_setup_screen.dart';
 import '../game/game_screen.dart';
 import 'season_controller.dart';
@@ -36,6 +37,17 @@ class _FranchiseSelectScreenState extends State<FranchiseSelectScreen> {
       appBar: AppBar(
         title: const Text('Ballgorithm Season'),
         actions: [
+          TextButton(
+            key: const ValueKey('open-career-preview'),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const CareerSelectTeamScreen(),
+                ),
+              );
+            },
+            child: const Text('GM Career'),
+          ),
           TextButton(
             key: const ValueKey('open-exhibition'),
             onPressed: () {
