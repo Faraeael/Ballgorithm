@@ -5,7 +5,7 @@ enum FranchiseSituation {
     displayName: 'Tanking / Rebuilding',
     description:
         'Rebuilding roster with low current strength and future draft focus.',
-    targetDraftPick: 1,
+    userOpeningDraftPick: 1,
     baseStarterRating: 46,
     baseBenchRating: 40,
   ),
@@ -14,7 +14,7 @@ enum FranchiseSituation {
     displayName: 'Play-In Contender',
     description:
         'Middle-tier competitive roster with reliable starters and clear weaknesses.',
-    targetDraftPick: 12,
+    userOpeningDraftPick: 12,
     baseStarterRating: 54,
     baseBenchRating: 46,
   ),
@@ -23,7 +23,7 @@ enum FranchiseSituation {
     displayName: 'Playoff Team',
     description:
         'Strong established roster with high-quality starters and competitive depth.',
-    targetDraftPick: 20,
+    userOpeningDraftPick: 20,
     baseStarterRating: 62,
     baseBenchRating: 52,
   ),
@@ -32,7 +32,7 @@ enum FranchiseSituation {
     displayName: 'Championship Contender',
     description:
         'Elite current roster with championship-caliber starting five and deep bench.',
-    targetDraftPick: 30,
+    userOpeningDraftPick: 30,
     baseStarterRating: 70,
     baseBenchRating: 58,
   );
@@ -41,7 +41,7 @@ enum FranchiseSituation {
     this.jsonValue, {
     required this.displayName,
     required this.description,
-    required this.targetDraftPick,
+    required this.userOpeningDraftPick,
     required this.baseStarterRating,
     required this.baseBenchRating,
   });
@@ -49,7 +49,17 @@ enum FranchiseSituation {
   final String jsonValue;
   final String displayName;
   final String description;
-  final int targetDraftPick;
+
+  /// Opening rookie draft pick guaranteed specifically to the PLAYER-SELECTED
+  /// franchise when starting a new GM career in this situation.
+  ///
+  /// This is situation-level metadata for the human manager's starting pick;
+  /// it is NOT assigned to all AI franchises within the same tier.
+  final int userOpeningDraftPick;
+
+  /// Alias preserved for backward compatibility with T01 references.
+  int get targetDraftPick => userOpeningDraftPick;
+
   final int baseStarterRating;
   final int baseBenchRating;
 

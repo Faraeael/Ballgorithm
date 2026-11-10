@@ -11,6 +11,7 @@ export 'src/models/ids.dart';
 export 'src/models/league.dart';
 export 'src/models/player.dart';
 export 'src/models/player_attributes.dart';
+export 'src/models/player_career_profile.dart';
 export 'src/models/position.dart';
 export 'src/models/roster.dart';
 export 'src/models/team.dart';

@@ -110,6 +110,23 @@ final class PlayerAttributes {
   final int stamina;
   final int basketballIQ;
 
+  /// Unweighted mean of the 12 primary attributes.
+  int get overallRating =>
+      ((insideScoring +
+                  midrange +
+                  threePoint +
+                  freeThrow +
+                  passing +
+                  ballHandling +
+                  perimeterDefense +
+                  interiorDefense +
+                  rebounding +
+                  athleticism +
+                  stamina +
+                  basketballIQ) /
+              12)
+          .round();
+
   /// Stable attribute order; also the JSON key order and the UI row order.
   Map<String, int> get asMap => {
     'insideScoring': insideScoring,
