@@ -74,11 +74,6 @@ class _SeasonDashboardScreenState extends State<SeasonDashboardScreen> {
           onFinalizeRound: (result) async {
             await widget.controller.commitRoundWithUserResult(result);
           },
-          onReturn: () {
-            if (mounted) {
-              Navigator.of(context).pop();
-            }
-          },
         ),
       ),
     );

@@ -263,4 +263,87 @@ final class GameRules {
       for (final bracket in retainedFoulPhaseDurations) List<int>.of(bracket),
     ],
   };
+
+  /// Compares every gameplay-relevant rule property by exact value, including
+  /// nested phase weights, phase durations, and foul reset durations.
+  bool matchesConfiguration(GameRules other) {
+    if (identical(this, other)) return true;
+    if (rulesVersion != other.rulesVersion ||
+        periods != other.periods ||
+        periodSeconds != other.periodSeconds ||
+        overtimeSeconds != other.overtimeSeconds ||
+        maxOvertimes != other.maxOvertimes ||
+        shotClockSeconds != other.shotClockSeconds ||
+        offensiveReboundResetSeconds != other.offensiveReboundResetSeconds ||
+        nonBonusFoulResetFloorSeconds != other.nonBonusFoulResetFloorSeconds ||
+        bonusRegulationFouls != other.bonusRegulationFouls ||
+        bonusOvertimeFouls != other.bonusOvertimeFouls ||
+        maxEvents != other.maxEvents ||
+        maxZeroTimeEvents != other.maxZeroTimeEvents ||
+        foulOutLimit != other.foulOutLimit ||
+        substitutionPolicyVersion != other.substitutionPolicyVersion ||
+        actionDurationModelVersion != other.actionDurationModelVersion) {
+      return false;
+    }
+
+    if (!_listEquals(phaseWeights, other.phaseWeights)) return false;
+    if (!_nestedListEquals(phaseDurations, other.phaseDurations)) return false;
+    if (!_nestedListEquals(orebPhaseDurations, other.orebPhaseDurations)) {
+      return false;
+    }
+    if (!_nestedListEquals(
+      retainedFoulPhaseDurations,
+      other.retainedFoulPhaseDurations,
+    )) {
+      return false;
+    }
+
+    return true;
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is GameRules && matchesConfiguration(other));
+
+  @override
+  int get hashCode => Object.hash(
+    rulesVersion,
+    periods,
+    periodSeconds,
+    overtimeSeconds,
+    maxOvertimes,
+    shotClockSeconds,
+    offensiveReboundResetSeconds,
+    nonBonusFoulResetFloorSeconds,
+    bonusRegulationFouls,
+    bonusOvertimeFouls,
+    maxEvents,
+    maxZeroTimeEvents,
+    foulOutLimit,
+    substitutionPolicyVersion,
+    actionDurationModelVersion,
+    Object.hashAll(phaseWeights),
+    Object.hashAll(phaseDurations.map((b) => Object.hashAll(b))),
+    Object.hashAll(orebPhaseDurations.map((b) => Object.hashAll(b))),
+    Object.hashAll(retainedFoulPhaseDurations.map((b) => Object.hashAll(b))),
+  );
+
+  static bool _listEquals(List<int> a, List<int> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  static bool _nestedListEquals(List<List<int>> a, List<List<int>> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!_listEquals(a[i], b[i])) return false;
+    }
+    return true;
+  }
 }

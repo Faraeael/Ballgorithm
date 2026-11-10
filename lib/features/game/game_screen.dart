@@ -190,10 +190,9 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   void _returnToLeague() {
-    if (widget.onReturn != null) {
-      widget.onReturn!();
-    } else {
-      Navigator.of(context).popUntil((route) => route.isFirst);
+    widget.onReturn?.call();
+    if (mounted) {
+      Navigator.of(context).pop();
     }
   }
 
@@ -272,6 +271,7 @@ class _GameScreenState extends State<GameScreen> {
             onReturnToLeague: _returnToLeague,
             returnButtonLabel: widget.returnButtonLabel,
             isFinalizing: _isFinalizing,
+            isFinalized: widget.onFinalizeRound == null || _finalized,
             finalizationError: _finalizationError,
             onRetryFinalization: _finalizeRound,
           ),

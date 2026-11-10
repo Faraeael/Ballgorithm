@@ -22,6 +22,7 @@ class GameResultView extends StatelessWidget {
     required this.onReturnToLeague,
     this.returnButtonLabel,
     this.isFinalizing = false,
+    this.isFinalized = true,
     this.finalizationError,
     this.onRetryFinalization,
   });
@@ -35,6 +36,7 @@ class GameResultView extends StatelessWidget {
   final VoidCallback onReturnToLeague;
   final String? returnButtonLabel;
   final bool isFinalizing;
+  final bool isFinalized;
   final String? finalizationError;
   final VoidCallback? onRetryFinalization;
   Team _team(TeamId id) =>
@@ -162,7 +164,9 @@ class GameResultView extends StatelessWidget {
         ],
         OutlinedButton(
           key: const ValueKey('return-to-league'),
-          onPressed: isFinalizing ? null : onReturnToLeague,
+          onPressed: (isFinalized && !isFinalizing && finalizationError == null)
+              ? onReturnToLeague
+              : null,
           child: Text(returnButtonLabel ?? 'Return to League'),
         ),
       ],

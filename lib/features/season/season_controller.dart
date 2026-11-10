@@ -120,7 +120,7 @@ class SeasonController extends ChangeNotifier {
     if (result.input.league.config.seed != league.config.seed) {
       throw ArgumentError('Result league seed does not match current league');
     }
-    if (result.input.rules != GameRules.standard) {
+    if (!result.input.rules.matchesConfiguration(GameRules.standard)) {
       throw ArgumentError('Result rules do not match standard season rules');
     }
     if (result.simulationVersion != gameSimulationVersion) {
