@@ -166,6 +166,40 @@ void main() {
         () => SeasonCodec.decode('{"schemaVersion": 99, "leagueSeed": 1}'),
         throwsA(isA<FormatException>()),
       );
+
+      final state = SeasonState.initialize(
+        league: league,
+        userFranchiseId: userTeam.id,
+      );
+      final validJson = SeasonCodec.encode(state);
+
+      // Contradictory standings rejected
+      final corruptStandingsJson = validJson.replaceAll('"wins":0', '"wins":5');
+      expect(
+        () => SeasonCodec.decode(corruptStandingsJson),
+        throwsA(isA<FormatException>()),
+      );
+
+      // Premature completed fixture rejected
+      final corruptRoundsJson = validJson.replaceAll(
+        '"currentRoundNumber":1',
+        '"currentRoundNumber":16',
+      );
+      expect(
+        () => SeasonCodec.decode(corruptRoundsJson),
+        throwsA(isA<FormatException>()),
+      );
+
+      // League seed mismatch rejected
+      expect(
+        () => SeasonCodec.decode(
+          validJson,
+          existingLeague: const LeagueGenerator().generate(
+            const GenerationConfig(seed: 999999),
+          ),
+        ),
+        throwsA(isA<FormatException>()),
+      );
     });
 
     test('completes full 14-round 56-game season and crowns champion', () {

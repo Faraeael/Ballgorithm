@@ -38,6 +38,7 @@ class _BasketballManagerAppState extends State<BasketballManagerApp> {
       _controller = SeasonController(
         league: widget.league,
         storage: widget.storage ?? InMemorySeasonStorage(),
+        gameRunner: widget.gameRunner,
       );
       _controller!.loadSeason();
     }

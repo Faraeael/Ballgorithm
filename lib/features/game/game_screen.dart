@@ -11,7 +11,7 @@ import 'game_seed.dart';
 /// The screen never invents a result: loading owns no score, success renders
 /// only the returned `GameResult`, and failures expose typed validation codes.
 /// Rematch advances the frozen seed cycle, one game at a time.
-typedef GameRunner = Future<GameResult> Function(GameRequest request);
+export 'game_runner.dart' show GameRunner;
 
 class GameScreen extends StatefulWidget {
   const GameScreen({
@@ -134,6 +134,7 @@ class _GameScreenState extends State<GameScreen> {
       _seedCycleRepeated = next == 0;
       // Rematch preserves every management decision; only the seed advances.
       _currentRequest = GameRequest(
+        gameId: _currentRequest.gameId,
         league: _currentRequest.league,
         homeTeamId: _currentRequest.homeTeamId,
         awayTeamId: _currentRequest.awayTeamId,

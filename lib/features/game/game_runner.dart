@@ -6,12 +6,15 @@ import 'package:simulation_core/simulation_core.dart';
 /// The lineups and the rotation plan are optional so M003 callers keep
 /// working: the worker builds `CourtLineup.defaultFor` only when a lineup is
 /// absent and passes a null plan through unchanged.
+typedef GameRunner = Future<GameResult> Function(GameRequest request);
+
 final class GameRequest {
   const GameRequest({
     required this.league,
     required this.homeTeamId,
     required this.awayTeamId,
     required this.seed,
+    this.gameId,
     this.homeLineup,
     this.awayLineup,
     this.rotationPlan,
@@ -21,6 +24,7 @@ final class GameRequest {
   final TeamId homeTeamId;
   final TeamId awayTeamId;
   final int seed;
+  final String? gameId;
   final CourtLineup? homeLineup;
   final CourtLineup? awayLineup;
   final RotationPlan? rotationPlan;
@@ -44,6 +48,7 @@ GameResult _simulateGame(GameRequest request) {
   final awayTeam = _teamIn(request.league, request.awayTeamId, 'awayTeamId');
   final input = GameInput.create(
     gameId:
+        request.gameId ??
         '${request.homeTeamId.value}-${request.awayTeamId.value}-${request.seed}',
     league: request.league,
     homeTeamId: request.homeTeamId,

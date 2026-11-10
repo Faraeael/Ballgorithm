@@ -55,6 +55,7 @@ class _SeasonDashboardScreenState extends State<SeasonDashboardScreen> {
         : FranchiseStrategy.defaultFor(awayTeam).teamPlan;
 
     final request = GameRequest(
+      gameId: fixture.id,
       league: widget.league,
       homeTeamId: fixture.homeTeamId,
       awayTeamId: fixture.awayTeamId,
@@ -77,9 +78,11 @@ class _SeasonDashboardScreenState extends State<SeasonDashboardScreen> {
           },
           onReturn: () async {
             if (recordedResult != null) {
-              await widget.controller.commitRoundWithUserResult(
-                recordedResult!,
-              );
+              try {
+                await widget.controller.commitRoundWithUserResult(
+                  recordedResult!,
+                );
+              } catch (_) {}
             }
             if (mounted) {
               Navigator.of(context).pop();
@@ -123,12 +126,31 @@ class _SeasonDashboardScreenState extends State<SeasonDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (widget.controller.isCommitting) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(
+                'Simulating league games & saving progress...',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final state = widget.controller.state;
     if (state == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-
-    final theme = Theme.of(context);
     final userTeam = state.userTeam;
     final userStanding = state.userStanding;
     final ranked = state.standings.ranked;
@@ -200,6 +222,40 @@ class _SeasonDashboardScreenState extends State<SeasonDashboardScreen> {
     return ListView(
       padding: const EdgeInsets.all(16.0),
       children: [
+        if (widget.controller.hasPendingResult)
+          Card(
+            color: Colors.red.shade50,
+            margin: const EdgeInsets.only(bottom: 16.0),
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.red),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Round simulated but could not be saved to storage.',
+                          style: TextStyle(
+                            color: Colors.red.shade900,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton(
+                    key: const ValueKey('retry-pending-save-button'),
+                    onPressed: () => widget.controller.retryPendingCommit(),
+                    child: const Text('Retry Saving Round'),
+                  ),
+                ],
+              ),
+            ),
+          ),
         // Franchise Header Card
         Card(
           elevation: 1,

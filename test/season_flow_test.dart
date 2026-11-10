@@ -28,6 +28,7 @@ Future<GameResult> _testRunner(GameRequest request) async {
   );
   final input = GameInput.create(
     gameId:
+        request.gameId ??
         '${request.homeTeamId.value}-${request.awayTeamId.value}-${request.seed}',
     league: request.league,
     homeTeamId: request.homeTeamId,

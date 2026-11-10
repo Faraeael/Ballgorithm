@@ -1,16 +1,29 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:simulation_core/simulation_core.dart';
 
 import 'app.dart';
 import 'features/season/season_storage.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   const generator = LeagueGenerator();
   const config = GenerationConfig(seed: 20261028);
+
+  final SeasonStorage storage;
+  if (kIsWeb) {
+    // Web platform limitation: native File I/O is unavailable.
+    // In-memory storage is used for browser demonstrations.
+    storage = InMemorySeasonStorage();
+  } else {
+    final docsDir = await getApplicationDocumentsDirectory();
+    storage = FileSeasonStorage(
+      filePath: '${docsDir.path}/ballgorithm_save.json',
+    );
+  }
+
   runApp(
-    BasketballManagerApp(
-      league: generator.generate(config),
-      storage: FileSeasonStorage(filePath: 'ballgorithm_save.json'),
-    ),
+    BasketballManagerApp(league: generator.generate(config), storage: storage),
   );
 }
