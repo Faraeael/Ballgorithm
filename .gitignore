@@ -52,3 +52,9 @@ app.*.map.json
 *.p12
 key.properties
 **/local.properties
+
+# Ballgorithm local saves, device backups, and persistence artifacts
+*save*.json
+*backup*.json
+*.tmp
+*.bak

@@ -13,6 +13,8 @@ import 'game_seed.dart';
 /// Rematch advances the frozen seed cycle, one game at a time.
 export 'game_runner.dart' show GameRunner;
 
+typedef RoundFinalizer = Future<void> Function(GameResult userResult);
+
 class GameScreen extends StatefulWidget {
   const GameScreen({
     super.key,
@@ -22,6 +24,7 @@ class GameScreen extends StatefulWidget {
     this.returnButtonLabel,
     this.onReturn,
     this.onGameFinished,
+    this.onFinalizeRound,
   });
 
   final GameRequest request;
@@ -30,7 +33,7 @@ class GameScreen extends StatefulWidget {
   final String? returnButtonLabel;
   final VoidCallback? onReturn;
   final ValueChanged<GameResult>? onGameFinished;
-
+  final RoundFinalizer? onFinalizeRound;
   @override
   State<GameScreen> createState() => _GameScreenState();
 }
@@ -48,6 +51,39 @@ class _GameScreenState extends State<GameScreen> {
   late GameRequest _currentRequest;
   late int _rematchIndex;
   bool _seedCycleRepeated = false;
+  bool _isFinalizing = false;
+  bool _finalized = false;
+  String? _finalizationError;
+
+  Future<void> _finalizeRound() async {
+    if (_isFinalizing ||
+        _finalized ||
+        _result == null ||
+        widget.onFinalizeRound == null) {
+      return;
+    }
+    setState(() {
+      _isFinalizing = true;
+      _finalizationError = null;
+    });
+
+    try {
+      await widget.onFinalizeRound!(_result!);
+      if (!mounted) return;
+      setState(() {
+        _isFinalizing = false;
+        _finalized = true;
+        _finalizationError = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isFinalizing = false;
+        _finalized = false;
+        _finalizationError = '$e';
+      });
+    }
+  }
 
   @override
   void initState() {
@@ -96,6 +132,9 @@ class _GameScreenState extends State<GameScreen> {
         _phase = _GamePhase.success;
       });
       widget.onGameFinished?.call(result);
+      if (widget.onFinalizeRound != null) {
+        _finalizeRound();
+      }
     } catch (error) {
       if (!mounted || attempt != _attempt) return;
       setState(() {
@@ -177,20 +216,67 @@ class _GameScreenState extends State<GameScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Game Day')),
-      body: switch (_phase) {
-        _GamePhase.loading => _buildLoading(context),
-        _GamePhase.failure => _buildFailure(context),
-        _GamePhase.success => GameResultView(
-          request: _currentRequest,
-          result: _result!,
-          seedCycleRepeated: _seedCycleRepeated,
-          onRematch: widget.enableRematch ? _rematch : null,
-          onReturnToLeague: _returnToLeague,
-          returnButtonLabel: widget.returnButtonLabel,
-        ),
+    final bool canLeave =
+        widget.onFinalizeRound == null ||
+        (_phase != _GamePhase.loading &&
+            (_phase != _GamePhase.success || _finalized));
+
+    return PopScope(
+      canPop: canLeave,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop || widget.onFinalizeRound == null) return;
+        if (_phase == _GamePhase.loading) {
+          final confirm = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Abandon Game?'),
+              content: const Text(
+                'Game in progress will not be saved. Are you sure you want to exit?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Stay'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Abandon'),
+                ),
+              ],
+            ),
+          );
+          if (confirm == true && context.mounted) {
+            Navigator.of(context).pop();
+          }
+        } else if (_phase == _GamePhase.success && !_finalized && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Recording round results... please wait before exiting.',
+              ),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
       },
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Game Day')),
+        body: switch (_phase) {
+          _GamePhase.loading => _buildLoading(context),
+          _GamePhase.failure => _buildFailure(context),
+          _GamePhase.success => GameResultView(
+            request: _currentRequest,
+            result: _result!,
+            seedCycleRepeated: _seedCycleRepeated,
+            onRematch: widget.enableRematch ? _rematch : null,
+            onReturnToLeague: _returnToLeague,
+            returnButtonLabel: widget.returnButtonLabel,
+            isFinalizing: _isFinalizing,
+            finalizationError: _finalizationError,
+            onRetryFinalization: _finalizeRound,
+          ),
+        },
+      ),
     );
   }
 

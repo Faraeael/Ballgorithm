@@ -37,6 +37,7 @@ Future<GameResult> _testRunner(GameRequest request) async {
     awayLineup: request.awayLineup ?? CourtLineup.defaultFor(awayTeam),
     seed: request.seed,
     rules: GameRules.standard,
+    rotationPlan: request.rotationPlan,
   );
   return GameSimulator().simulate(input);
 }

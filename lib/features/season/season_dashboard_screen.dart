@@ -64,8 +64,6 @@ class _SeasonDashboardScreenState extends State<SeasonDashboardScreen> {
       awayLineup: awayLineup,
       rotationPlan: RotationPlan(home: homePlan, away: awayPlan),
     );
-    GameResult? recordedResult;
-
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => GameScreen(
@@ -73,17 +71,10 @@ class _SeasonDashboardScreenState extends State<SeasonDashboardScreen> {
           runner: widget.runner ?? runGame,
           enableRematch: false,
           returnButtonLabel: 'Continue Season',
-          onGameFinished: (result) {
-            recordedResult = result;
+          onFinalizeRound: (result) async {
+            await widget.controller.commitRoundWithUserResult(result);
           },
-          onReturn: () async {
-            if (recordedResult != null) {
-              try {
-                await widget.controller.commitRoundWithUserResult(
-                  recordedResult!,
-                );
-              } catch (_) {}
-            }
+          onReturn: () {
             if (mounted) {
               Navigator.of(context).pop();
             }

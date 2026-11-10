@@ -21,6 +21,9 @@ class GameResultView extends StatelessWidget {
     this.onRematch,
     required this.onReturnToLeague,
     this.returnButtonLabel,
+    this.isFinalizing = false,
+    this.finalizationError,
+    this.onRetryFinalization,
   });
 
   final GameRequest request;
@@ -31,7 +34,9 @@ class GameResultView extends StatelessWidget {
   final VoidCallback? onRematch;
   final VoidCallback onReturnToLeague;
   final String? returnButtonLabel;
-
+  final bool isFinalizing;
+  final String? finalizationError;
+  final VoidCallback? onRetryFinalization;
   Team _team(TeamId id) =>
       request.league.teams.singleWhere((team) => team.id.value == id.value);
 
@@ -83,7 +88,71 @@ class GameResultView extends StatelessWidget {
         const SizedBox(height: 24),
         _disclosures(context, theme),
         const SizedBox(height: 20),
-        if (onRematch != null) ...[
+        if (isFinalizing) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Recording round results...',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (finalizationError != null) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.red.shade200),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.red),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Failed to record round: $finalizationError',
+                        style: TextStyle(
+                          color: Colors.red.shade900,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (onRetryFinalization != null) ...[
+                  const SizedBox(height: 8),
+                  FilledButton(
+                    key: const ValueKey('retry-finalization-button'),
+                    onPressed: onRetryFinalization,
+                    style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                    child: const Text('Retry Finalization'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (onRematch != null && !isFinalizing) ...[
           FilledButton(
             key: const ValueKey('rematch-game'),
             onPressed: onRematch,
@@ -93,7 +162,7 @@ class GameResultView extends StatelessWidget {
         ],
         OutlinedButton(
           key: const ValueKey('return-to-league'),
-          onPressed: onReturnToLeague,
+          onPressed: isFinalizing ? null : onReturnToLeague,
           child: Text(returnButtonLabel ?? 'Return to League'),
         ),
       ],

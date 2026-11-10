@@ -189,6 +189,23 @@ final class GameInput {
     );
   }
 
+  /// Validates that a starting lineup and rotation plan are compatible and legal
+  /// under the given game rules.
+  static void validateLineupAndPlan({
+    required Team team,
+    required CourtLineup lineup,
+    required TeamRotationPlan plan,
+    GameRules? rules,
+  }) {
+    final effectiveRules = rules ?? GameRules.standard;
+    final issues = <GameValidationIssue>[];
+    _checkOwnership(team, lineup, 'lineup', issues);
+    _checkTeamPlan(plan, team, lineup, 'rotationPlan', effectiveRules, issues);
+    if (issues.isNotEmpty) {
+      throw GameValidationException(issues);
+    }
+  }
+
   static void _checkTeamPlan(
     TeamRotationPlan plan,
     Team team,

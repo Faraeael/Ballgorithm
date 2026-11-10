@@ -91,12 +91,20 @@ class _TeamStrategyScreenState extends State<TeamStrategyScreen> {
         preset: _preset,
         targets: targetsList,
       );
+
+      // Enforce strict engine validation before saving
+      GameInput.validateLineupAndPlan(
+        team: _userTeam,
+        lineup: lineup,
+        plan: teamPlan,
+        rules: GameRules.standard,
+      );
+
       final newStrategy = FranchiseStrategy(
         teamId: _userTeam.id,
         startingLineup: lineup,
         rotationPlan: RotationPlan(home: teamPlan, away: teamPlan),
       );
-
       await widget.controller.updateStrategy(newStrategy);
       if (!mounted) return;
       setState(() {
@@ -300,6 +308,27 @@ class _TeamStrategyScreenState extends State<TeamStrategyScreen> {
                         _starterIds[existingIndex] = oldStarterId;
                       }
                       _starterIds[slotIndex] = player.id;
+
+                      // Regenerate targets immediately if using a preset
+                      if (_preset != RotationPreset.custom) {
+                        final newLineup = CourtLineup.create(
+                          team: _userTeam,
+                          slotOrderedPlayers: [
+                            for (final id in _starterIds)
+                              _userTeam.players.firstWhere((p) => p.id == id),
+                          ],
+                        );
+                        final expanded = RotationPlan.expandPreset(
+                          preset: _preset,
+                          team: _userTeam,
+                          lineup: newLineup,
+                          rules: GameRules.standard,
+                        );
+                        _targets = {
+                          for (final p in _userTeam.players)
+                            p.id: expanded[p.id]!,
+                        };
+                      }
                       _dirty = true;
                     });
                     Navigator.pop(context);
