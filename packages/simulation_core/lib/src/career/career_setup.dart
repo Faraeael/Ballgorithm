@@ -1,4 +1,5 @@
 import '../generation/league_generator.dart';
+import '../generation/name_corpus.dart';
 import '../models/franchise_situation.dart';
 import '../models/generation_config.dart';
 import '../models/ids.dart';
@@ -11,12 +12,29 @@ final class CareerSetupRequest {
   const CareerSetupRequest({
     required this.selectedTeamId,
     required this.selectedSituation,
-    this.seed = 20261028,
+    required this.seed,
   });
 
   final TeamId selectedTeamId;
   final FranchiseSituation selectedSituation;
   final int seed;
+
+  void validate() {
+    if (selectedTeamId.value.trim().isEmpty) {
+      throw ArgumentError.value(
+        selectedTeamId.value,
+        'selectedTeamId',
+        'Selected franchise ID must not be empty',
+      );
+    }
+    if (seed <= 0) {
+      throw ArgumentError.value(
+        seed,
+        'seed',
+        'Career seed must be a positive integer',
+      );
+    }
+  }
 }
 
 /// The generated outcome of a career league setup.
@@ -26,12 +44,14 @@ final class CareerSetupResult {
     required this.careerProfiles,
     required this.selectedTeam,
     required this.userOpeningDraftPick,
+    required this.seed,
   });
 
   final League league;
   final LeagueCareerProfiles careerProfiles;
   final Team selectedTeam;
   final int userOpeningDraftPick;
+  final int seed;
 
   FranchiseSituation get selectedSituation => selectedTeam.situation!;
 }
@@ -44,6 +64,16 @@ final class CareerSetupService {
   final LeagueGenerator generator;
 
   CareerSetupResult generate(CareerSetupRequest request) {
+    request.validate();
+
+    if (!teamCatalog.any((t) => t.id == request.selectedTeamId.value)) {
+      throw ArgumentError.value(
+        request.selectedTeamId.value,
+        'selectedTeamId',
+        'Unknown franchise ID: ${request.selectedTeamId.value}',
+      );
+    }
+
     final config = GenerationConfig(seed: request.seed, teamCount: 30);
     final league = generator.generate(
       config,
@@ -67,6 +97,7 @@ final class CareerSetupService {
       careerProfiles: profiles,
       selectedTeam: selectedTeam,
       userOpeningDraftPick: request.selectedSituation.userOpeningDraftPick,
+      seed: request.seed,
     );
   }
 }

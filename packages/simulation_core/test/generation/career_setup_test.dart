@@ -158,6 +158,7 @@ void main() {
           const CareerSetupRequest(
             selectedTeamId: TeamId('team-2'),
             selectedSituation: FranchiseSituation.tanking,
+            seed: seed,
           ),
         );
         expect(t1.userOpeningDraftPick, 1);
@@ -166,6 +167,7 @@ void main() {
           const CareerSetupRequest(
             selectedTeamId: TeamId('team-2'),
             selectedSituation: FranchiseSituation.playIn,
+            seed: seed,
           ),
         );
         expect(t2.userOpeningDraftPick, 12);
@@ -174,6 +176,7 @@ void main() {
           const CareerSetupRequest(
             selectedTeamId: TeamId('team-2'),
             selectedSituation: FranchiseSituation.playoff,
+            seed: seed,
           ),
         );
         expect(t3.userOpeningDraftPick, 20);
@@ -182,6 +185,7 @@ void main() {
           const CareerSetupRequest(
             selectedTeamId: TeamId('team-2'),
             selectedSituation: FranchiseSituation.contender,
+            seed: seed,
           ),
         );
         expect(t4.userOpeningDraftPick, 30);
@@ -224,5 +228,96 @@ void main() {
         expect(json.length, 29263);
       },
     );
+
+    test(
+      'fresh seeds produce different player rosters for same team and situation',
+      () {
+        const req1 = CareerSetupRequest(
+          selectedTeamId: TeamId('team-1'),
+          selectedSituation: FranchiseSituation.contender,
+          seed: 10001,
+        );
+        const req2 = CareerSetupRequest(
+          selectedTeamId: TeamId('team-1'),
+          selectedSituation: FranchiseSituation.contender,
+          seed: 10002,
+        );
+
+        final r1 = service.generate(req1);
+        final r2 = service.generate(req2);
+
+        // Different seeds must generate different player names/attributes
+        expect(
+          jsonEncode(r1.league.toJson()),
+          isNot(jsonEncode(r2.league.toJson())),
+        );
+        expect(
+          r1.selectedTeam.players.map((p) => p.fullName).toList(),
+          isNot(r2.selectedTeam.players.map((p) => p.fullName).toList()),
+        );
+      },
+    );
+
+    test('rejects unknown franchise ID, empty ID, and invalid seed', () {
+      expect(
+        () => service.generate(
+          const CareerSetupRequest(
+            selectedTeamId: TeamId('unknown-team-99'),
+            selectedSituation: FranchiseSituation.tanking,
+            seed: seed,
+          ),
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+
+      expect(
+        () => service.generate(
+          const CareerSetupRequest(
+            selectedTeamId: TeamId(''),
+            selectedSituation: FranchiseSituation.tanking,
+            seed: seed,
+          ),
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+
+      expect(
+        () => service.generate(
+          const CareerSetupRequest(
+            selectedTeamId: TeamId('team-1'),
+            selectedSituation: FranchiseSituation.tanking,
+            seed: 0,
+          ),
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('LeagueGenerator rejects incomplete career selection parameters', () {
+      const gen = LeagueGenerator();
+      const config = GenerationConfig(seed: seed, teamCount: 30);
+
+      // userTeamId without userSituation
+      expect(
+        () => gen.generate(config, userTeamId: const TeamId('team-1')),
+        throwsA(isA<ArgumentError>()),
+      );
+
+      // userSituation without userTeamId
+      expect(
+        () => gen.generate(config, userSituation: FranchiseSituation.tanking),
+        throwsA(isA<ArgumentError>()),
+      );
+
+      // unknown userTeamId
+      expect(
+        () => gen.generate(
+          config,
+          userTeamId: const TeamId('team-999'),
+          userSituation: FranchiseSituation.tanking,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
   });
 }

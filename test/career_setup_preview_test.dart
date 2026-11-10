@@ -127,6 +127,7 @@ void main() {
         final request = const CareerSetupRequest(
           selectedTeamId: TeamId('team-1'),
           selectedSituation: FranchiseSituation.contender,
+          seed: 20261028,
         );
         final result = const CareerSetupService().generate(request);
 
@@ -140,6 +141,53 @@ void main() {
         expect(find.text('Championship Contender'), findsOneWidget);
         expect(find.text('Pick #30'), findsOneWidget);
         expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'Fresh career seeds: sequential provider yields distinct seeds and no random change on rebuild',
+      (tester) async {
+        _useTallSurface(tester);
+        var seedCounter = 50001;
+        int testSeedProvider() => seedCounter++;
+
+        final team = teamCatalog.first;
+
+        // First career preview
+        await tester.pumpWidget(
+          MaterialApp(
+            home: CareerSelectSituationScreen(
+              selectedTeam: team,
+              seedProvider: testSeedProvider,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Generate career 1
+        await tester.tap(
+          find.byKey(const ValueKey('generate-career-preview-button')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('#50001'), findsOneWidget);
+
+        // Rebuild preview screen: seed must NOT change
+        await tester.pump();
+        await tester.pumpAndSettle();
+        expect(find.text('#50001'), findsOneWidget);
+
+        // Go back and generate career 2
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+
+        await tester.tap(
+          find.byKey(const ValueKey('generate-career-preview-button')),
+        );
+        await tester.pumpAndSettle();
+
+        // Career 2 must have distinct fresh seed #50002
+        expect(find.text('#50002'), findsOneWidget);
       },
     );
   });

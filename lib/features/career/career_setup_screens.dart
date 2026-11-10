@@ -1,9 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
 
+typedef CareerSeedProvider = int Function();
+
+/// Generates a fresh non-zero 31-bit seed based on current wall-clock microseconds
+/// masked to 31 bits.
+int defaultCareerSeedProvider() {
+  final now = DateTime.now().microsecondsSinceEpoch;
+  final seed = now & 0x7FFFFFFF;
+  return seed == 0 ? 20261028 : seed;
+}
+
 /// Screen 1: Select franchise from the 30 fictional teams.
 class CareerSelectTeamScreen extends StatefulWidget {
-  const CareerSelectTeamScreen({super.key});
+  const CareerSelectTeamScreen({
+    super.key,
+    this.seedProvider = defaultCareerSeedProvider,
+  });
+
+  final CareerSeedProvider seedProvider;
 
   @override
   State<CareerSelectTeamScreen> createState() => _CareerSelectTeamScreenState();
@@ -135,6 +150,7 @@ class _CareerSelectTeamScreenState extends State<CareerSelectTeamScreen> {
                     MaterialPageRoute<void>(
                       builder: (_) => CareerSelectSituationScreen(
                         selectedTeam: _selectedTeam,
+                        seedProvider: widget.seedProvider,
                       ),
                     ),
                   );
@@ -151,9 +167,14 @@ class _CareerSelectTeamScreenState extends State<CareerSelectTeamScreen> {
 
 /// Screen 2: Select starting competitive situation.
 class CareerSelectSituationScreen extends StatefulWidget {
-  const CareerSelectSituationScreen({super.key, required this.selectedTeam});
+  const CareerSelectSituationScreen({
+    super.key,
+    required this.selectedTeam,
+    this.seedProvider = defaultCareerSeedProvider,
+  });
 
   final TeamSeed selectedTeam;
+  final CareerSeedProvider seedProvider;
 
   @override
   State<CareerSelectSituationScreen> createState() =>
@@ -229,9 +250,11 @@ class _CareerSelectSituationScreenState
               child: FilledButton(
                 key: const ValueKey('generate-career-preview-button'),
                 onPressed: () {
+                  final freshSeed = widget.seedProvider();
                   final request = CareerSetupRequest(
                     selectedTeamId: TeamId(widget.selectedTeam.id),
                     selectedSituation: _selectedSituation,
+                    seed: freshSeed,
                   );
                   final result = const CareerSetupService().generate(request);
 
@@ -455,6 +478,28 @@ class CareerLeaguePreviewScreen extends StatelessWidget {
                             color: theme.colorScheme.onPrimary,
                             fontWeight: FontWeight.bold,
                           ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Career Seed:',
+                        style: TextStyle(
+                          color: theme.colorScheme.onPrimaryContainer,
+                          fontSize: 12,
+                        ),
+                      ),
+                      Text(
+                        '#${result.seed}',
+                        key: const ValueKey('career-seed-display'),
+                        style: TextStyle(
+                          color: theme.colorScheme.onPrimaryContainer,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
                         ),
                       ),
                     ],
