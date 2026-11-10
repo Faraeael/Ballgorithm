@@ -39,6 +39,7 @@ final class GenerationConfig {
 
   static const int minTeamCount = 1;
   static const int maxTeamCount = 8;
+  static const int maxExpandedTeamCount = 30;
   static const int minPlayersPerTeam = 5;
 
   final int seed;
@@ -46,15 +47,19 @@ final class GenerationConfig {
   final int playersPerTeam;
   final String engineVersion;
 
+  bool get isSupportedTeamCount =>
+      (teamCount >= minTeamCount && teamCount <= maxTeamCount) ||
+      teamCount == maxExpandedTeamCount;
+
   ValidationResult validate() {
     final issues = <ValidationIssue>[];
-    if (teamCount < minTeamCount || teamCount > maxTeamCount) {
+    if (!isSupportedTeamCount) {
       issues.add(
         ValidationIssue(
           code: ValidationCode.teamCountOutOfRange,
           path: 'generation.teamCount',
           message:
-              'teamCount must be $minTeamCount..$maxTeamCount, got $teamCount',
+              'teamCount must be $minTeamCount..$maxTeamCount or $maxExpandedTeamCount, got $teamCount',
         ),
       );
     }

@@ -206,12 +206,6 @@ void main() {
       (tester) async {
         _useTallSurface(tester);
         final failingStorage = InMemorySeasonStorage();
-        final controller = SeasonController(
-          league: league,
-          storage: failingStorage,
-          gameRunner: runGame,
-        );
-
         await tester.pumpWidget(
           BasketballManagerApp(
             league: league,

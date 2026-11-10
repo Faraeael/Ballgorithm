@@ -1,4 +1,5 @@
 import '../validation/validation_result.dart';
+import 'franchise_situation.dart';
 import 'ids.dart';
 import 'player.dart';
 import 'roster.dart';
@@ -9,6 +10,7 @@ final class Team {
     required this.name,
     required this.abbreviation,
     required this.roster,
+    this.situation,
   }) {
     final issues = <ValidationIssue>[];
     if (id.value.trim().isEmpty) {
@@ -46,13 +48,14 @@ final class Team {
   final String name;
   final String abbreviation;
   final Roster roster;
-
+  final FranchiseSituation? situation;
   List<Player> get players => roster.players;
 
   Map<String, Object?> toJson() => {
     'id': id.value,
     'name': name,
     'abbreviation': abbreviation,
+    if (situation != null) 'situation': situation!.jsonValue,
     'roster': {
       'players': [for (final player in roster.players) player.toJson()],
     },

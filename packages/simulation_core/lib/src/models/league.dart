@@ -1,6 +1,7 @@
 import '../domain_versions.dart';
 import '../validation/league_validator.dart';
 import '../validation/validation_result.dart';
+import 'franchise_situation.dart';
 import 'generation_config.dart';
 import 'ids.dart';
 import 'player.dart';
@@ -146,12 +147,17 @@ final class League {
           Player.fromJson(rawPlayer, path: 'teams[$t].roster.players[$p]'),
         );
       }
+      final rawSituation = rawTeam['situation'];
+      final situation = rawSituation is String
+          ? FranchiseSituation.fromJson(rawSituation)
+          : null;
       teams.add(
         Team(
           id: TeamId(rawTeamId),
           name: rawTeamName,
           abbreviation: rawAbbreviation,
           roster: Roster(players),
+          situation: situation,
         ),
       );
     }
