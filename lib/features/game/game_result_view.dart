@@ -18,8 +18,9 @@ class GameResultView extends StatelessWidget {
     required this.request,
     required this.result,
     required this.seedCycleRepeated,
-    required this.onRematch,
+    this.onRematch,
     required this.onReturnToLeague,
+    this.returnButtonLabel,
   });
 
   final GameRequest request;
@@ -27,8 +28,9 @@ class GameResultView extends StatelessWidget {
 
   /// True when the last rematch wrapped the 256-game seed cycle.
   final bool seedCycleRepeated;
-  final VoidCallback onRematch;
+  final VoidCallback? onRematch;
   final VoidCallback onReturnToLeague;
+  final String? returnButtonLabel;
 
   Team _team(TeamId id) =>
       request.league.teams.singleWhere((team) => team.id.value == id.value);
@@ -81,16 +83,18 @@ class GameResultView extends StatelessWidget {
         const SizedBox(height: 24),
         _disclosures(context, theme),
         const SizedBox(height: 20),
-        FilledButton(
-          key: const ValueKey('rematch-game'),
-          onPressed: onRematch,
-          child: const Text('Rematch'),
-        ),
-        const SizedBox(height: 8),
+        if (onRematch != null) ...[
+          FilledButton(
+            key: const ValueKey('rematch-game'),
+            onPressed: onRematch,
+            child: const Text('Rematch'),
+          ),
+          const SizedBox(height: 8),
+        ],
         OutlinedButton(
           key: const ValueKey('return-to-league'),
           onPressed: onReturnToLeague,
-          child: const Text('Return to League'),
+          child: Text(returnButtonLabel ?? 'Return to League'),
         ),
       ],
     );

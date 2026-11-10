@@ -14,10 +14,22 @@ import 'game_seed.dart';
 typedef GameRunner = Future<GameResult> Function(GameRequest request);
 
 class GameScreen extends StatefulWidget {
-  const GameScreen({super.key, required this.request, this.runner = runGame});
+  const GameScreen({
+    super.key,
+    required this.request,
+    this.runner = runGame,
+    this.enableRematch = true,
+    this.returnButtonLabel,
+    this.onReturn,
+    this.onGameFinished,
+  });
 
   final GameRequest request;
   final GameRunner runner;
+  final bool enableRematch;
+  final String? returnButtonLabel;
+  final VoidCallback? onReturn;
+  final ValueChanged<GameResult>? onGameFinished;
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -83,6 +95,7 @@ class _GameScreenState extends State<GameScreen> {
         _result = result;
         _phase = _GamePhase.success;
       });
+      widget.onGameFinished?.call(result);
     } catch (error) {
       if (!mounted || attempt != _attempt) return;
       setState(() {
@@ -137,7 +150,11 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   void _returnToLeague() {
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    if (widget.onReturn != null) {
+      widget.onReturn!();
+    } else {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
   }
 
   String _teamName(TeamId id) {
@@ -168,8 +185,9 @@ class _GameScreenState extends State<GameScreen> {
           request: _currentRequest,
           result: _result!,
           seedCycleRepeated: _seedCycleRepeated,
-          onRematch: _rematch,
+          onRematch: widget.enableRematch ? _rematch : null,
           onReturnToLeague: _returnToLeague,
+          returnButtonLabel: widget.returnButtonLabel,
         ),
       },
     );
