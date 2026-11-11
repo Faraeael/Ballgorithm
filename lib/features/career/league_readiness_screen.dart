@@ -199,9 +199,10 @@ class GmLeagueReadinessScreen extends StatelessWidget {
                   key: ValueKey('detail-unsigned-${right.prospectId.value}'),
                   career: career,
                   playerId: right.prospectId,
-                  status:
-                      career.aiRookieSigning.forProspect(right.prospectId) ==
-                          null
+                  status: team.isHuman
+                      ? 'Unsigned rights'
+                      : career.aiRookieSigning.forProspect(right.prospectId) ==
+                            null
                       ? 'Pending evaluation'
                       : 'Deferred',
                   detail:

@@ -365,6 +365,9 @@ void main() {
     ) async {
       _viewport(tester, _largeViewport);
       final right = _userRights(completed).first;
+      final unsignedRight = _userRights(completed).firstWhere(
+        (candidate) => candidate.prospectId != right.prospectId,
+      );
       final prospect = completed.draftClass.byId(right.prospectId)!;
       final humanSigned = const RookieSigningService().signDraftedRookie(
         career: completed,
@@ -385,10 +388,25 @@ void main() {
       );
       await tester.tap(humanCard);
       await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(
+          ValueKey('detail-unsigned-${unsignedRight.prospectId.value}'),
+        ),
+        200,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const ValueKey('franchise-detail-sheet')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
 
       final sheet = _textUnder(tester, 'franchise-detail-sheet');
       expect(sheet, contains('Signed Drafted Rookies (1)'));
       expect(sheet, contains('Unsigned Drafted Rights (1)'));
+      expect(sheet, contains('Unsigned rights'));
+      expect(sheet, isNot(contains('Pending evaluation')));
       expect(sheet, contains(prospect.fullName));
       expect(sheet, contains('Standard players'));
       expect(sheet, contains('13/15'));
