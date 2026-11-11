@@ -123,24 +123,134 @@ final class GmCareerCodec {
     }
     final baseLeague = League.fromJson(rawLeague, enforceRosterSize: false);
 
-    final rawRosterMemberships =
-        raw['rosterMemberships'] as Map<String, dynamic>?;
-    final leagueTeams = <Team>[];
-    for (final team in baseLeague.teams) {
-      final teamMembershipsRaw =
-          rawRosterMemberships?[team.id.value] as List<dynamic>?;
-      if (teamMembershipsRaw != null) {
-        final categories = <String, RosterCategory>{};
-        for (final m in teamMembershipsRaw) {
-          final membership = RosterMembership.fromJson(
-            m as Map<String, dynamic>,
-          );
-          categories[membership.playerId.value] = membership.category;
+    // Extract redundant inline roster categories from rawLeague if present
+    final rawTeamsList = rawLeague['teams'];
+    final rawInlineCategoriesByTeam = <String, Map<String, dynamic>>{};
+    if (rawTeamsList is List<dynamic>) {
+      for (final rawTeam in rawTeamsList) {
+        if (rawTeam is Map<String, dynamic>) {
+          final tId = rawTeam['id'] as String?;
+          final rawRoster = rawTeam['roster'];
+          if (tId != null && rawRoster is Map<String, dynamic>) {
+            final rawCats = rawRoster['categories'];
+            if (rawCats is Map<String, dynamic>) {
+              rawInlineCategoriesByTeam[tId] = rawCats;
+            }
+          }
         }
+      }
+    }
+
+    final rawRosterMemberships = raw['rosterMemberships'];
+    final leagueTeams = <Team>[];
+
+    if (schemaVersion >= 3) {
+      if (rawRosterMemberships == null ||
+          rawRosterMemberships is! Map<String, dynamic>) {
+        throw const FormatException(
+          'Missing or invalid rosterMemberships in career JSON v3',
+        );
+      }
+    }
+
+    if (rawRosterMemberships != null) {
+      if (rawRosterMemberships is! Map<String, dynamic>) {
+        throw const FormatException(
+          'Invalid rosterMemberships in career JSON: expected Map',
+        );
+      }
+
+      // Reject membership entries referencing nonexistent franchises
+      final validTeamIds = {for (final t in baseLeague.teams) t.id.value};
+      for (final key in rawRosterMemberships.keys) {
+        if (!validTeamIds.contains(key)) {
+          throw FormatException('Unknown franchise $key in rosterMemberships');
+        }
+      }
+
+      for (final team in baseLeague.teams) {
+        final teamMembershipsRaw = rawRosterMemberships[team.id.value];
+        if (teamMembershipsRaw == null) {
+          if (schemaVersion >= 3) {
+            throw FormatException(
+              'Missing rosterMemberships entry for franchise ${team.id.value}',
+            );
+          }
+          leagueTeams.add(team);
+          continue;
+        }
+
+        if (teamMembershipsRaw is! List<dynamic>) {
+          throw FormatException(
+            'Invalid rosterMemberships list for franchise ${team.id.value}',
+          );
+        }
+
+        final teamPlayerIds = {for (final p in team.players) p.id.value};
+        final seenPlayerIds = <String>{};
+        final categories = <String, RosterCategory>{};
+
+        for (var i = 0; i < teamMembershipsRaw.length; i++) {
+          final m = teamMembershipsRaw[i];
+          if (m is! Map<String, dynamic>) {
+            throw FormatException(
+              'Malformed membership entry at index $i for franchise ${team.id.value}',
+            );
+          }
+          final membership = RosterMembership.fromJson(m);
+          final pid = membership.playerId.value;
+
+          if (!teamPlayerIds.contains(pid)) {
+            throw FormatException(
+              'Player $pid in rosterMemberships does not belong to franchise ${team.id.value}',
+            );
+          }
+
+          if (!seenPlayerIds.add(pid)) {
+            throw FormatException(
+              'Duplicate roster membership entry for player $pid in franchise ${team.id.value}',
+            );
+          }
+
+          categories[pid] = membership.category;
+        }
+
+        // Require exactly one membership entry for each contracted player
+        for (final player in team.players) {
+          if (!seenPlayerIds.contains(player.id.value)) {
+            throw FormatException(
+              'Missing roster membership entry for player ${player.id.value} in franchise ${team.id.value}',
+            );
+          }
+        }
+
+        // Reconcile and validate consistency with redundant league.teams[].roster.categories if present
+        final inlineCategories = rawInlineCategoriesByTeam[team.id.value];
+        if (inlineCategories != null) {
+          for (final entry in inlineCategories.entries) {
+            final pid = entry.key;
+            final rawCat = entry.value as String?;
+            if (!teamPlayerIds.contains(pid)) {
+              throw FormatException(
+                'Inline category references unknown player $pid on franchise ${team.id.value}',
+              );
+            }
+            final expectedCat = categories[pid];
+            if (rawCat != expectedCat?.jsonValue) {
+              throw FormatException(
+                'Conflicting roster categories for player $pid on franchise ${team.id.value}: '
+                'inline=$rawCat vs rosterMemberships=${expectedCat?.jsonValue}',
+              );
+            }
+          }
+        }
+
         leagueTeams.add(
           team.copyWith(roster: Roster(team.players, categories: categories)),
         );
-      } else {
+      }
+    } else {
+      for (final team in baseLeague.teams) {
         leagueTeams.add(team);
       }
     }
