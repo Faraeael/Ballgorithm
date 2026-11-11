@@ -2,6 +2,7 @@ import 'ids.dart';
 import 'player_attributes.dart';
 import 'player_career_profile.dart';
 import 'position.dart';
+import 'public_prospect_scouting_view.dart';
 
 /// An individual rookie prospect eligible for the rookie draft.
 final class RookieProspect {
@@ -76,6 +77,10 @@ final class RookieProspect {
   String get fullName => '$firstName $lastName'.trim();
 
   int get overallRating => attributes.overallRating;
+
+  /// Returns a restricted public scouting evaluation that omits hidden potential and trajectory.
+  PublicProspectScoutingView toPublicView() =>
+      PublicProspectScoutingView.fromProspect(this);
 
   void validate() {
     if (age < 19 || age > 22) {

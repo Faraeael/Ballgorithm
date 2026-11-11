@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../generation/draft_generator.dart';
+import '../models/draft_execution_state.dart';
 import '../models/draft_order.dart';
 import '../models/franchise_situation.dart';
 import '../models/ids.dart';
@@ -18,13 +19,13 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 3;
+  static const int currentSchemaVersion = 4;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
     career.validate();
     final map = <String, dynamic>{
-      'schemaVersion': career.schemaVersion,
+      'schemaVersion': currentSchemaVersion,
       'id': career.id,
       'generationSeed': career.generationSeed,
       'userFranchiseId': career.userFranchiseId.value,
@@ -36,6 +37,7 @@ final class GmCareerCodec {
       'careerProfiles': career.careerProfiles.toJson(),
       'draftOrder': career.draftOrder.toJson(),
       'draftClass': career.draftClass.toJson(),
+      'draftExecutionState': career.draftExecutionState.toJson(),
       'rosterMemberships': {
         for (final team in career.league.teams)
           team.id.value: [
@@ -303,6 +305,20 @@ final class GmCareerCodec {
         seasonYear: currentYear,
       );
     }
+    final DraftExecutionState draftExecutionState;
+    final rawDraftExecutionState = raw['draftExecutionState'];
+    if (schemaVersion >= 4 && rawDraftExecutionState is Map<String, dynamic>) {
+      draftExecutionState = DraftExecutionState.fromJson(
+        rawDraftExecutionState,
+      );
+    } else {
+      if (schemaVersion >= 4) {
+        throw const FormatException(
+          'Missing or invalid draftExecutionState in career JSON v4',
+        );
+      }
+      draftExecutionState = DraftExecutionState.initial();
+    }
 
     final career = GmCareer(
       id: id,
@@ -317,6 +333,7 @@ final class GmCareerCodec {
       userOpeningDraftPick: userOpeningDraftPick,
       draftOrder: draftOrder,
       draftClass: draftClass,
+      draftExecutionState: draftExecutionState,
     );
     career.validate();
     return career;

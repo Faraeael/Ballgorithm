@@ -1,4 +1,5 @@
 import '../generation/draft_generator.dart';
+import '../models/draft_execution_state.dart';
 import '../models/draft_order.dart';
 import '../models/franchise_situation.dart';
 import '../models/ids.dart';
@@ -24,7 +25,10 @@ final class GmCareer {
     required this.userOpeningDraftPick,
     DraftOrder? draftOrder,
     RookieDraftClass? draftClass,
-  }) : draftOrder =
+    DraftExecutionState? draftExecutionState,
+  }) : draftExecutionState =
+           draftExecutionState ?? DraftExecutionState.initial(),
+       draftOrder =
            draftOrder ??
            const DraftGenerator().generateDraftOrder(
              league: league,
@@ -59,10 +63,11 @@ final class GmCareer {
       userOpeningDraftPick: result.userOpeningDraftPick,
       draftOrder: result.draftOrder,
       draftClass: result.draftClass,
+      draftExecutionState: DraftExecutionState.initial(),
     );
   }
 
-  static const int currentSchemaVersion = 3;
+  static const int currentSchemaVersion = 4;
 
   final String id;
   final int schemaVersion;
@@ -77,6 +82,7 @@ final class GmCareer {
 
   final DraftOrder draftOrder;
   final RookieDraftClass draftClass;
+  final DraftExecutionState draftExecutionState;
 
   /// Returns the human user's managed [Team].
   Team get userTeam => league.teams.firstWhere(
@@ -157,13 +163,32 @@ final class GmCareer {
 
     draftOrder.validate();
     draftClass.validate();
+    for (final pick in draftOrder.picks) {
+      if (!teamIds.contains(pick.originalOwnerTeamId.value) ||
+          !teamIds.contains(pick.currentOwnerTeamId.value)) {
+        throw const FormatException('Draft pick references unknown franchise');
+      }
+    }
+    for (final prospect in draftClass.prospects) {
+      if (playerIds.contains(prospect.id.value)) {
+        throw const FormatException(
+          'Draft prospect already belongs to a roster',
+        );
+      }
+    }
 
     final userRound1Pick = draftOrder.pickAt(userOpeningDraftPick);
-    if (userRound1Pick.currentOwnerTeamId != userFranchiseId) {
+    if (userRound1Pick.originalOwnerTeamId != userFranchiseId) {
       throw FormatException(
-        'User franchise ${userFranchiseId.value} does not own opening draft pick $userOpeningDraftPick in draft order',
+        'User franchise ${userFranchiseId.value} lacks original entitlement to opening draft pick $userOpeningDraftPick',
       );
     }
+
+    draftExecutionState.validate(
+      order: draftOrder,
+      draftClass: draftClass,
+      seasonYear: currentYear,
+    );
   }
 
   /// Returns a new [GmCareer] with [updatedTeam] swapped into the league.
@@ -201,6 +226,7 @@ final class GmCareer {
     int? userOpeningDraftPick,
     DraftOrder? draftOrder,
     RookieDraftClass? draftClass,
+    DraftExecutionState? draftExecutionState,
   }) {
     return GmCareer(
       id: id ?? this.id,
@@ -215,6 +241,7 @@ final class GmCareer {
       userOpeningDraftPick: userOpeningDraftPick ?? this.userOpeningDraftPick,
       draftOrder: draftOrder ?? this.draftOrder,
       draftClass: draftClass ?? this.draftClass,
+      draftExecutionState: draftExecutionState ?? this.draftExecutionState,
     );
   }
 }
