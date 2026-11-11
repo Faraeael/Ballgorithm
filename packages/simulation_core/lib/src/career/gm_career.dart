@@ -1,11 +1,14 @@
 import '../generation/draft_generator.dart';
 import '../models/draft_execution_state.dart';
 import '../models/draft_order.dart';
+import '../models/draft_rights.dart';
 import '../models/franchise_situation.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
 import '../models/player_career_profile.dart';
 import '../models/rookie_draft_class.dart';
+import '../models/rookie_signing_ledger.dart';
+import '../models/roster_category.dart';
 import '../models/team.dart';
 import 'career_phase.dart';
 import 'career_setup.dart';
@@ -26,8 +29,10 @@ final class GmCareer {
     DraftOrder? draftOrder,
     RookieDraftClass? draftClass,
     DraftExecutionState? draftExecutionState,
+    RookieSigningLedger? rookieSigningLedger,
   }) : draftExecutionState =
            draftExecutionState ?? DraftExecutionState.initial(),
+       rookieSigningLedger = rookieSigningLedger ?? RookieSigningLedger.empty(),
        draftOrder =
            draftOrder ??
            const DraftGenerator().generateDraftOrder(
@@ -67,7 +72,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 4;
+  static const int currentSchemaVersion = 5;
 
   final String id;
   final int schemaVersion;
@@ -83,6 +88,17 @@ final class GmCareer {
   final DraftOrder draftOrder;
   final RookieDraftClass draftClass;
   final DraftExecutionState draftExecutionState;
+
+  final RookieSigningLedger rookieSigningLedger;
+
+  /// Draft rights whose prospect has not signed a rookie contract yet.
+  ///
+  /// Derived from authoritative draft history and the signing ledger; never
+  /// stored separately.
+  List<DraftRights> get unsignedDraftRights => [
+    for (final rights in draftExecutionState.draftRights.values)
+      if (!rookieSigningLedger.isSigned(rights.prospectId)) rights,
+  ];
 
   /// Returns the human user's managed [Team].
   Team get userTeam => league.teams.firstWhere(
@@ -115,6 +131,8 @@ final class GmCareer {
 
     final teamIds = <String>{};
     final playerIds = <String>{};
+    final rosterTeamByPlayerId = <String, TeamId>{};
+    final rosterCategoryByPlayerId = <String, RosterCategory>{};
     for (final team in league.teams) {
       if (!teamIds.add(team.id.value)) {
         throw FormatException('Duplicate team ID in league: ${team.id.value}');
@@ -131,6 +149,10 @@ final class GmCareer {
             'Duplicate player ID in league: ${player.id.value}',
           );
         }
+        rosterTeamByPlayerId[player.id.value] = team.id;
+        rosterCategoryByPlayerId[player.id.value] = team.roster.categoryOf(
+          player.id,
+        );
       }
     }
 
@@ -170,9 +192,10 @@ final class GmCareer {
       }
     }
     for (final prospect in draftClass.prospects) {
-      if (playerIds.contains(prospect.id.value)) {
-        throw const FormatException(
-          'Draft prospect already belongs to a roster',
+      if (playerIds.contains(prospect.id.value) &&
+          !rookieSigningLedger.isSigned(prospect.id)) {
+        throw FormatException(
+          'Draft prospect ${prospect.id.value} is on a roster without a rookie contract',
         );
       }
     }
@@ -189,6 +212,65 @@ final class GmCareer {
       draftClass: draftClass,
       seasonYear: currentYear,
     );
+    _validateRookieSignings(
+      rosterTeamByPlayerId: rosterTeamByPlayerId,
+      rosterCategoryByPlayerId: rosterCategoryByPlayerId,
+    );
+  }
+
+  /// Rejects contracts that disagree with draft history, rostering or profiles.
+  void _validateRookieSignings({
+    required Map<String, TeamId> rosterTeamByPlayerId,
+    required Map<String, RosterCategory> rosterCategoryByPlayerId,
+  }) {
+    if (rookieSigningLedger.isEmpty) return;
+    if (!draftExecutionState.isCompleted) {
+      throw const FormatException(
+        'Rookie contracts require a completed rookie draft',
+      );
+    }
+    final selectionsByProspect = {
+      for (final selection in draftExecutionState.selections)
+        selection.prospectId.value: selection,
+    };
+    for (final contract in rookieSigningLedger.contracts.values) {
+      final pid = contract.playerId.value;
+      if (draftClass.byId(contract.playerId) == null) {
+        throw FormatException(
+          'Rookie contract references unknown prospect $pid',
+        );
+      }
+      final selection = selectionsByProspect[pid];
+      if (selection == null) {
+        throw FormatException('Signed rookie $pid was never drafted');
+      }
+      if (selection.selectingTeamId != contract.teamId ||
+          selection.seasonYear != contract.draftSeasonYear ||
+          selection.overallPick != contract.overallPick) {
+        throw FormatException(
+          'Rookie contract for $pid does not match its draft selection',
+        );
+      }
+      final rosterTeam = rosterTeamByPlayerId[pid];
+      if (rosterTeam == null) {
+        throw FormatException(
+          'Signed rookie $pid is not on a franchise roster',
+        );
+      }
+      if (rosterTeam != contract.teamId) {
+        throw FormatException(
+          'Signed rookie $pid roster franchise does not match contract',
+        );
+      }
+      if (rosterCategoryByPlayerId[pid] != contract.category) {
+        throw FormatException(
+          'Roster category for signed rookie $pid does not match contract',
+        );
+      }
+      if (careerProfiles.forPlayer(contract.playerId) == null) {
+        throw FormatException('Missing career profile for signed rookie $pid');
+      }
+    }
   }
 
   /// Returns a new [GmCareer] with [updatedTeam] swapped into the league.
@@ -227,6 +309,7 @@ final class GmCareer {
     DraftOrder? draftOrder,
     RookieDraftClass? draftClass,
     DraftExecutionState? draftExecutionState,
+    RookieSigningLedger? rookieSigningLedger,
   }) {
     return GmCareer(
       id: id ?? this.id,
@@ -242,6 +325,7 @@ final class GmCareer {
       draftOrder: draftOrder ?? this.draftOrder,
       draftClass: draftClass ?? this.draftClass,
       draftExecutionState: draftExecutionState ?? this.draftExecutionState,
+      rookieSigningLedger: rookieSigningLedger ?? this.rookieSigningLedger,
     );
   }
 }

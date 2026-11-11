@@ -15,13 +15,15 @@ class GmCareerController extends ChangeNotifier {
   Future<void> _pendingCommand = Future<void>.value();
   bool _draftRecoveryRequired = false;
   static const _draftService = DraftExecutionService();
+  static const _signingService = RookieSigningService();
 
   GmCareer? get career => _career;
   bool get hasCareer => _career != null;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  /// Draft commands remain blocked until a successful reload reconciles a failed write.
+  /// Draft and signing commands remain blocked until a successful reload
+  /// reconciles a failed or uncertain write.
   bool get draftRecoveryRequired => _draftRecoveryRequired;
 
   /// Completes after commands already queued by this controller have settled.
@@ -110,7 +112,7 @@ class GmCareerController extends ChangeNotifier {
 
   /// Starts the draft, saving each AI pick before stopping at a human turn.
   Future<void> startDraft({String slot = 'default'}) =>
-      _runDraftCommand(() async {
+      _runCareerCommand(action: 'execute rookie draft', () async {
         await _saveDraftState(_draftService.startDraft(_requireCareer()), slot);
         await _advanceAiSelections(slot);
       });
@@ -121,7 +123,7 @@ class GmCareerController extends ChangeNotifier {
     String slot = 'default',
   }) {
     final submittedCareer = _career;
-    return _runDraftCommand(() async {
+    return _runCareerCommand(action: 'execute rookie draft', () async {
       final current = _requireCareer();
       if (!identical(current, submittedCareer)) {
         throw StateError('Career changed before the human selection executed');
@@ -137,12 +139,47 @@ class GmCareerController extends ChangeNotifier {
 
   /// Resumes AI picks from the last committed state without crossing a human turn.
   Future<void> advanceDraft({String slot = 'default'}) =>
-      _runDraftCommand(() async {
+      _runCareerCommand(action: 'execute rookie draft', () async {
         if (_requireCareer().draftExecutionState.isNotStarted) {
           throw StateError('Cannot advance a draft before it starts');
         }
         await _advanceAiSelections(slot);
       });
+
+  /// Signs one drafted prospect owned by the user's franchise.
+  ///
+  /// The new career is persisted before it is published; a failed write keeps
+  /// the previous in-memory state and requires a reload before further commands.
+  Future<void> signDraftedRookie({
+    required PlayerId prospectId,
+    required RosterCategory category,
+    required int durationYears,
+    String slot = 'default',
+  }) {
+    final submittedCareer = _career;
+    return _runCareerCommand(action: 'sign drafted rookie', () async {
+      final current = _requireCareer();
+      if (!identical(current, submittedCareer)) {
+        throw StateError('Career changed before the rookie signing executed');
+      }
+      final next = _signingService.signDraftedRookie(
+        career: current,
+        teamId: current.userFranchiseId,
+        prospectId: prospectId,
+        category: category,
+        durationYears: durationYears,
+      );
+      final encoded = GmCareerCodec.encode(next);
+      try {
+        await storage.write(encoded, slot: slot);
+      } catch (_) {
+        _draftRecoveryRequired = true;
+        rethrow;
+      }
+      _career = next;
+      notifyListeners();
+    });
+  }
 
   GmCareer _requireCareer() =>
       _career ?? (throw StateError('No active GM Career'));
@@ -175,21 +212,22 @@ class GmCareerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _runDraftCommand(
-    Future<void> Function() command,
-  ) => _serialize(() async {
+  Future<void> _runCareerCommand(
+    Future<void> Function() command, {
+    required String action,
+  }) => _serialize(() async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
     try {
       if (_draftRecoveryRequired) {
         throw StateError(
-          'Reload saved GM Career before continuing after a failed draft save',
+          'Reload saved GM Career before continuing after a failed save',
         );
       }
       await command();
     } catch (e) {
-      _errorMessage = 'Failed to execute rookie draft: $e';
+      _errorMessage = 'Failed to $action: $e';
       rethrow;
     } finally {
       _isLoading = false;

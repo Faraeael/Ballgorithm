@@ -63,7 +63,7 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
           (selection) => selection.selectingTeamId == career.userFranchiseId,
         )
         .toList();
-    final ownedRights = draft.draftRights.values
+    final ownedRights = career.unsignedDraftRights
         .where((rights) => rights.owningTeamId == career.userFranchiseId)
         .length;
     final draftSummary = switch (draft.status) {

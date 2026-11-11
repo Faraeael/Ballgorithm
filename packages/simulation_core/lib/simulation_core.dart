@@ -68,3 +68,6 @@ export 'src/models/draft_execution_state.dart';
 export 'src/models/public_prospect_scouting_view.dart';
 export 'src/draft/ai_draft_strategy.dart';
 export 'src/draft/draft_execution_service.dart';
+export 'src/models/rookie_contract.dart';
+export 'src/models/rookie_signing_ledger.dart';
+export 'src/career/rookie_signing_service.dart';
