@@ -1,10 +1,13 @@
+import '../generation/draft_generator.dart';
 import '../generation/league_generator.dart';
 import '../generation/name_corpus.dart';
+import '../models/draft_order.dart';
 import '../models/franchise_situation.dart';
 import '../models/generation_config.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
 import '../models/player_career_profile.dart';
+import '../models/rookie_draft_class.dart';
 import '../models/team.dart';
 
 /// Request parameters to initialize a new GM career league.
@@ -45,6 +48,8 @@ final class CareerSetupResult {
     required this.selectedTeam,
     required this.userOpeningDraftPick,
     required this.seed,
+    this.draftOrder,
+    this.draftClass,
   });
 
   final League league;
@@ -52,6 +57,8 @@ final class CareerSetupResult {
   final Team selectedTeam;
   final int userOpeningDraftPick;
   final int seed;
+  final DraftOrder? draftOrder;
+  final RookieDraftClass? draftClass;
 
   FranchiseSituation get selectedSituation => selectedTeam.situation!;
 }
@@ -91,6 +98,18 @@ final class CareerSetupService {
       league: league,
       seed: request.seed,
     );
+    const draftGen = DraftGenerator();
+    final draftOrder = draftGen.generateDraftOrder(
+      league: league,
+      seed: request.seed,
+      userTeamId: request.selectedTeamId,
+      userSituation: request.selectedSituation,
+    );
+    final draftClass = draftGen.generateDraftClass(
+      league: league,
+      seed: request.seed,
+      seasonYear: 1,
+    );
 
     return CareerSetupResult(
       league: league,
@@ -98,6 +117,8 @@ final class CareerSetupService {
       selectedTeam: selectedTeam,
       userOpeningDraftPick: request.selectedSituation.userOpeningDraftPick,
       seed: request.seed,
+      draftOrder: draftOrder,
+      draftClass: draftClass,
     );
   }
 }

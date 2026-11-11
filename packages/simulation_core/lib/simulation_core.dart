@@ -54,3 +54,8 @@ export 'src/career/career_setup.dart';
 export 'src/career/career_phase.dart';
 export 'src/career/gm_career.dart';
 export 'src/career/gm_career_codec.dart';
+export 'src/models/draft_pick.dart';
+export 'src/models/draft_order.dart';
+export 'src/models/rookie_prospect.dart';
+export 'src/models/rookie_draft_class.dart';
+export 'src/generation/draft_generator.dart';

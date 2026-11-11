@@ -1,9 +1,12 @@
 import 'dart:convert';
 
+import '../generation/draft_generator.dart';
+import '../models/draft_order.dart';
 import '../models/franchise_situation.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
 import '../models/player_career_profile.dart';
+import '../models/rookie_draft_class.dart';
 import 'career_phase.dart';
 import 'gm_career.dart';
 
@@ -11,7 +14,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 1;
+  static const int currentSchemaVersion = 2;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -27,6 +30,8 @@ final class GmCareerCodec {
       'userOpeningDraftPick': career.userOpeningDraftPick,
       'league': career.league.toJson(),
       'careerProfiles': career.careerProfiles.toJson(),
+      'draftOrder': career.draftOrder.toJson(),
+      'draftClass': career.draftClass.toJson(),
     };
     return jsonEncode(map);
   }
@@ -48,9 +53,11 @@ final class GmCareerCodec {
     }
 
     final schemaVersion = raw['schemaVersion'];
-    if (schemaVersion is! int || schemaVersion != currentSchemaVersion) {
+    if (schemaVersion is! int ||
+        schemaVersion < 1 ||
+        schemaVersion > currentSchemaVersion) {
       throw FormatException(
-        'Unsupported career schema version: $schemaVersion (supported: $currentSchemaVersion)',
+        'Unsupported career schema version: $schemaVersion (supported: 1..$currentSchemaVersion)',
       );
     }
 
@@ -110,9 +117,44 @@ final class GmCareerCodec {
     }
     final careerProfiles = LeagueCareerProfiles.fromJson(rawCareerProfiles);
 
+    final DraftOrder draftOrder;
+    final rawDraftOrder = raw['draftOrder'];
+    if (rawDraftOrder != null && rawDraftOrder is Map<String, dynamic>) {
+      draftOrder = DraftOrder.fromJson(rawDraftOrder);
+    } else {
+      if (schemaVersion >= 2) {
+        throw const FormatException(
+          'Missing or invalid draftOrder in career JSON v2',
+        );
+      }
+      draftOrder = const DraftGenerator().generateDraftOrder(
+        league: league,
+        seed: generationSeed,
+        userTeamId: userFranchiseId,
+        userSituation: originalSituation,
+      );
+    }
+
+    final RookieDraftClass draftClass;
+    final rawDraftClass = raw['draftClass'];
+    if (rawDraftClass != null && rawDraftClass is Map<String, dynamic>) {
+      draftClass = RookieDraftClass.fromJson(rawDraftClass);
+    } else {
+      if (schemaVersion >= 2) {
+        throw const FormatException(
+          'Missing or invalid draftClass in career JSON v2',
+        );
+      }
+      draftClass = const DraftGenerator().generateDraftClass(
+        league: league,
+        seed: generationSeed,
+        seasonYear: currentYear,
+      );
+    }
+
     final career = GmCareer(
       id: id,
-      schemaVersion: schemaVersion,
+      schemaVersion: currentSchemaVersion,
       generationSeed: generationSeed,
       userFranchiseId: userFranchiseId,
       originalSituation: originalSituation,
@@ -121,6 +163,8 @@ final class GmCareerCodec {
       league: league,
       careerProfiles: careerProfiles,
       userOpeningDraftPick: userOpeningDraftPick,
+      draftOrder: draftOrder,
+      draftClass: draftClass,
     );
     career.validate();
     return career;

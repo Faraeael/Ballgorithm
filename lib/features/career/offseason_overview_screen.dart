@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
 
 import 'career_controller.dart';
+import 'draft_board_screen.dart';
 
 /// Screen presenting the Year 1 Opening Offseason overview for a persistent GM Career.
 class GmOffseasonOverviewScreen extends StatelessWidget {
@@ -138,63 +139,74 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
 
           // Draft Entitlement Card
           Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10.0),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade50,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.green.shade300),
-                    ),
-                    child: Icon(
-                      Icons.how_to_reg_outlined,
-                      color: Colors.green.shade800,
-                      size: 24,
-                    ),
+            key: const ValueKey('card-draft-entitlement'),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => GmDraftBoardScreen(career: career),
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Guaranteed Rookie Draft Pick',
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Pick #${career.userOpeningDraftPick} in Opening Draft',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade100,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      '#${career.userOpeningDraftPick}',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green.shade900,
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10.0),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.green.shade300),
+                      ),
+                      child: Icon(
+                        Icons.how_to_reg_outlined,
+                        color: Colors.green.shade800,
+                        size: 24,
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Guaranteed Rookie Draft Pick',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Pick #${career.userOpeningDraftPick} in Opening Draft • Tap to view board',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade100,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '#${career.userOpeningDraftPick}',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -296,11 +308,43 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
               padding: const EdgeInsets.all(12.0),
               child: Column(
                 children: [
-                  _buildDisabledModuleTile(
-                    context,
-                    icon: Icons.assignment_outlined,
-                    title: 'Rookie Draft',
-                    subtitle: 'Opening prospect draft order & selections',
+                  // Unlocked Rookie Draft Module
+                  ListTile(
+                    key: const ValueKey('module-rookie-draft'),
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      backgroundColor: theme.colorScheme.primaryContainer,
+                      foregroundColor: theme.colorScheme.onPrimaryContainer,
+                      child: const Icon(Icons.assignment_outlined),
+                    ),
+                    title: const Text(
+                      'Rookie Draft',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(
+                      '60 Picks • 90 Prospects (Your Pick: #${career.userOpeningDraftPick})',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    trailing: FilledButton.tonal(
+                      key: const ValueKey('btn-open-draft-board'),
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                GmDraftBoardScreen(career: career),
+                          ),
+                        );
+                      },
+                      child: const Text('View Board'),
+                    ),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              GmDraftBoardScreen(career: career),
+                        ),
+                      );
+                    },
                   ),
                   const Divider(height: 1),
                   _buildDisabledModuleTile(

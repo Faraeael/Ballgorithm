@@ -1,7 +1,10 @@
+import '../generation/draft_generator.dart';
+import '../models/draft_order.dart';
 import '../models/franchise_situation.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
 import '../models/player_career_profile.dart';
+import '../models/rookie_draft_class.dart';
 import '../models/team.dart';
 import 'career_phase.dart';
 import 'career_setup.dart';
@@ -19,7 +22,23 @@ final class GmCareer {
     required this.league,
     required this.careerProfiles,
     required this.userOpeningDraftPick,
-  }) {
+    DraftOrder? draftOrder,
+    RookieDraftClass? draftClass,
+  }) : draftOrder =
+           draftOrder ??
+           const DraftGenerator().generateDraftOrder(
+             league: league,
+             seed: generationSeed,
+             userTeamId: userFranchiseId,
+             userSituation: originalSituation,
+           ),
+       draftClass =
+           draftClass ??
+           const DraftGenerator().generateDraftClass(
+             league: league,
+             seed: generationSeed,
+             seasonYear: currentYear,
+           ) {
     validate();
   }
 
@@ -38,10 +57,12 @@ final class GmCareer {
       league: result.league,
       careerProfiles: result.careerProfiles,
       userOpeningDraftPick: result.userOpeningDraftPick,
+      draftOrder: result.draftOrder,
+      draftClass: result.draftClass,
     );
   }
 
-  static const int currentSchemaVersion = 1;
+  static const int currentSchemaVersion = 2;
 
   final String id;
   final int schemaVersion;
@@ -53,6 +74,9 @@ final class GmCareer {
   final League league;
   final LeagueCareerProfiles careerProfiles;
   final int userOpeningDraftPick;
+
+  final DraftOrder draftOrder;
+  final RookieDraftClass draftClass;
 
   /// Returns the human user's managed [Team].
   Team get userTeam => league.teams.firstWhere(
@@ -67,9 +91,9 @@ final class GmCareer {
     if (id.trim().isEmpty) {
       throw const FormatException('Career ID cannot be empty');
     }
-    if (schemaVersion != currentSchemaVersion) {
+    if (schemaVersion < 1 || schemaVersion > currentSchemaVersion) {
       throw FormatException(
-        'Unsupported career schema version: $schemaVersion (supported: $currentSchemaVersion)',
+        'Unsupported career schema version: $schemaVersion (supported: 1..$currentSchemaVersion)',
       );
     }
     if (currentYear < 1) {
@@ -128,6 +152,16 @@ final class GmCareer {
           'Opening draft pick mismatch: expected $expectedPick for ${originalSituation.displayName}, got $userOpeningDraftPick',
         );
       }
+    }
+
+    draftOrder.validate();
+    draftClass.validate();
+
+    final userRound1Pick = draftOrder.pickAt(userOpeningDraftPick);
+    if (userRound1Pick.currentOwnerTeamId != userFranchiseId) {
+      throw FormatException(
+        'User franchise ${userFranchiseId.value} does not own opening draft pick $userOpeningDraftPick in draft order',
+      );
     }
   }
 }
