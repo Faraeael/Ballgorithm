@@ -104,16 +104,28 @@ void main() {
         expect(find.text('Tanking / Rebuilding'), findsOneWidget);
         expect(find.text('Current Roster (12 Players)'), findsOneWidget);
         // Scroll down to check disabled future modules
-        await tester.drag(
-          find.byKey(const ValueKey('offseason-overview-scroll')),
-          const Offset(0, -1200),
+        final overviewScroll = find
+            .descendant(
+              of: find.byKey(const ValueKey('offseason-overview-scroll')),
+              matching: find.byType(Scrollable),
+            )
+            .first;
+        await tester.scrollUntilVisible(
+          find.text('Front Office Modules (In Development)'),
+          240,
+          scrollable: overviewScroll,
         );
         await tester.pumpAndSettle();
-
         expect(
           find.text('Front Office Modules (In Development)'),
           findsOneWidget,
         );
+        await tester.scrollUntilVisible(
+          find.text('Franchise Finances'),
+          240,
+          scrollable: overviewScroll,
+        );
+        await tester.pumpAndSettle();
         expect(find.text('Rookie Draft'), findsOneWidget);
         expect(find.text('Free Agency'), findsOneWidget);
         expect(find.text('Trades'), findsOneWidget);
@@ -147,9 +159,10 @@ void main() {
 
         // App reopens directly into the restored Offseason Overview!
         expect(find.text('AUR Offseason'), findsOneWidget);
-        await tester.drag(
-          find.byKey(const ValueKey('offseason-overview-scroll')),
-          const Offset(0, 1200),
+        await tester.scrollUntilVisible(
+          find.text('Year 1 • Opening Offseason'),
+          -300,
+          scrollable: overviewScroll,
         );
         await tester.pumpAndSettle();
         expect(find.text('Year 1 • Opening Offseason'), findsOneWidget);

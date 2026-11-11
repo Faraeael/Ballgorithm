@@ -4,6 +4,7 @@ import 'package:simulation_core/simulation_core.dart';
 import 'career_controller.dart';
 import 'career_storage.dart';
 import 'draft_board_screen.dart';
+import 'league_readiness_screen.dart';
 import 'rookie_signing_screen.dart';
 import 'rookie_signing_status.dart';
 
@@ -71,6 +72,7 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
     final signedRookies = ownedSelections
         .where((selection) => isSignedRookie(career, selection.prospectId))
         .length;
+    final readiness = LeagueReadinessReport.fromCareer(career);
     final draftSummary = switch (draft.status) {
       DraftExecutionStatus.notStarted =>
         '${ownedPicks.map((pick) => 'Round ${pick.round}: #${pick.overallPick}').join(' • ')}\n'
@@ -435,6 +437,138 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
               },
             ),
           ),
+          if (draft.isCompleted) ...[
+            const SizedBox(height: 8),
+            Card(
+              key: const ValueKey('card-league-signings'),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'League Rookie Signings',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${readiness.evaluatedAiDecisions} / '
+                      '${readiness.totalAiRights} decisions processed',
+                      key: const ValueKey('league-signings-progress'),
+                    ),
+                    Text(
+                      '${readiness.aiStandardSignings} standard • '
+                      '${readiness.aiTwoWaySignings} two-way • '
+                      '${readiness.aiDeferredRights} deferred',
+                      key: const ValueKey('league-signings-breakdown'),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    if (readiness.aiSigningComplete)
+                      const Text(
+                        'All AI-owned draft rights have been evaluated.',
+                        key: ValueKey('league-signings-complete'),
+                      )
+                    else
+                      Text(
+                        '${readiness.pendingAiDecisions} remaining • '
+                        '${readiness.aiParticipatingFranchises} AI franchises',
+                        key: const ValueKey('league-signings-remaining'),
+                      ),
+                    if (controller.draftRecoveryRequired) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        controller.errorMessage ??
+                            'A save failed. Reload the saved career before '
+                                'continuing.',
+                        style: TextStyle(color: theme.colorScheme.error),
+                      ),
+                      const SizedBox(height: 8),
+                      FilledButton(
+                        key: const ValueKey('btn-league-signings-reload'),
+                        onPressed: controller.isLoading
+                            ? null
+                            : () => controller.loadCareer(),
+                        child: const Text('Reload Saved Career'),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    FilledButton.tonal(
+                      key: const ValueKey('btn-resolve-league-signings'),
+                      onPressed:
+                          readiness.aiSigningComplete ||
+                              controller.isLoading ||
+                              controller.draftRecoveryRequired
+                          ? null
+                          : () => _confirmResolveLeagueSignings(
+                              context,
+                              readiness,
+                            ),
+                      child: Text(
+                        readiness.aiSigningComplete
+                            ? 'League Signings Complete'
+                            : readiness.evaluatedAiDecisions == 0
+                            ? 'Resolve League Rookie Signings'
+                            : 'Resume League Rookie Signings',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Card(
+            key: const ValueKey('card-league-readiness'),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'League Readiness',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${readiness.readyCount} ready • '
+                    '${readiness.notReadyCount} not ready',
+                    key: const ValueKey('offseason-readiness-counts'),
+                  ),
+                  Text(
+                    'Standard players needed league-wide: '
+                    '${readiness.totalStandardShortage}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  Text(
+                    'Your franchise: ${readiness.userTeam.abbreviation} — '
+                    '${readiness.userTeam.isReady ? 'READY' : 'needs ${readiness.humanStandardShortage} standard players'}',
+                    key: const ValueKey('offseason-human-readiness'),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.tonal(
+                    key: const ValueKey('btn-open-league-readiness'),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              GmLeagueReadinessScreen(controller: controller),
+                        ),
+                      );
+                    },
+                    child: const Text('View League Readiness'),
+                  ),
+                ],
+              ),
+            ),
+          ),
           const SizedBox(height: 20),
 
           // Future Operations / In Development Section
@@ -533,6 +667,56 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _confirmResolveLeagueSignings(
+    BuildContext context,
+    LeagueReadinessReport report,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        scrollable: true,
+        title: const Text('Resolve League Rookie Signings?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${report.aiParticipatingFranchises} AI franchises'),
+            Text('${report.totalAiRights} AI-owned draft rights'),
+            Text('${report.evaluatedAiDecisions} decisions already evaluated'),
+            Text('${report.pendingAiDecisions} remaining'),
+            const SizedBox(height: 8),
+            const Text(
+              'Each franchise may sign a standard contract, sign a two-way '
+              'contract, or keep its draft rights unsigned. Your own '
+              'franchise is never signed automatically.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            key: const ValueKey('cancel-resolve-signings'),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm-resolve-signings'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Resolve Signings'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      await controller.advanceAiRookieSigning();
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
   }
 
   Widget _buildDisabledModuleTile(
