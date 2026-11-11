@@ -1,9 +1,11 @@
 import '../generation/draft_generator.dart';
+import '../generation/free_agent_generator.dart';
 import '../models/draft_execution_state.dart';
 import '../models/draft_order.dart';
 import '../models/draft_rights.dart';
 import '../models/ai_rookie_signing.dart';
 import '../models/franchise_situation.dart';
+import '../models/free_agent.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
 import '../models/player_career_profile.dart';
@@ -32,10 +34,14 @@ final class GmCareer {
     DraftExecutionState? draftExecutionState,
     RookieSigningLedger? rookieSigningLedger,
     AiRookieSigningState? aiRookieSigning,
+    FreeAgentPool? freeAgentPool,
   }) : draftExecutionState =
            draftExecutionState ?? DraftExecutionState.initial(),
        rookieSigningLedger = rookieSigningLedger ?? RookieSigningLedger.empty(),
        aiRookieSigning = aiRookieSigning ?? AiRookieSigningState.empty(),
+       freeAgentPool =
+           freeAgentPool ??
+           const FreeAgentGenerator().generate(seed: generationSeed),
        draftOrder =
            draftOrder ??
            const DraftGenerator().generateDraftOrder(
@@ -75,7 +81,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 6;
+  static const int currentSchemaVersion = 7;
 
   final String id;
   final int schemaVersion;
@@ -95,6 +101,8 @@ final class GmCareer {
   final RookieSigningLedger rookieSigningLedger;
 
   final AiRookieSigningState aiRookieSigning;
+
+  final FreeAgentPool freeAgentPool;
 
   /// Draft rights whose prospect has not signed a rookie contract yet.
   ///
@@ -222,6 +230,57 @@ final class GmCareer {
       rosterCategoryByPlayerId: rosterCategoryByPlayerId,
     );
     _validateAiSigningDecisions();
+    _validateFreeAgentPool();
+  }
+
+  /// Rejects free agents that collide with ownership, contracts or prospects.
+  void _validateFreeAgentPool() {
+    freeAgentPool.validate();
+    final freeAgentIds = freeAgentPool.playerIds;
+    for (final team in league.teams) {
+      for (final player in team.players) {
+        if (freeAgentIds.contains(player.id.value)) {
+          throw FormatException(
+            'Free agent ${player.id.value} is on franchise ${team.id.value}',
+          );
+        }
+      }
+    }
+    for (final prospect in draftClass.prospects) {
+      if (freeAgentIds.contains(prospect.id.value)) {
+        throw FormatException(
+          'Free agent ${prospect.id.value} collides with a draft prospect',
+        );
+      }
+    }
+    for (final contract in rookieSigningLedger.contracts.values) {
+      if (freeAgentIds.contains(contract.playerId.value)) {
+        throw FormatException(
+          'Free agent ${contract.playerId.value} has a rookie contract',
+        );
+      }
+    }
+    for (final rights in draftExecutionState.draftRights.values) {
+      if (freeAgentIds.contains(rights.prospectId.value)) {
+        throw FormatException(
+          'Free agent ${rights.prospectId.value} has draft rights',
+        );
+      }
+    }
+    for (final decision in aiRookieSigning.decisions.values) {
+      if (freeAgentIds.contains(decision.prospectId.value)) {
+        throw FormatException(
+          'Free agent ${decision.prospectId.value} has an AI decision',
+        );
+      }
+    }
+    for (final playerId in freeAgentIds) {
+      if (careerProfiles.profiles.containsKey(playerId)) {
+        throw FormatException(
+          'Free agent $playerId has a roster career profile',
+        );
+      }
+    }
   }
 
   /// Rejects AI decisions that disagree with draft rights, contracts or ownership.
@@ -384,6 +443,7 @@ final class GmCareer {
     DraftExecutionState? draftExecutionState,
     RookieSigningLedger? rookieSigningLedger,
     AiRookieSigningState? aiRookieSigning,
+    FreeAgentPool? freeAgentPool,
   }) {
     return GmCareer(
       id: id ?? this.id,
@@ -401,6 +461,7 @@ final class GmCareer {
       draftExecutionState: draftExecutionState ?? this.draftExecutionState,
       rookieSigningLedger: rookieSigningLedger ?? this.rookieSigningLedger,
       aiRookieSigning: aiRookieSigning ?? this.aiRookieSigning,
+      freeAgentPool: freeAgentPool ?? this.freeAgentPool,
     );
   }
 }

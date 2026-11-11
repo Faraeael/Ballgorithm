@@ -10,10 +10,12 @@ import '../models/player_career_profile.dart';
 import '../models/rookie_draft_class.dart';
 import '../models/rookie_signing_ledger.dart';
 import '../models/ai_rookie_signing.dart';
+import '../models/free_agent.dart';
 import '../models/roster.dart';
 import '../models/roster_category.dart';
 import '../models/roster_membership.dart';
 import '../models/team.dart';
+import '../generation/free_agent_generator.dart';
 import 'career_phase.dart';
 import 'gm_career.dart';
 
@@ -21,7 +23,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 6;
+  static const int currentSchemaVersion = 7;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -42,6 +44,7 @@ final class GmCareerCodec {
       'draftExecutionState': career.draftExecutionState.toJson(),
       'rookieSigningLedger': career.rookieSigningLedger.toJson(),
       'aiRookieSigning': career.aiRookieSigning.toJson(),
+      'freeAgentPool': career.freeAgentPool.toJson(),
       'rosterMemberships': {
         for (final team in career.league.teams)
           team.id.value: [
@@ -352,6 +355,19 @@ final class GmCareerCodec {
       aiRookieSigning = AiRookieSigningState.empty();
     }
 
+    final FreeAgentPool freeAgentPool;
+    final rawFreeAgentPool = raw['freeAgentPool'];
+    if (schemaVersion >= 7) {
+      if (rawFreeAgentPool is! Map<String, dynamic>) {
+        throw const FormatException(
+          'Missing or invalid freeAgentPool in career JSON v7',
+        );
+      }
+      freeAgentPool = FreeAgentPool.fromJson(rawFreeAgentPool);
+    } else {
+      freeAgentPool = const FreeAgentGenerator().generate(seed: generationSeed);
+    }
+
     final career = GmCareer(
       id: id,
       schemaVersion: currentSchemaVersion,
@@ -368,6 +384,7 @@ final class GmCareerCodec {
       draftExecutionState: draftExecutionState,
       rookieSigningLedger: rookieSigningLedger,
       aiRookieSigning: aiRookieSigning,
+      freeAgentPool: freeAgentPool,
     );
     career.validate();
     return career;

@@ -10,6 +10,7 @@ import '../models/team.dart';
 import '../validation/validation_result.dart';
 import 'deterministic_random.dart';
 import 'name_corpus.dart';
+import 'position_attribute_offsets.dart';
 
 /// Builds a complete fictional league from a seed.
 ///
@@ -193,7 +194,7 @@ final class LeagueGenerator {
     DeterministicRandom random,
     Position position,
   ) {
-    final offsets = _positionOffsets[position]!;
+    final offsets = positionAttributeOffsets[position]!;
 
     int rating(String attribute) {
       // Irwin-Hall(3) noise, mean 0, roughly -27..+27.
@@ -229,7 +230,7 @@ final class LeagueGenerator {
     required int targetBaseRating,
     required int teamIndex,
   }) {
-    final offsets = _positionOffsets[position]!;
+    final offsets = positionAttributeOffsets[position]!;
     // Style bias per team based on teamIndex
     final styleMod = (teamIndex % 3);
 
@@ -280,77 +281,4 @@ final class LeagueGenerator {
       basketballIQ: rating('basketballIQ'),
     );
   }
-
-  static const Map<Position, Map<String, int>> _positionOffsets = {
-    Position.pg: {
-      'insideScoring': -8,
-      'midrange': 4,
-      'threePoint': 6,
-      'freeThrow': 6,
-      'passing': 14,
-      'ballHandling': 16,
-      'perimeterDefense': 2,
-      'interiorDefense': -14,
-      'rebounding': -18,
-      'athleticism': 6,
-      'stamina': 4,
-      'basketballIQ': 6,
-    },
-    Position.sg: {
-      'insideScoring': -4,
-      'midrange': 8,
-      'threePoint': 12,
-      'freeThrow': 6,
-      'passing': 0,
-      'ballHandling': 8,
-      'perimeterDefense': 4,
-      'interiorDefense': -8,
-      'rebounding': -12,
-      'athleticism': 10,
-      'stamina': 2,
-      'basketballIQ': 2,
-    },
-    Position.sf: {
-      'insideScoring': 4,
-      'midrange': 4,
-      'threePoint': 4,
-      'freeThrow': 0,
-      'passing': 0,
-      'ballHandling': 0,
-      'perimeterDefense': 6,
-      'interiorDefense': 2,
-      'rebounding': 2,
-      'athleticism': 8,
-      'stamina': 4,
-      'basketballIQ': 2,
-    },
-    Position.pf: {
-      'insideScoring': 10,
-      'midrange': 2,
-      'threePoint': -8,
-      'freeThrow': -4,
-      'passing': -4,
-      'ballHandling': -8,
-      'perimeterDefense': -4,
-      'interiorDefense': 8,
-      'rebounding': 10,
-      'athleticism': 4,
-      'stamina': 2,
-      'basketballIQ': 0,
-    },
-    Position.c: {
-      'insideScoring': 14,
-      'midrange': -4,
-      'threePoint': -16,
-      'freeThrow': -8,
-      'passing': -6,
-      'ballHandling': -12,
-      'perimeterDefense': -10,
-      'interiorDefense': 14,
-      'rebounding': 16,
-      'athleticism': 0,
-      'stamina': 0,
-      'basketballIQ': 2,
-    },
-  };
 }
