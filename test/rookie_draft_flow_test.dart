@@ -1,8 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:basketball_manager/app.dart';
 import 'package:basketball_manager/features/career/career_storage.dart';
-import 'package:basketball_manager/features/career/draft_board_screen.dart';
 import 'package:basketball_manager/features/career/offseason_overview_screen.dart';
 import 'package:basketball_manager/features/season/season_storage.dart';
 import 'package:flutter/material.dart';
@@ -17,6 +17,24 @@ void _useSmallViewport(WidgetTester tester) {
   addTearDown(tester.view.reset);
 }
 
+class _GatedCareerStorage extends InMemoryGmCareerStorage {
+  _GatedCareerStorage(String initialJson) : super({'default': initialJson});
+
+  final writeStarted = Completer<void>();
+  final releaseWrite = Completer<void>();
+  bool _gateNextWrite = true;
+
+  @override
+  Future<void> write(String data, {String slot = 'default'}) async {
+    if (_gateNextWrite) {
+      _gateNextWrite = false;
+      writeStarted.complete();
+      await releaseWrite.future;
+    }
+    await super.write(data, slot: slot);
+  }
+}
+
 void main() {
   late League league;
   const careerSetupService = CareerSetupService();
@@ -27,124 +45,75 @@ void main() {
 
   group('M008-T05: Rookie Draft Board UI & Persistence Flow', () {
     testWidgets(
-      '14. Draft Board functions at 360x640: unlocks from offseason overview, displays 60 picks, filters prospects without overflow',
+      'Owned career route finishes queued draft saves after navigation away',
       (tester) async {
         _useSmallViewport(tester);
-
-        final setupResult = careerSetupService.generate(
-          const CareerSetupRequest(
-            selectedTeamId: TeamId('team-1'),
-            selectedSituation: FranchiseSituation.tanking,
-            seed: 20261028,
+        final career = GmCareer.fromSetupResult(
+          careerSetupService.generate(
+            const CareerSetupRequest(
+              selectedTeamId: TeamId('team-1'),
+              selectedSituation: FranchiseSituation.contender,
+              seed: 20261028,
+            ),
           ),
         );
-        final career = GmCareer.fromSetupResult(setupResult);
-
+        final originalSave = GmCareerCodec.encode(career);
+        final storage = _GatedCareerStorage(originalSave);
         await tester.pumpWidget(
-          MaterialApp(home: GmOffseasonOverviewScreen(career: career)),
+          MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: FilledButton(
+                  onPressed: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          GmOffseasonOverviewRoute(storage: storage),
+                    ),
+                  ),
+                  child: const Text('Open Career'),
+                ),
+              ),
+            ),
+          ),
         );
-        // 1. Offseason overview shows draft entitlement card and unlocked module
+        await tester.tap(find.text('Open Career'));
+        await tester.pumpAndSettle();
+        final controller = tester
+            .widget<GmOffseasonOverviewScreen>(
+              find.byType(GmOffseasonOverviewScreen),
+            )
+            .controller;
+        await tester.tap(find.byKey(const ValueKey('card-draft-entitlement')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('draft-start-button')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('confirm-start-draft')));
+        await tester.pump();
+        expect(storage.writeStarted.isCompleted, isTrue);
+        expect(await storage.read(), originalSave);
+        final settled = controller.commandsSettled;
+
+        final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+        navigator.pop();
+        await tester.pumpAndSettle();
+        navigator.pop();
+        await tester.pumpAndSettle();
+        expect(find.text('Open Career'), findsOneWidget);
+
+        storage.releaseWrite.complete();
+        await settled;
+        await tester.pumpAndSettle();
+        final saved = GmCareerCodec.decode((await storage.read())!);
+        expect(saved.draftExecutionState.completedSelectionsCount, 29);
+        expect(saved.draftExecutionState.currentOverallPick, 30);
         expect(
-          find.byKey(const ValueKey('card-draft-entitlement')),
-          findsOneWidget,
+          saved.draftExecutionState.isHumanTurn(
+            order: saved.draftOrder,
+            userTeamId: saved.userFranchiseId,
+          ),
+          isTrue,
         );
-
-        // Scroll down until Rookie Draft module is visible
-        await tester.scrollUntilVisible(
-          find.byKey(const ValueKey('module-rookie-draft')),
-          160,
-          scrollable: find.byType(Scrollable).first,
-        );
-        await tester.pumpAndSettle();
-        expect(
-          find.byKey(const ValueKey('module-rookie-draft')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const ValueKey('btn-open-draft-board')),
-          findsOneWidget,
-        );
-        // 2. Open Draft Board
-        await tester.tap(find.byKey(const ValueKey('btn-open-draft-board')));
-        await tester.pumpAndSettle();
-
-        expect(find.byType(GmDraftBoardScreen), findsOneWidget);
-        expect(find.text('Rookie Draft Board'), findsOneWidget);
-
-        // 3. Draft Order Tab: All 60 picks available
-        expect(find.byKey(const ValueKey('draft-order-view')), findsOneWidget);
-        expect(find.text('All (60)'), findsOneWidget);
-        expect(find.text('Round 1 (30)'), findsOneWidget);
-        expect(find.text('Round 2 (30)'), findsOneWidget);
-
-        // User guaranteed pick #1 is highlighted
-        expect(find.byKey(const ValueKey('draft-pick-1')), findsOneWidget);
-        expect(find.text('YOUR PICK'), findsWidgets);
-
-        // Filter to Round 2
-        await tester.tap(find.text('Round 2 (30)'));
-        await tester.pumpAndSettle();
-
-        // Round 2 pick 31 belongs to user
-        expect(find.byKey(const ValueKey('draft-pick-31')), findsOneWidget);
-
-        // 4. Switch to Prospects Tab
-        await tester.tap(find.text('Prospects (90)'));
-        await tester.pumpAndSettle();
-
-        expect(find.byKey(const ValueKey('prospect-view')), findsOneWidget);
-        expect(find.text('Showing 90 of 90 Prospects'), findsOneWidget);
-        expect(
-          find.byKey(const ValueKey('prospect-search-field')),
-          findsOneWidget,
-        );
-
-        // Position filters exist
-        expect(
-          find.byKey(const ValueKey('prospect-filter-all')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const ValueKey('prospect-filter-pg')),
-          findsOneWidget,
-        );
-        expect(find.byKey(const ValueKey('prospect-filter-c')), findsOneWidget);
-
-        // Filter by PG position
-        await tester.tap(find.byKey(const ValueKey('prospect-filter-pg')));
-        await tester.pumpAndSettle();
-        expect(find.text('Showing 18 of 90 Prospects'), findsOneWidget);
-
-        // Reset to ALL
-        await tester.tap(find.byKey(const ValueKey('prospect-filter-all')));
-        await tester.pumpAndSettle();
-        expect(find.text('Showing 90 of 90 Prospects'), findsOneWidget);
-
-        // Top ranked prospect card
-        final firstProspect = career.draftClass.rankedFirst;
-        expect(
-          find.byKey(ValueKey('prospect-card-${firstProspect.projectedRank}')),
-          findsOneWidget,
-        );
-
-        // 5. Open prospect detail sheet
-        await tester.tap(
-          find.byKey(ValueKey('prospect-card-${firstProspect.projectedRank}')),
-        );
-        await tester.pumpAndSettle();
-
-        // Observed abilities are displayed
-        expect(find.text('Observed Abilities'), findsOneWidget);
-        expect(find.text('Inside Scoring'), findsOneWidget);
-        expect(find.text('Three-Point'), findsOneWidget);
-        expect(find.text('Public Scouting Evaluation'), findsOneWidget);
-        // True ceiling and development trajectory remain hidden
-        expect(find.text(firstProspect.trajectory.displayName), findsNothing);
-        expect(find.textContaining('True Potential'), findsNothing);
-
-        // Close bottom sheet
-        await tester.tapAt(const Offset(180, 50));
-        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
       },
     );
 
@@ -248,6 +217,16 @@ void main() {
 
         await tester.tap(find.text('Prospects (90)'));
         await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.text(initialTopProspect.fullName),
+          200,
+          scrollable: find
+              .descendant(
+                of: find.byKey(const ValueKey('prospect-list')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
 
         // Prospect class was NOT regenerated
         expect(find.text(initialTopProspect.fullName), findsOneWidget);

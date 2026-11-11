@@ -374,7 +374,7 @@ class _CareerSelectSituationScreenState
 }
 
 /// Screen 3: Generated 30-team league and player roster preview.
-class CareerLeaguePreviewScreen extends StatelessWidget {
+class CareerLeaguePreviewScreen extends StatefulWidget {
   const CareerLeaguePreviewScreen({
     super.key,
     required this.result,
@@ -385,6 +385,19 @@ class CareerLeaguePreviewScreen extends StatelessWidget {
   final CareerSetupResult result;
   final GmCareerStorage? careerStorage;
   final GmCareerController? careerController;
+
+  @override
+  State<CareerLeaguePreviewScreen> createState() =>
+      _CareerLeaguePreviewScreenState();
+}
+
+class _CareerLeaguePreviewScreenState extends State<CareerLeaguePreviewScreen> {
+  bool _starting = false;
+  bool _saveFailed = false;
+
+  CareerSetupResult get result => widget.result;
+  GmCareerStorage? get careerStorage => widget.careerStorage;
+  GmCareerController? get careerController => widget.careerController;
 
   @override
   Widget build(BuildContext context) {
@@ -413,7 +426,7 @@ class CareerLeaguePreviewScreen extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Preview Mode: League generated in memory. Offseason draft and schedule systems are in development for future tasks.',
+                    'Preview Mode: League generated in memory. Start your career to save this roster and enter the Opening Offseason rookie draft. Season progression is not available.',
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.amber.shade900,
@@ -659,7 +672,9 @@ class CareerLeaguePreviewScreen extends StatelessWidget {
                 key: const ValueKey('start-career-button'),
                 icon: const Icon(Icons.play_arrow),
                 label: const Text('Start GM Career'),
-                onPressed: () => _handleStartCareer(context),
+                onPressed: _starting || _saveFailed
+                    ? null
+                    : () => _handleStartCareer(context),
               ),
             ),
           ),
@@ -686,88 +701,97 @@ class CareerLeaguePreviewScreen extends StatelessWidget {
   }
 
   Future<void> _handleStartCareer(BuildContext context) async {
-    final storage =
-        careerStorage ?? careerController?.storage ?? InMemoryGmCareerStorage();
-
-    final hasExisting = await storage.hasSave();
-    if (hasExisting) {
+    if (_starting || _saveFailed) return;
+    setState(() => _starting = true);
+    try {
+      final storage =
+          careerController?.storage ??
+          careerStorage ??
+          InMemoryGmCareerStorage();
+      final hasExisting = await storage.hasSave();
       if (!context.mounted) return;
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Replace Existing Career?'),
-          content: const Text(
-            'A GM Career save already exists. Currently only one career slot is supported. Starting a new career will replace your current save.\n\nDo you want to overwrite your existing career?',
+          title: Text(
+            hasExisting
+                ? 'Replace Existing Career?'
+                : 'Confirm GM Career Creation',
           ),
-          actions: [
-            TextButton(
-              key: const ValueKey('cancel-overwrite-career-button'),
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              key: const ValueKey('confirm-overwrite-career-button'),
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error,
-              ),
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Replace Career'),
-            ),
-          ],
-        ),
-      );
-      if (confirmed != true) return;
-    } else {
-      if (!context.mounted) return;
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Confirm GM Career Creation'),
           content: Text(
-            'Start GM Career with the ${result.selectedTeam.name}?\n\n'
-            'Starting Situation: ${result.selectedSituation.displayName}\n'
-            'Guaranteed Opening Draft Pick: #${result.userOpeningDraftPick}',
+            hasExisting
+                ? 'A GM Career save already exists. Currently only one career slot is supported. Starting a new career will replace your current save.\n\nDo you want to overwrite your existing career?'
+                : 'Start GM Career with the ${result.selectedTeam.name}?\n\n'
+                      'Starting Situation: ${result.selectedSituation.displayName}\n'
+                      'Guaranteed Opening Draft Pick: #${result.userOpeningDraftPick}',
           ),
           actions: [
             TextButton(
-              key: const ValueKey('cancel-start-career-button'),
+              key: ValueKey(
+                hasExisting
+                    ? 'cancel-overwrite-career-button'
+                    : 'cancel-start-career-button',
+              ),
               onPressed: () => Navigator.of(ctx).pop(false),
               child: const Text('Cancel'),
             ),
             FilledButton(
-              key: const ValueKey('confirm-start-career-button'),
+              key: ValueKey(
+                hasExisting
+                    ? 'confirm-overwrite-career-button'
+                    : 'confirm-start-career-button',
+              ),
+              style: hasExisting
+                  ? FilledButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                    )
+                  : null,
               onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Confirm & Start'),
+              child: Text(hasExisting ? 'Replace Career' : 'Confirm & Start'),
             ),
           ],
         ),
       );
-      if (confirmed != true) return;
-    }
+      if (confirmed != true || !context.mounted) return;
 
-    final newCareer = GmCareer.fromSetupResult(result);
-    final encoded = GmCareerCodec.encode(newCareer);
-    await storage.write(encoded);
-
-    if (careerController != null) {
-      await careerController!.loadCareer();
+      final newCareer = GmCareer.fromSetupResult(result);
+      await storage.write(GmCareerCodec.encode(newCareer));
+      if (careerController != null) {
+        await careerController!.loadCareer();
+        if (careerController!.errorMessage != null) {
+          throw StateError(careerController!.errorMessage!);
+        }
+        if (!context.mounted) return;
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        return;
+      }
       if (!context.mounted) return;
-      Navigator.of(context).popUntil((route) => route.isFirst);
-      return;
-    }
-
-    if (!context.mounted) return;
-
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute<void>(
-        builder: (_) => GmOffseasonOverviewScreen(
-          career: newCareer,
-          controller: careerController,
-          onExit: () =>
-              Navigator.of(context).popUntil((route) => route.isFirst),
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(
+          builder: (_) => GmOffseasonOverviewRoute(storage: storage),
         ),
-      ),
-      (route) => route.isFirst,
-    );
+        (route) => route.isFirst,
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      setState(() => _saveFailed = true);
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Career Save Error'),
+          content: Text(
+            '$error\n\nNo retry was attempted. Return to the main menu and reload the saved career before trying again.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _starting = false);
+    }
   }
 }

@@ -21,6 +21,12 @@ class GmCareerController extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
+  /// Draft commands remain blocked until a successful reload reconciles a failed write.
+  bool get draftRecoveryRequired => _draftRecoveryRequired;
+
+  /// Completes after commands already queued by this controller have settled.
+  Future<void> get commandsSettled => _pendingCommand;
+
   /// Loads the saved career from [storage].
   Future<void> loadCareer({String slot = 'default'}) => _serialize(() async {
     _isLoading = true;

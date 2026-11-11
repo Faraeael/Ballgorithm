@@ -1,3 +1,5 @@
+import 'package:basketball_manager/features/career/career_controller.dart';
+import 'package:basketball_manager/features/career/career_storage.dart';
 import 'package:basketball_manager/features/career/offseason_overview_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -59,9 +61,16 @@ void main() {
           ),
         );
         final career = GmCareer.fromSetupResult(setup);
+        final controller = GmCareerController(
+          storage: InMemoryGmCareerStorage({
+            'default': GmCareerCodec.encode(career),
+          }),
+        );
+        await controller.loadCareer();
+        addTearDown(controller.dispose);
 
         await tester.pumpWidget(
-          MaterialApp(home: GmOffseasonOverviewScreen(career: career)),
+          MaterialApp(home: GmOffseasonOverviewScreen(controller: controller)),
         );
         await tester.pumpAndSettle();
 
@@ -136,8 +145,15 @@ void main() {
             profiles: updatedProfiles,
           ),
         );
+        final controller = GmCareerController(
+          storage: InMemoryGmCareerStorage({
+            'default': GmCareerCodec.encode(updatedCareer),
+          }),
+        );
+        await controller.loadCareer();
+        addTearDown(controller.dispose);
         await tester.pumpWidget(
-          MaterialApp(home: GmOffseasonOverviewScreen(career: updatedCareer)),
+          MaterialApp(home: GmOffseasonOverviewScreen(controller: controller)),
         );
         await tester.pumpAndSettle();
 

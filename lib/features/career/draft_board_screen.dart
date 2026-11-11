@@ -1,64 +1,298 @@
 import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
 
-/// Screen displaying the complete Year 1 Opening Rookie Draft ecosystem:
-/// 1. Draft Order View (all 60 selections across 2 rounds with ownership and user highlights).
-/// 2. Prospect View (all 90 prospects with search, position filters, public rankings, and scouting estimates).
-class GmDraftBoardScreen extends StatefulWidget {
-  const GmDraftBoardScreen({super.key, required this.career});
+import 'career_controller.dart';
 
-  final GmCareer career;
+/// Live draft commands and public scouting, backed only by committed career state.
+class GmDraftBoardScreen extends StatefulWidget {
+  const GmDraftBoardScreen({super.key, required this.controller});
+
+  final GmCareerController controller;
 
   @override
   State<GmDraftBoardScreen> createState() => _GmDraftBoardScreenState();
 }
 
-class _GmDraftBoardScreenState extends State<GmDraftBoardScreen> {
-  final TextEditingController _searchController = TextEditingController();
+class _GmDraftBoardScreenState extends State<GmDraftBoardScreen>
+    with SingleTickerProviderStateMixin {
+  final _searchController = TextEditingController();
+  final _commandPending = ValueNotifier<bool>(false);
+  late final _tabs = TabController(
+    length: 3,
+    vsync: this,
+    initialIndex:
+        widget.controller.career?.draftExecutionState.isCompleted == true
+        ? 2
+        : 0,
+  );
+  final _orderScroll = ScrollController();
   Position? _selectedPosition;
-  int _selectedRoundFilter = 0; // 0: All, 1: Round 1, 2: Round 2
+  int _selectedRoundFilter = 0;
+  String _availabilityFilter = 'All';
   String _searchQuery = '';
+  String? _localError;
 
-  @override
-  void initState() {
-    super.initState();
-    _searchController.addListener(() {
-      setState(() {
-        _searchQuery = _searchController.text.trim().toLowerCase();
-      });
-    });
-  }
+  bool get _blocked =>
+      _commandPending.value ||
+      widget.controller.isLoading ||
+      widget.controller.draftRecoveryRequired ||
+      widget.controller.errorMessage != null;
 
   @override
   void dispose() {
     _searchController.dispose();
+    _commandPending.dispose();
+    _tabs.dispose();
+    _orderScroll.dispose();
     super.dispose();
   }
 
-  Team _findTeam(TeamId id) {
-    return widget.career.league.teams.firstWhere(
-      (t) => t.id == id,
-      orElse: () => Team(
-        id: id,
-        name: id.value,
-        abbreviation: id.value.toUpperCase(),
-        roster: Roster(const []),
+  Team _findTeam(GmCareer career, TeamId id) =>
+      career.league.teams.firstWhere((team) => team.id == id);
+
+  bool _isHumanTurn(GmCareer career) => career.draftExecutionState.isHumanTurn(
+    order: career.draftOrder,
+    userTeamId: career.userFranchiseId,
+  );
+
+  bool _canDraft(PlayerId id) {
+    final career = widget.controller.career;
+    return career != null &&
+        !_blocked &&
+        _isHumanTurn(career) &&
+        !career.draftExecutionState.isProspectSelected(id);
+  }
+
+  void _showError(Object error) {
+    if (!mounted) return;
+    setState(() => _localError = error.toString());
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 120),
+          child: SingleChildScrollView(child: Text(error.toString())),
+        ),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+  // Revalidate the exact committed career and immutable pick IDs after a dialog.
+  bool _confirmationIsCurrent(
+    GmCareerController controller,
+    GmCareer expected,
+  ) {
+    final current = controller.career;
+    return identical(controller, widget.controller) &&
+        identical(current, expected) &&
+        current?.id == expected.id &&
+        current?.currentYear == expected.currentYear &&
+        current?.userFranchiseId == expected.userFranchiseId &&
+        current?.draftExecutionState.currentOverallPick ==
+            expected.draftExecutionState.currentOverallPick &&
+        !controller.isLoading &&
+        !controller.draftRecoveryRequired &&
+        controller.errorMessage == null;
+  }
 
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
+  Future<bool> _confirm({
+    required String title,
+    required Widget content,
+    required String confirmLabel,
+    required String confirmKey,
+    required String cancelKey,
+  }) async {
+    var closed = false;
+    return await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) {
+            void close(bool confirmed) {
+              if (closed) return;
+              closed = true;
+              Navigator.pop(dialogContext, confirmed);
+            }
+
+            return AlertDialog(
+              scrollable: true,
+              title: Text(title),
+              content: content,
+              actions: [
+                TextButton(
+                  key: ValueKey(cancelKey),
+                  onPressed: () => close(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  key: ValueKey(confirmKey),
+                  onPressed: () => close(true),
+                  child: Text(confirmLabel),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
+  }
+
+  Future<void> _startDraft() async {
+    final controller = widget.controller;
+    final career = controller.career;
+    if (_blocked ||
+        career == null ||
+        !career.draftExecutionState.isNotStarted) {
+      return;
+    }
+    _commandPending.value = true;
+    try {
+      final confirmed = await _confirm(
+        title: 'Start Rookie Draft?',
+        content: Text(
+          '${career.userTeam.name} (${career.userTeam.abbreviation})\n'
+          '${_ownedPicks(career)}\n\n'
+          '90 available prospects • 60 selections across two rounds.\n\n'
+          'AI teams will draft until your next pick. Each selection is saved. '
+          'Draft rights do not add players to your active roster.',
+        ),
+        confirmLabel: 'Start Draft',
+        confirmKey: 'confirm-start-draft',
+        cancelKey: 'cancel-start-draft',
+      );
+      if (!mounted || !confirmed) return;
+      if (!_confirmationIsCurrent(controller, career) ||
+          !controller.career!.draftExecutionState.isNotStarted) {
+        throw StateError('Career changed. Review the draft before starting.');
+      }
+      setState(() => _localError = null);
+      await controller.startDraft();
+    } catch (error) {
+      _showError(error);
+    } finally {
+      if (mounted) _commandPending.value = false;
+    }
+  }
+
+  Future<void> _draftPlayer(
+    PublicProspectScoutingView prospect,
+    BuildContext sheetContext,
+  ) async {
+    if (!_canDraft(prospect.id)) return;
+    final controller = widget.controller;
+    final career = controller.career!;
+    final pick = career.draftExecutionState.currentPick(career.draftOrder)!;
+    final prospectId = prospect.id;
+    _commandPending.value = true;
+    try {
+      final confirmed = await _confirm(
+        title: 'Draft ${prospect.fullName}?',
+        content: Text(
+          '${prospect.position.shortName} • Age ${prospect.age}\n'
+          'Overall ${prospect.overallRating} • Projected Rank #${prospect.projectedRank}\n'
+          'Estimated Potential Grade: ${prospect.estimatedPotentialGrade}\n'
+          'Estimated Ceiling Range: ${prospect.estimatedPotentialRange}\n\n'
+          '${career.userTeam.name} (${career.userTeam.abbreviation})\n'
+          'Round ${pick.round} • Pick ${pick.pickInRound} • Overall #${pick.overallPick}\n\n'
+          'This selection will be saved before AI drafting continues. '
+          'The player remains unsigned, outside your active roster.',
+        ),
+        confirmLabel: 'Draft Player',
+        confirmKey: 'confirm-draft-player',
+        cancelKey: 'cancel-draft-player',
+      );
+      if (!mounted || !confirmed) return;
+      if (!_confirmationIsCurrent(controller, career) ||
+          !_isHumanTurn(controller.career!) ||
+          controller.career!.draftExecutionState
+                  .currentPick(controller.career!.draftOrder)
+                  ?.currentOwnerTeamId !=
+              pick.currentOwnerTeamId ||
+          controller.career!.draftExecutionState.isProspectSelected(
+            prospectId,
+          )) {
+        throw StateError(
+          'Draft pick changed. Review the current pick and choose again.',
+        );
+      }
+      setState(() => _localError = null);
+      if (sheetContext.mounted &&
+          ModalRoute.of(sheetContext)?.isCurrent == true) {
+        Navigator.pop(sheetContext);
+      }
+      _tabs.index = 0;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _orderScroll.hasClients) _orderScroll.jumpTo(0);
+      });
+      await controller.makeHumanSelection(prospectId: prospectId);
+      if (mounted && controller.career!.draftExecutionState.isCompleted) {
+        _tabs.index = 2;
+      }
+    } catch (error) {
+      _showError(error);
+    } finally {
+      if (mounted) _commandPending.value = false;
+    }
+  }
+
+  Future<void> _resumeDraft() async {
+    final controller = widget.controller;
+    final career = controller.career;
+    if (_blocked ||
+        career == null ||
+        !career.draftExecutionState.isInProgress) {
+      return;
+    }
+    if (_isHumanTurn(career)) {
+      _tabs.index = 1;
+      return;
+    }
+    _commandPending.value = true;
+    try {
+      setState(() => _localError = null);
+      await controller.advanceDraft();
+    } catch (error) {
+      _showError(error);
+    } finally {
+      if (mounted) _commandPending.value = false;
+    }
+  }
+
+  Future<void> _reloadCareer() async {
+    if (_commandPending.value || widget.controller.isLoading) return;
+    _commandPending.value = true;
+    try {
+      setState(() => _localError = null);
+      await widget.controller.loadCareer();
+      final error = widget.controller.errorMessage;
+      if (error != null) _showError(error);
+    } catch (error) {
+      _showError(error);
+    } finally {
+      if (mounted) _commandPending.value = false;
+    }
+  }
+
+  String _ownedPicks(GmCareer career) => career.draftOrder.picks
+      .where((pick) => pick.currentOwnerTeamId == career.userFranchiseId)
+      .map((pick) => 'Round ${pick.round}: #${pick.overallPick} overall')
+      .join(' • ');
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: Listenable.merge([widget.controller, _commandPending]),
+    builder: (context, _) {
+      final career = widget.controller.career;
+      // No presentation helper accepts the hidden prospect model.
+      final prospects = <String, PublicProspectScoutingView>{
+        if (career != null)
+          for (final prospect in career.draftClass.prospects)
+            prospect.id.value: prospect.toPublicView(),
+      };
+      return Scaffold(
         appBar: AppBar(
           title: const Text('Rookie Draft Board'),
-          bottom: const TabBar(
+          bottom: TabBar(
+            controller: _tabs,
             key: ValueKey('draft-board-tab-bar'),
-            tabs: [
+            labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+            tabs: const [
               Tab(
                 icon: Icon(Icons.format_list_numbered, size: 20),
                 text: 'Draft Order (60)',
@@ -67,613 +301,589 @@ class _GmDraftBoardScreenState extends State<GmDraftBoardScreen> {
                 icon: Icon(Icons.people_outline, size: 20),
                 text: 'Prospects (90)',
               ),
+              Tab(
+                icon: Icon(Icons.fact_check_outlined, size: 20),
+                text: 'Results',
+              ),
             ],
           ),
         ),
-        body: TabBarView(
-          children: [_buildDraftOrderTab(theme), _buildProspectsTab(theme)],
+        body: SafeArea(
+          top: false,
+          child: career == null
+              ? ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    const Text(
+                      'No active GM Career. Reload the saved career or return to career setup.',
+                    ),
+                    if (widget.controller.errorMessage != null)
+                      Text(widget.controller.errorMessage!),
+                    FilledButton(
+                      key: const ValueKey('draft-reload-button'),
+                      onPressed:
+                          _commandPending.value || widget.controller.isLoading
+                          ? null
+                          : _reloadCareer,
+                      child: const Text('Reload Saved Career'),
+                    ),
+                  ],
+                )
+              : TabBarView(
+                  controller: _tabs,
+                  children: [
+                    _buildDraftOrderTab(career, prospects),
+                    _buildProspectsTab(career, prospects),
+                    _buildResultsTab(career, prospects),
+                  ],
+                ),
         ),
+      );
+    },
+  );
+
+  Widget _buildStatus(
+    GmCareer career,
+    Map<String, PublicProspectScoutingView> prospects,
+  ) {
+    final theme = Theme.of(context);
+    final state = career.draftExecutionState;
+    final pick = state.currentPick(career.draftOrder);
+    final team = pick == null
+        ? null
+        : _findTeam(career, pick.currentOwnerTeamId);
+    final recovery = widget.controller.draftRecoveryRequired;
+    final error = widget.controller.errorMessage ?? _localError;
+    final status = recovery
+        ? 'Reload required'
+        : widget.controller.isLoading
+        ? (state.isInProgress && !_isHumanTurn(career)
+              ? 'AI Drafting'
+              : 'Saving / Loading Draft')
+        : state.isCompleted
+        ? 'Draft Complete'
+        : state.isNotStarted
+        ? 'Draft Not Started'
+        : _isHumanTurn(career)
+        ? 'Your Pick'
+        : 'AI Drafting — paused';
+    final latest = state.selections.isEmpty ? null : state.selections.last;
+    final latestProspect = latest == null
+        ? null
+        : prospects[latest.prospectId.value];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            status,
+            key: const ValueKey('draft-status'),
+            style: theme.textTheme.titleMedium,
+          ),
+          Text(career.userTeam.name, style: theme.textTheme.bodyMedium),
+          Text(
+            '${state.completedSelectionsCount} / 60 selections committed',
+            key: const ValueKey('draft-progress'),
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            state.isCompleted
+                ? 'Both rounds complete'
+                : 'Round ${pick!.round} • Pick ${pick.pickInRound} • Overall #${pick.overallPick}\n'
+                      '${team!.name} (${team.abbreviation})${_isHumanTurn(career) ? ' • YOUR PICK' : ''}',
+            key: const ValueKey('draft-current-pick'),
+          ),
+          if (latest != null && latestProspect != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Latest committed: #${latest.overallPick} • '
+              '${_findTeam(career, latest.selectingTeamId).name} '
+              '(${_findTeam(career, latest.selectingTeamId).abbreviation})\n'
+              '${latestProspect.fullName} • ${latestProspect.position.shortName} • OVR ${latestProspect.overallRating}',
+              key: const ValueKey('draft-latest-selection'),
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+          if (state.isNotStarted) ...[
+            const SizedBox(height: 8),
+            Text(_ownedPicks(career)),
+            const Text('90 available prospects • 60 selections'),
+            FilledButton.icon(
+              key: const ValueKey('draft-start-button'),
+              onPressed: _blocked ? null : _startDraft,
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('Start Draft'),
+            ),
+          ] else if (state.isInProgress) ...[
+            if (_isHumanTurn(career))
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text(
+                  'Open Prospects, inspect a player, then choose Draft Player.',
+                ),
+              ),
+            OutlinedButton.icon(
+              key: const ValueKey('draft-resume-button'),
+              onPressed: _blocked ? null : _resumeDraft,
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('Resume Draft'),
+            ),
+          ],
+          if (widget.controller.isLoading) const LinearProgressIndicator(),
+          if (error != null || recovery) ...[
+            const SizedBox(height: 8),
+            Text(
+              error ??
+                  'The last save may have committed. Reload before continuing.',
+              style: TextStyle(color: theme.colorScheme.error),
+            ),
+            if (recovery)
+              const Text(
+                'Draft commands are blocked. Reload to reconcile saved selections; do not retry the pick.',
+              ),
+            if (recovery || widget.controller.errorMessage != null)
+              OutlinedButton.icon(
+                key: const ValueKey('draft-reload-button'),
+                onPressed: _commandPending.value || widget.controller.isLoading
+                    ? null
+                    : _reloadCareer,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Reload Saved Career'),
+              ),
+          ],
+          const Divider(),
+        ],
       ),
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // TAB 1: DRAFT ORDER VIEW (60 PICKS)
-  // ---------------------------------------------------------------------------
-
-  Widget _buildDraftOrderTab(ThemeData theme) {
-    final draftOrder = widget.career.draftOrder;
-    final allPicks = draftOrder.picks;
-
-    final filteredPicks = allPicks.where((p) {
-      if (_selectedRoundFilter == 1) return p.round == 1;
-      if (_selectedRoundFilter == 2) return p.round == 2;
-      return true;
-    }).toList();
-
-    return Column(
+  Widget _buildDraftOrderTab(
+    GmCareer career,
+    Map<String, PublicProspectScoutingView> prospects,
+  ) {
+    final picks = career.draftOrder.picks
+        .where(
+          (pick) =>
+              _selectedRoundFilter == 0 || pick.round == _selectedRoundFilter,
+        )
+        .toList();
+    return KeyedSubtree(
       key: const ValueKey('draft-order-view'),
-      children: [
-        // Round Filter Segmented Control
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: SegmentedButton<int>(
-            segments: const [
-              ButtonSegment(value: 0, label: Text('All (60)')),
-              ButtonSegment(value: 1, label: Text('Round 1 (30)')),
-              ButtonSegment(value: 2, label: Text('Round 2 (30)')),
-            ],
-            selected: {_selectedRoundFilter},
-            onSelectionChanged: (set) {
-              setState(() {
-                _selectedRoundFilter = set.first;
-              });
-            },
-          ),
-        ),
-
-        // Pick List
-        Expanded(
-          child: ListView.separated(
-            key: const ValueKey('draft-order-list'),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            itemCount: filteredPicks.length,
-            separatorBuilder: (context, index) => const SizedBox(height: 6),
-            itemBuilder: (context, index) {
-              final pick = filteredPicks[index];
-              final isUserPick =
-                  pick.currentOwnerTeamId == widget.career.userFranchiseId;
-              final currentTeam = _findTeam(pick.currentOwnerTeamId);
-              final originalTeam = _findTeam(pick.originalOwnerTeamId);
-
-              return Card(
-                key: ValueKey('draft-pick-${pick.overallPick}'),
-                elevation: isUserPick ? 3 : 0.5,
-                color: isUserPick
-                    ? theme.colorScheme.primaryContainer.withValues(alpha: 0.7)
-                    : theme.colorScheme.surfaceContainerLow,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  side: isUserPick
-                      ? BorderSide(color: theme.colorScheme.primary, width: 2)
-                      : BorderSide(
-                          color: theme.colorScheme.outlineVariant.withValues(
-                            alpha: 0.5,
-                          ),
-                        ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  child: Row(
-                    children: [
-                      // Overall Pick Badge
-                      Container(
-                        width: 38,
-                        height: 38,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: isUserPick
-                              ? theme.colorScheme.primary
-                              : theme.colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '#${pick.overallPick}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color: isUserPick
-                                ? theme.colorScheme.onPrimary
-                                : theme.colorScheme.onSurface,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-
-                      // Team & Round Info
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    currentTeam.name,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontWeight: isUserPick
-                                          ? FontWeight.bold
-                                          : FontWeight.w600,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                                if (isUserPick) ...[
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: theme.colorScheme.primary,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      'YOUR PICK',
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
-                                        color: theme.colorScheme.onPrimary,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Round ${pick.round} • Pick ${pick.pickInRound}'
-                              '${pick.originalOwnerTeamId != pick.currentOwnerTeamId ? ' (via ${originalTeam.abbreviation})' : ' (Original)'}',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // Team Abbreviation Badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          currentTeam.abbreviation,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
+      child: ListView.builder(
+        key: const ValueKey('draft-order-list'),
+        controller: _orderScroll,
+        padding: const EdgeInsets.all(16),
+        itemCount: picks.length + 1,
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildStatus(career, prospects),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(value: 0, label: Text('All (60)')),
+                      ButtonSegment(value: 1, label: Text('Round 1 (30)')),
+                      ButtonSegment(value: 2, label: Text('Round 2 (30)')),
                     ],
+                    selected: {_selectedRoundFilter},
+                    onSelectionChanged: (selection) =>
+                        setState(() => _selectedRoundFilter = selection.first),
                   ),
                 ),
-              );
-            },
-          ),
-        ),
-      ],
+                const SizedBox(height: 8),
+              ],
+            );
+          }
+          return _buildPick(career, picks[index - 1], prospects);
+        },
+      ),
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // TAB 2: PROSPECT VIEW (90 PROSPECTS)
-  // ---------------------------------------------------------------------------
+  Widget _buildPick(
+    GmCareer career,
+    DraftPick pick,
+    Map<String, PublicProspectScoutingView> prospects,
+  ) {
+    final theme = Theme.of(context);
+    final state = career.draftExecutionState;
+    final own = pick.currentOwnerTeamId == career.userFranchiseId;
+    final current =
+        state.isInProgress && state.currentOverallPick == pick.overallPick;
+    final team = _findTeam(career, pick.currentOwnerTeamId);
+    final selection = pick.overallPick <= state.selections.length
+        ? state.selections[pick.overallPick - 1]
+        : null;
+    final prospect = selection == null
+        ? null
+        : prospects[selection.prospectId.value];
+    return Card(
+      key: ValueKey('draft-pick-${pick.overallPick}'),
+      color: own
+          ? theme.colorScheme.primaryContainer
+          : theme.colorScheme.surfaceContainerLow,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        leading: Text(
+          '#${pick.overallPick}',
+          style: theme.textTheme.titleSmall,
+        ),
+        title: Text('${team.name} (${team.abbreviation})'),
+        subtitle: Text(
+          'Round ${pick.round} • Pick ${pick.pickInRound}'
+          '${own ? ' • YOUR PICK' : ''}${current ? ' • CURRENT PICK' : ''}\n'
+          '${pick.originalOwnerTeamId == pick.currentOwnerTeamId ? 'Original' : 'via ${_findTeam(career, pick.originalOwnerTeamId).abbreviation}'}\n'
+          '${prospect == null ? 'Remaining selection' : '${prospect.fullName} • ${prospect.position.shortName} • OVR ${prospect.overallRating}'}',
+        ),
+        onTap: prospect == null ? null : () => _showProspectDetails(prospect),
+      ),
+    );
+  }
 
-  Widget _buildProspectsTab(ThemeData theme) {
-    final allProspects = widget.career.draftClass.prospects;
+  String _availability(GmCareer career, PublicProspectScoutingView prospect) {
+    final rights = career.draftExecutionState.draftRights[prospect.id.value];
+    if (rights == null) {
+      return career.draftExecutionState.isCompleted
+          ? 'Undrafted • Available'
+          : 'Available';
+    }
+    return 'Selected #${rights.overallPick} • ${_findTeam(career, rights.owningTeamId).abbreviation}';
+  }
 
-    final filteredProspects = allProspects.where((p) {
-      if (_selectedPosition != null && p.position != _selectedPosition) {
-        return false;
-      }
-      if (_searchQuery.isNotEmpty) {
-        final name = p.fullName.toLowerCase();
-        if (!name.contains(_searchQuery)) {
-          return false;
-        }
-      }
-      return true;
-    }).toList();
-
-    return Column(
+  Widget _buildProspectsTab(
+    GmCareer career,
+    Map<String, PublicProspectScoutingView> prospects,
+  ) {
+    final filtered = prospects.values.where((prospect) {
+      final selected = career.draftExecutionState.isProspectSelected(
+        prospect.id,
+      );
+      return (_selectedPosition == null ||
+              prospect.position == _selectedPosition) &&
+          prospect.fullName.toLowerCase().contains(_searchQuery) &&
+          (_availabilityFilter == 'All' ||
+              (_availabilityFilter == 'Available' && !selected) ||
+              (_availabilityFilter == 'Selected' && selected));
+    }).toList()..sort((a, b) => a.projectedRank.compareTo(b.projectedRank));
+    return KeyedSubtree(
       key: const ValueKey('prospect-view'),
-      children: [
-        // Search bar
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: TextField(
-            key: const ValueKey('prospect-search-field'),
-            controller: _searchController,
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: 'Search prospects by name...',
-              prefixIcon: const Icon(Icons.search, size: 20),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear, size: 18),
-                      onPressed: () {
-                        _searchController.clear();
-                      },
-                    )
-                  : null,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 8,
-              ),
-            ),
-          ),
-        ),
-
-        // Position filter chips
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: Row(
+      child: ListView.builder(
+        key: const ValueKey('prospect-list'),
+        padding: const EdgeInsets.all(16),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        itemCount: filtered.length + 1,
+        itemBuilder: (context, index) {
+          if (index > 0) return _buildProspectCard(career, filtered[index - 1]);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              FilterChip(
-                key: const ValueKey('prospect-filter-all'),
-                label: const Text('ALL'),
-                selected: _selectedPosition == null,
-                onSelected: (selected) {
-                  if (selected) {
-                    setState(() {
-                      _selectedPosition = null;
-                    });
-                  }
-                },
+              _buildStatus(career, prospects),
+              TextField(
+                key: const ValueKey('prospect-search-field'),
+                controller: _searchController,
+                onChanged: (query) =>
+                    setState(() => _searchQuery = query.trim().toLowerCase()),
+                decoration: InputDecoration(
+                  hintText: 'Search prospects by name...',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchQuery.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear search',
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        ),
+                  border: const OutlineInputBorder(),
+                ),
               ),
-              const SizedBox(width: 6),
-              ...Position.values.map(
-                (pos) => Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: FilterChip(
-                    key: ValueKey(
-                      'prospect-filter-${pos.shortName.toLowerCase()}',
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  spacing: 6,
+                  children: [
+                    FilterChip(
+                      key: const ValueKey('prospect-filter-all'),
+                      label: const Text('ALL'),
+                      selected: _selectedPosition == null,
+                      onSelected: (_) =>
+                          setState(() => _selectedPosition = null),
                     ),
-                    label: Text(pos.shortName),
-                    selected: _selectedPosition == pos,
-                    onSelected: (selected) {
-                      setState(() {
-                        _selectedPosition = selected ? pos : null;
-                      });
-                    },
-                  ),
+                    for (final position in Position.values)
+                      FilterChip(
+                        key: ValueKey(
+                          'prospect-filter-${position.shortName.toLowerCase()}',
+                        ),
+                        label: Text(position.shortName),
+                        selected: _selectedPosition == position,
+                        onSelected: (selected) => setState(
+                          () => _selectedPosition = selected ? position : null,
+                        ),
+                      ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
-
-        // Count banner
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  'Showing ${filteredProspects.length} of ${allProspects.length} Prospects',
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+              Wrap(
+                spacing: 6,
+                children: [
+                  for (final availability in ['All', 'Available', 'Selected'])
+                    ChoiceChip(
+                      key: ValueKey(
+                        'prospect-status-${availability.toLowerCase()}',
+                      ),
+                      label: Text(availability),
+                      selected: _availabilityFilter == availability,
+                      onSelected: (_) =>
+                          setState(() => _availabilityFilter = availability),
+                    ),
+                ],
               ),
-              const SizedBox(width: 8),
               Text(
-                'By Projected Rank',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.outline,
-                  fontSize: 10,
-                ),
+                'Showing ${filtered.length} of ${prospects.length} Prospects • By Projected Rank',
               ),
-            ],
-          ),
-        ),
-
-        // Prospect List
-        Expanded(
-          child: filteredProspects.isEmpty
-              ? Center(
-                  child: Text(
-                    'No prospects match your criteria',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                )
-              : ListView.separated(
-                  key: const ValueKey('prospect-list'),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  itemCount: filteredProspects.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 6),
-                  itemBuilder: (context, index) {
-                    final prospect = filteredProspects[index];
-                    return _buildProspectCard(context, theme, prospect);
-                  },
+              if (filtered.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Text('No prospects match your criteria'),
                 ),
-        ),
-      ],
+              const SizedBox(height: 8),
+            ],
+          );
+        },
+      ),
     );
   }
 
   Widget _buildProspectCard(
-    BuildContext context,
-    ThemeData theme,
-    RookieProspect prospect,
+    GmCareer career,
+    PublicProspectScoutingView prospect,
+  ) => Card(
+    key: ValueKey('prospect-card-${prospect.projectedRank}'),
+    child: ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      leading: Text(
+        '#${prospect.projectedRank}',
+        style: Theme.of(context).textTheme.titleSmall,
+      ),
+      title: Text(prospect.fullName),
+      subtitle: Text(
+        '${prospect.position.shortName} • Age ${prospect.age} • OVR ${prospect.overallRating}\n'
+        'Est. POT: ${prospect.estimatedPotentialGrade} (${prospect.estimatedPotentialRange})\n'
+        '${_availability(career, prospect)}',
+      ),
+      onTap: () => _showProspectDetails(prospect),
+    ),
+  );
+
+  Widget _buildResultsTab(
+    GmCareer career,
+    Map<String, PublicProspectScoutingView> prospects,
   ) {
-    return Card(
-      key: ValueKey('prospect-card-${prospect.projectedRank}'),
-      elevation: 0.5,
-      color: theme.colorScheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-        ),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: () => _showProspectDetails(context, prospect),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
+    final state = career.draftExecutionState;
+    final rights =
+        state.draftRights.values
+            .where((right) => right.owningTeamId == career.userFranchiseId)
+            .toList()
+          ..sort((a, b) => a.overallPick.compareTo(b.overallPick));
+    final undrafted =
+        prospects.values
+            .where((prospect) => !state.isProspectSelected(prospect.id))
+            .toList()
+          ..sort((a, b) => a.projectedRank.compareTo(b.projectedRank));
+    return ListView.builder(
+      key: const ValueKey('draft-results'),
+      padding: const EdgeInsets.all(16),
+      itemCount:
+          2 +
+          rights.length +
+          career.draftOrder.totalPicks +
+          (state.isCompleted ? 1 + undrafted.length : 0),
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Projected Rank Badge
-              Container(
-                width: 36,
-                height: 36,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  '#${prospect.projectedRank}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                ),
+              _buildStatus(career, prospects),
+              Text(
+                state.isCompleted
+                    ? '60 selections • 30 undrafted prospects'
+                    : '${state.selections.length} selections • Draft in progress',
+                style: Theme.of(context).textTheme.titleMedium,
               ),
-              const SizedBox(width: 12),
-
-              // Prospect Identification & Public Scouting Info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      prospect.fullName,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${prospect.position.shortName} • Age ${prospect.age} • Est. POT: ${prospect.estimatedPotentialGrade} (${prospect.estimatedPotentialRange})',
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
+              const SizedBox(height: 16),
+              Text(
+                'Your Drafted Prospects • Owned Unsigned Rights (${rights.length})',
+                key: const ValueKey('draft-owned-rights'),
+                style: Theme.of(context).textTheme.titleSmall,
               ),
-
-              // Visible Overall Rating
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    'OVR ${prospect.overallRating}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                  ),
-                  Text(
-                    'Grade ${prospect.estimatedPotentialGrade}',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                ],
+              const Text(
+                'Unsigned draft rights are not Active Roster Players and consume no roster slots.',
               ),
+              if (rights.isEmpty) const Text('No owned draft rights yet.'),
             ],
-          ),
-        ),
-      ),
+          );
+        }
+        index--;
+        if (index < rights.length) {
+          final right = rights[index];
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Year ${right.seasonYear} • Round ${(right.overallPick - 1) ~/ 30 + 1} • '
+                'Pick ${(right.overallPick - 1) % 30 + 1} • Overall #${right.overallPick}',
+              ),
+              _buildProspectCard(career, prospects[right.prospectId.value]!),
+            ],
+          );
+        }
+        index -= rights.length;
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: Text(
+              'Complete Draft Order / History',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          );
+        }
+        index--;
+        if (index < career.draftOrder.totalPicks) {
+          return _buildPick(career, career.draftOrder.picks[index], prospects);
+        }
+        index -= career.draftOrder.totalPicks;
+        if (index == 0) {
+          return Text(
+            'Undrafted Prospects (${undrafted.length})',
+            style: Theme.of(context).textTheme.titleSmall,
+          );
+        }
+        return _buildProspectCard(career, undrafted[index - 1]);
+      },
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // PROSPECT DETAILS BOTTOM SHEET (READ-ONLY)
-  // ---------------------------------------------------------------------------
-
-  void _showProspectDetails(BuildContext context, RookieProspect prospect) {
-    final theme = Theme.of(context);
-    final attrs = prospect.attributes;
-
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.7,
+  Future<void> _showProspectDetails(
+    PublicProspectScoutingView initialProspect,
+  ) async {
+    final careerId = widget.controller.career?.id;
+    final year = widget.controller.career?.currentYear;
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        builder: (sheetContext) => DraggableScrollableSheet(
+          initialChildSize: 0.85,
           minChildSize: 0.5,
           maxChildSize: 0.95,
           expand: false,
-          builder: (context, scrollController) {
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              child: ListView(
+          builder: (context, scrollController) => ListenableBuilder(
+            listenable: Listenable.merge([widget.controller, _commandPending]),
+            builder: (context, _) {
+              final career = widget.controller.career;
+              final currentProspect = career?.draftClass
+                  .byId(initialProspect.id)
+                  ?.toPublicView();
+              final prospect = currentProspect ?? initialProspect;
+              final attrs = prospect.attributes;
+              final sameDraft =
+                  career?.id == careerId &&
+                  career?.currentYear == year &&
+                  currentProspect != null;
+              return ListView(
                 controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                 children: [
-                  // Drag handle
-                  Center(
-                    child: Container(
-                      width: 36,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.outlineVariant,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-
-                  // Header
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      CircleAvatar(
-                        radius: 22,
-                        backgroundColor: theme.colorScheme.primaryContainer,
-                        foregroundColor: theme.colorScheme.onPrimaryContainer,
-                        child: Text(
-                          prospect.position.shortName,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              prospect.fullName,
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              'Age ${prospect.age} • Projected Rank #${prospect.projectedRank}',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
+                        child: Text(
+                          prospect.fullName,
+                          style: Theme.of(context).textTheme.titleLarge,
                         ),
                       ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            'OVR ${prospect.overallRating}',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            'Grade: ${prospect.estimatedPotentialGrade}',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: theme.colorScheme.primary,
-                            ),
-                          ),
-                        ],
+                      IconButton(
+                        tooltip: 'Close prospect details',
+                        onPressed: () => Navigator.pop(sheetContext),
+                        icon: const Icon(Icons.close),
                       ),
                     ],
                   ),
+                  Text(
+                    '${prospect.position.shortName} • Age ${prospect.age} • OVR ${prospect.overallRating}',
+                  ),
+                  if (career != null && sameDraft)
+                    Text(_availability(career, prospect)),
+                  if (!sameDraft)
+                    const Text(
+                      'Career changed. Close details and inspect the current prospect board.',
+                    ),
+                  FilledButton.icon(
+                    key: const ValueKey('draft-player-button'),
+                    onPressed: sameDraft && _canDraft(prospect.id)
+                        ? () => _draftPlayer(prospect, sheetContext)
+                        : null,
+                    icon: const Icon(Icons.how_to_reg),
+                    label: const Text('Draft Player'),
+                  ),
+                  if (widget.controller.isLoading)
+                    Text(
+                      career != null &&
+                              career.draftExecutionState.isInProgress &&
+                              !_isHumanTurn(career)
+                          ? 'AI Drafting — committed picks update live.'
+                          : 'Saving / Loading Draft',
+                    ),
+                  if (widget.controller.errorMessage != null)
+                    Text(
+                      widget.controller.errorMessage!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  if (widget.controller.draftRecoveryRequired ||
+                      widget.controller.errorMessage != null) ...[
+                    const Text(
+                      'Reload saved career to reconcile selections before drafting again.',
+                    ),
+                    OutlinedButton(
+                      key: const ValueKey('draft-reload-button'),
+                      onPressed:
+                          _commandPending.value || widget.controller.isLoading
+                          ? null
+                          : _reloadCareer,
+                      child: const Text('Reload Saved Career'),
+                    ),
+                  ],
                   const Divider(height: 24),
-
-                  // Public Scouting Evaluation Box
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHigh,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Public Scouting Evaluation',
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Expanded(
-                              child: Text('Consensus Draft Rank:'),
-                            ),
-                            Text(
-                              '#${prospect.projectedRank} Overall',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Expanded(
-                              child: Text('Estimated Potential Grade:'),
-                            ),
-                            Text(
-                              prospect.estimatedPotentialGrade,
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.primary,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Expanded(
-                              child: Text('Estimated Ceiling Range:'),
-                            ),
-                            Text(
-                              prospect.estimatedPotentialRange,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                  Text(
+                    'Public Scouting Evaluation',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  Text(
+                    'Consensus Draft Rank: #${prospect.projectedRank} Overall',
+                  ),
+                  Text(
+                    'Estimated Potential Grade: ${prospect.estimatedPotentialGrade}',
+                  ),
+                  Text(
+                    'Estimated Ceiling Range: ${prospect.estimatedPotentialRange}',
                   ),
                   const SizedBox(height: 16),
-
-                  // Visible Ratings Section
                   Text(
                     'Observed Abilities',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: Theme.of(context).textTheme.titleSmall,
                   ),
-                  const SizedBox(height: 8),
-
                   _buildAttributeRow('Inside Scoring', attrs.insideScoring),
                   _buildAttributeRow('Midrange', attrs.midrange),
                   _buildAttributeRow('Three-Point', attrs.threePoint),
@@ -689,41 +899,25 @@ class _GmDraftBoardScreenState extends State<GmDraftBoardScreen> {
                   _buildAttributeRow('Athleticism', attrs.athleticism),
                   _buildAttributeRow('Stamina', attrs.stamina),
                   _buildAttributeRow('Basketball IQ', attrs.basketballIQ),
-
-                  const SizedBox(height: 16),
-                  Center(
-                    child: Text(
-                      'Internal ceiling and development curve are hidden from public board.',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontStyle: FontStyle.italic,
-                        color: theme.colorScheme.outline,
-                        fontSize: 10,
-                      ),
-                    ),
-                  ),
                 ],
-              ),
-            );
-          },
-        );
-      },
-    );
+              );
+            },
+          ),
+        ),
+      );
+    } catch (error) {
+      _showError(error);
+    }
   }
 
-  Widget _buildAttributeRow(String name, int value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2.5),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(name, style: const TextStyle(fontSize: 12)),
-          Text(
-            '$value',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _buildAttributeRow(String name, int value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      children: [
+        Expanded(child: Text(name)),
+        const SizedBox(width: 12),
+        Text('$value', style: const TextStyle(fontWeight: FontWeight.bold)),
+      ],
+    ),
+  );
 }

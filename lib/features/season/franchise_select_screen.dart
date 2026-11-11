@@ -34,11 +34,13 @@ class _FranchiseSelectScreenState extends State<FranchiseSelectScreen> {
   TeamId? _selectedId;
   bool _hasSavedCareer = false;
   GmCareer? _savedCareer;
+  String? _careerSaveError;
+  bool _resumingCareer = false;
 
   bool get _hasCareer =>
       _hasSavedCareer || (widget.careerController?.hasCareer ?? false);
   GmCareer? get _activeCareer =>
-      _savedCareer ?? widget.careerController?.career;
+      widget.careerController?.career ?? _savedCareer;
 
   @override
   void initState() {
@@ -52,78 +54,86 @@ class _FranchiseSelectScreenState extends State<FranchiseSelectScreen> {
   }
 
   Future<void> _checkCareerSave() async {
-    final storage = widget.careerStorage ?? widget.careerController?.storage;
-    if (storage != null) {
+    final storage = widget.careerController?.storage ?? widget.careerStorage;
+    if (storage == null) return;
+    try {
       final hasSave = await storage.hasSave();
-      if (hasSave && mounted) {
-        try {
-          final raw = await storage.read();
-          if (raw != null && raw.trim().isNotEmpty) {
-            final career = GmCareerCodec.decode(raw);
-            if (mounted) {
-              setState(() {
-                _hasSavedCareer = true;
-                _savedCareer = career;
-              });
-            }
-          }
-        } catch (_) {
-          if (mounted) {
-            setState(() {
-              _hasSavedCareer = true;
-              _savedCareer = null;
-            });
-          }
-        }
-      }
+      final raw = hasSave ? await storage.read() : null;
+      final career = raw == null ? null : GmCareerCodec.decode(raw);
+      if (!mounted) return;
+      setState(() {
+        _hasSavedCareer = hasSave;
+        _savedCareer = career;
+        _careerSaveError = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _hasSavedCareer = true;
+        _savedCareer = null;
+        _careerSaveError =
+            'Failed to load GM Career: $error. Save file preserved.';
+      });
     }
   }
 
   Future<void> _handleResumeCareer() async {
-    if (widget.onResumeCareer != null &&
-        (widget.careerController?.hasCareer ?? false)) {
-      widget.onResumeCareer!();
-      return;
-    }
-    final storage = widget.careerStorage ?? widget.careerController?.storage;
-    if (storage == null) return;
+    if (_resumingCareer) return;
+    setState(() => _resumingCareer = true);
     try {
-      final raw = await storage.read();
-      if (raw == null || raw.trim().isEmpty) {
-        throw const FormatException('Career save is missing or empty.');
-      }
-      final career = GmCareerCodec.decode(raw);
-      if (mounted) {
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => GmOffseasonOverviewScreen(
-              career: career,
-              controller: widget.careerController,
-            ),
-          ),
-        );
-        if (mounted) {
-          _checkCareerSave();
+      final controller = widget.careerController;
+      final storage = controller?.storage ?? widget.careerStorage;
+      if (controller != null) {
+        if (!controller.hasCareer) {
+          await controller.loadCareer();
+          if (controller.errorMessage != null) {
+            throw StateError(controller.errorMessage!);
+          }
+          if (!controller.hasCareer) {
+            throw const FormatException('Career save is missing or empty.');
+          }
         }
-      }
-    } catch (e) {
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Save Error'),
-            content: Text(
-              'Failed to load GM Career: $e\n\nThe save file has been preserved.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('OK'),
-              ),
-            ],
+        if (!mounted) return;
+        if (widget.onResumeCareer != null) {
+          widget.onResumeCareer!();
+          return;
+        }
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => GmOffseasonOverviewScreen(controller: controller),
+          ),
+        );
+      } else {
+        if (storage == null) {
+          throw StateError('No GM Career storage is available.');
+        }
+        if (!mounted) return;
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => GmOffseasonOverviewRoute(storage: storage),
           ),
         );
       }
+      if (mounted) await _checkCareerSave();
+    } catch (error) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Save Error'),
+          content: Text(
+            'Failed to load GM Career: $error\n\nThe save file has been preserved.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _resumingCareer = false);
     }
   }
 
@@ -140,7 +150,7 @@ class _FranchiseSelectScreenState extends State<FranchiseSelectScreen> {
               key: const ValueKey('resume-career-button'),
               tooltip: 'Resume GM Career',
               icon: const Icon(Icons.history_edu),
-              onPressed: _handleResumeCareer,
+              onPressed: _resumingCareer ? null : _handleResumeCareer,
             ),
           TextButton(
             key: const ValueKey('open-career-preview'),
@@ -213,9 +223,10 @@ class _FranchiseSelectScreenState extends State<FranchiseSelectScreen> {
                               ),
                             ),
                             Text(
-                              _activeCareer != null
-                                  ? 'Year ${_activeCareer!.currentYear} • ${_activeCareer!.phase.displayName}'
-                                  : 'Saved career data found',
+                              _careerSaveError ??
+                                  (_activeCareer != null
+                                      ? 'Year ${_activeCareer!.currentYear} • ${_activeCareer!.phase.displayName}'
+                                      : 'Saved career data found'),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontSize: 11),
@@ -230,7 +241,7 @@ class _FranchiseSelectScreenState extends State<FranchiseSelectScreen> {
                           visualDensity: VisualDensity.compact,
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                         ),
-                        onPressed: _handleResumeCareer,
+                        onPressed: _resumingCareer ? null : _handleResumeCareer,
                         child: const Text('Resume'),
                       ),
                     ],

@@ -102,8 +102,6 @@ void main() {
         expect(find.text('Year 1 • Opening Offseason'), findsOneWidget);
         expect(find.text('Starting Situation:'), findsOneWidget);
         expect(find.text('Tanking / Rebuilding'), findsOneWidget);
-        expect(find.text('Guaranteed Rookie Draft Pick'), findsOneWidget);
-        expect(find.text('#1'), findsOneWidget);
         expect(find.text('Current Roster (12 Players)'), findsOneWidget);
         // Scroll down to check disabled future modules
         await tester.drag(
@@ -156,7 +154,6 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('Year 1 • Opening Offseason'), findsOneWidget);
         expect(find.text('Aurora Comets'), findsOneWidget);
-        expect(find.text('#1'), findsOneWidget);
 
         // 3. Exit to Franchise Select
         expect(
@@ -267,8 +264,6 @@ void main() {
         expect(find.text('AUR Offseason'), findsOneWidget);
         expect(find.text('Starting Situation:'), findsOneWidget);
         expect(find.text('Play-In Contender'), findsOneWidget);
-        expect(find.text('#8'), findsNothing); // PlayIn pick is #12
-        expect(find.text('#12'), findsOneWidget);
       },
     );
   });

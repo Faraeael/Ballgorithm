@@ -63,7 +63,10 @@ class _BasketballManagerAppState extends State<BasketballManagerApp> {
   @override
   void dispose() {
     _controller?.dispose();
-    _careerController?.dispose();
+    if (widget.careerController == null) {
+      final controller = _careerController!;
+      controller.commandsSettled.then((_) => controller.dispose());
+    }
     super.dispose();
   }
 
@@ -86,7 +89,8 @@ class _BasketballManagerAppState extends State<BasketballManagerApp> {
     return ListenableBuilder(
       listenable: Listenable.merge([_controller!, _careerController!]),
       builder: (context, _) {
-        if (_controller!.isLoading || _careerController!.isLoading) {
+        if (_controller!.isLoading ||
+            (_careerController!.isLoading && !_careerController!.hasCareer)) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
@@ -148,8 +152,7 @@ class _BasketballManagerAppState extends State<BasketballManagerApp> {
         // If GM Career save is active and user has not navigated out to franchise select
         if (_careerController!.hasCareer && !_showFranchiseSelect) {
           return GmOffseasonOverviewScreen(
-            career: _careerController!.career!,
-            controller: _careerController,
+            controller: _careerController!,
             onExit: () {
               setState(() {
                 _showFranchiseSelect = true;

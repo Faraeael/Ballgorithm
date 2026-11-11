@@ -2,26 +2,90 @@ import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
 
 import 'career_controller.dart';
+import 'career_storage.dart';
 import 'draft_board_screen.dart';
 
 /// Screen presenting the Year 1 Opening Offseason overview for a persistent GM Career.
 class GmOffseasonOverviewScreen extends StatelessWidget {
   const GmOffseasonOverviewScreen({
     super.key,
-    required this.career,
-    this.controller,
+    required this.controller,
     this.onExit,
   });
 
-  final GmCareer career;
-  final GmCareerController? controller;
+  final GmCareerController controller;
   final VoidCallback? onExit;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: controller,
+    builder: (context, _) {
+      final career = controller.career;
+      if (career == null) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('GM Career')),
+          body: Center(
+            child: controller.isLoading
+                ? const CircularProgressIndicator()
+                : Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      controller.errorMessage ??
+                          'Career save is missing. No save data was changed.',
+                    ),
+                  ),
+          ),
+        );
+      }
+      return _buildOverview(context, career);
+    },
+  );
+
+  Widget _buildOverview(BuildContext context, GmCareer career) {
     final theme = Theme.of(context);
     final team = career.userTeam;
     final profiles = career.careerProfiles;
+    final draft = career.draftExecutionState;
+    final draftLabel = switch (draft.status) {
+      DraftExecutionStatus.notStarted => 'Start Rookie Draft',
+      DraftExecutionStatus.inProgress => 'Resume Draft',
+      DraftExecutionStatus.completed => 'View Draft Results',
+    };
+    final ownedPicks = career.draftOrder.picksForTeam(career.userFranchiseId);
+    final currentPick = draft.currentPick(career.draftOrder);
+    final selectingTeam = currentPick == null
+        ? null
+        : career.league.teams.firstWhere(
+            (team) => team.id == currentPick.currentOwnerTeamId,
+          );
+    final ownedSelections = draft.selections
+        .where(
+          (selection) => selection.selectingTeamId == career.userFranchiseId,
+        )
+        .toList();
+    final ownedRights = draft.draftRights.values
+        .where((rights) => rights.owningTeamId == career.userFranchiseId)
+        .length;
+    final draftSummary = switch (draft.status) {
+      DraftExecutionStatus.notStarted =>
+        '${ownedPicks.map((pick) => 'Round ${pick.round}: #${pick.overallPick}').join(' • ')}\n'
+            '${career.draftClass.length} available prospects • ${career.draftOrder.totalPicks} selections',
+      DraftExecutionStatus.inProgress =>
+        'Round ${currentPick!.round} • Pick #${currentPick.overallPick}\n'
+            'Selecting: ${selectingTeam!.name} (${selectingTeam.abbreviation})\n'
+            '${draft.completedSelectionsCount}/${career.draftOrder.totalPicks} selections complete',
+      DraftExecutionStatus.completed =>
+        '${draft.completedSelectionsCount}/${career.draftOrder.totalPicks} selections complete\n'
+            '${ownedSelections.length} drafted prospects • $ownedRights owned unsigned rights',
+    };
+
+    void openDraft() {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => GmDraftBoardScreen(controller: controller),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -104,28 +168,31 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withValues(
-                            alpha: 0.15,
+                      Flexible(
+                        flex: 2,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
                           ),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
+                          decoration: BoxDecoration(
                             color: theme.colorScheme.primary.withValues(
-                              alpha: 0.4,
+                              alpha: 0.15,
+                            ),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: theme.colorScheme.primary.withValues(
+                                alpha: 0.4,
+                              ),
                             ),
                           ),
-                        ),
-                        child: Text(
-                          career.originalSituation.displayName,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.onPrimaryContainer,
+                          child: Text(
+                            career.originalSituation.displayName,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.onPrimaryContainer,
+                            ),
                           ),
                         ),
                       ),
@@ -142,13 +209,7 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
             key: const ValueKey('card-draft-entitlement'),
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => GmDraftBoardScreen(career: career),
-                  ),
-                );
-              },
+              onTap: openDraft,
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Row(
@@ -172,14 +233,14 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Guaranteed Rookie Draft Pick',
+                            draftLabel,
                             style: theme.textTheme.titleSmall?.copyWith(
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Pick #${career.userOpeningDraftPick} in Opening Draft • Tap to view board',
+                            draftSummary,
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
@@ -196,13 +257,11 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
                         color: Colors.green.shade100,
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Text(
-                        '#${career.userOpeningDraftPick}',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green.shade900,
-                        ),
+                      child: Icon(
+                        draft.isCompleted
+                            ? Icons.check_circle_outline
+                            : Icons.chevron_right,
+                        color: theme.colorScheme.primary,
                       ),
                     ),
                   ],
@@ -210,6 +269,43 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
               ),
             ),
           ),
+          if (draft.isCompleted) ...[
+            const SizedBox(height: 8),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Your Drafted Prospects',
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    for (final selection in ownedSelections)
+                      Builder(
+                        builder: (context) {
+                          final prospect =
+                              PublicProspectScoutingView.fromProspect(
+                                career.draftClass.byId(selection.prospectId)!,
+                              );
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              '${prospect.fullName} • ${prospect.position.shortName} • OVR ${prospect.overallRating}\n'
+                              'Round ${selection.round} • Pick #${selection.overallPick} • Unsigned draft rights',
+                            ),
+                          );
+                        },
+                      ),
+                    const Text(
+                      'Unsigned draft rights are not Active Roster Players and occupy no roster slots.',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
 
           // Current Roster Section
@@ -329,42 +425,42 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
               child: Column(
                 children: [
                   // Unlocked Rookie Draft Module
-                  ListTile(
+                  Padding(
                     key: const ValueKey('module-rookie-draft'),
-                    contentPadding: EdgeInsets.zero,
-                    leading: CircleAvatar(
-                      backgroundColor: theme.colorScheme.primaryContainer,
-                      foregroundColor: theme.colorScheme.onPrimaryContainer,
-                      child: const Icon(Icons.assignment_outlined),
-                    ),
-                    title: const Text(
-                      'Rookie Draft',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Text(
-                      '60 Picks • 90 Prospects (Your Pick: #${career.userOpeningDraftPick})',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    trailing: FilledButton.tonal(
-                      key: const ValueKey('btn-open-draft-board'),
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                GmDraftBoardScreen(career: career),
-                          ),
-                        );
-                      },
-                      child: const Text('View Board'),
-                    ),
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              GmDraftBoardScreen(career: career),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              backgroundColor:
+                                  theme.colorScheme.primaryContainer,
+                              foregroundColor:
+                                  theme.colorScheme.onPrimaryContainer,
+                              child: const Icon(Icons.assignment_outlined),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Rookie Draft',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      );
-                    },
+                        const SizedBox(height: 8),
+                        Text(draftSummary),
+                        const SizedBox(height: 8),
+                        FilledButton.tonal(
+                          key: const ValueKey('btn-open-draft-board'),
+                          onPressed: openDraft,
+                          child: Text(draftLabel),
+                        ),
+                      ],
+                    ),
                   ),
                   const Divider(height: 1),
                   _buildDisabledModuleTile(
@@ -473,4 +569,36 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Owns a live controller when entering a career outside the app-owned flow.
+class GmOffseasonOverviewRoute extends StatefulWidget {
+  const GmOffseasonOverviewRoute({super.key, required this.storage});
+
+  final GmCareerStorage storage;
+
+  @override
+  State<GmOffseasonOverviewRoute> createState() =>
+      _GmOffseasonOverviewRouteState();
+}
+
+class _GmOffseasonOverviewRouteState extends State<GmOffseasonOverviewRoute> {
+  late final GmCareerController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = GmCareerController(storage: widget.storage);
+    _controller.loadCareer();
+  }
+
+  @override
+  void dispose() {
+    _controller.commandsSettled.then((_) => _controller.dispose());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      GmOffseasonOverviewScreen(controller: _controller);
 }
