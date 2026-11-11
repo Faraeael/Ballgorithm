@@ -2,6 +2,7 @@ import '../generation/draft_generator.dart';
 import '../models/draft_execution_state.dart';
 import '../models/draft_order.dart';
 import '../models/draft_rights.dart';
+import '../models/ai_rookie_signing.dart';
 import '../models/franchise_situation.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
@@ -30,9 +31,11 @@ final class GmCareer {
     RookieDraftClass? draftClass,
     DraftExecutionState? draftExecutionState,
     RookieSigningLedger? rookieSigningLedger,
+    AiRookieSigningState? aiRookieSigning,
   }) : draftExecutionState =
            draftExecutionState ?? DraftExecutionState.initial(),
        rookieSigningLedger = rookieSigningLedger ?? RookieSigningLedger.empty(),
+       aiRookieSigning = aiRookieSigning ?? AiRookieSigningState.empty(),
        draftOrder =
            draftOrder ??
            const DraftGenerator().generateDraftOrder(
@@ -72,7 +75,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 5;
+  static const int currentSchemaVersion = 6;
 
   final String id;
   final int schemaVersion;
@@ -90,6 +93,8 @@ final class GmCareer {
   final DraftExecutionState draftExecutionState;
 
   final RookieSigningLedger rookieSigningLedger;
+
+  final AiRookieSigningState aiRookieSigning;
 
   /// Draft rights whose prospect has not signed a rookie contract yet.
   ///
@@ -216,6 +221,74 @@ final class GmCareer {
       rosterTeamByPlayerId: rosterTeamByPlayerId,
       rosterCategoryByPlayerId: rosterCategoryByPlayerId,
     );
+    _validateAiSigningDecisions();
+  }
+
+  /// Rejects AI decisions that disagree with draft rights, contracts or ownership.
+  void _validateAiSigningDecisions() {
+    if (aiRookieSigning.isEmpty) return;
+    if (!draftExecutionState.isCompleted) {
+      throw const FormatException(
+        'AI signing decisions require a completed rookie draft',
+      );
+    }
+    final selectionsByProspect = {
+      for (final selection in draftExecutionState.selections)
+        selection.prospectId.value: selection,
+    };
+    for (final decision in aiRookieSigning.decisions.values) {
+      final pid = decision.prospectId.value;
+      if (draftClass.byId(decision.prospectId) == null) {
+        throw FormatException('AI decision references unknown prospect $pid');
+      }
+      final selection = selectionsByProspect[pid];
+      if (selection == null) {
+        throw FormatException('AI decision references undrafted prospect $pid');
+      }
+      if (selection.seasonYear != decision.draftSeasonYear ||
+          selection.overallPick != decision.overallPick) {
+        throw FormatException(
+          'AI decision for $pid does not match its draft selection',
+        );
+      }
+      final rights = draftExecutionState.draftRights[pid];
+      if (rights == null || rights.owningTeamId != decision.teamId) {
+        throw FormatException(
+          'AI decision for $pid does not match current draft ownership',
+        );
+      }
+      if (decision.teamId == userFranchiseId) {
+        throw FormatException(
+          'AI decision for $pid targets the human franchise',
+        );
+      }
+      final contract = rookieSigningLedger.forPlayer(decision.prospectId);
+      if (decision.isSigned) {
+        if (contract == null) {
+          throw FormatException(
+            'Signed AI decision for $pid lacks a rookie contract',
+          );
+        }
+        if (contract.teamId != decision.teamId ||
+            contract.id != decision.contractId) {
+          throw FormatException(
+            'Signed AI decision for $pid does not match its contract',
+          );
+        }
+        final expected = decision.decision == AiSigningDecisionType.signedTwoWay
+            ? RosterCategory.twoWay
+            : RosterCategory.standard;
+        if (contract.category != expected) {
+          throw FormatException(
+            'Signed AI decision for $pid does not match contract category',
+          );
+        }
+      } else if (contract != null) {
+        throw FormatException(
+          'Deferred AI decision for $pid contradicts a signed contract',
+        );
+      }
+    }
   }
 
   /// Rejects contracts that disagree with draft history, rostering or profiles.
@@ -310,6 +383,7 @@ final class GmCareer {
     RookieDraftClass? draftClass,
     DraftExecutionState? draftExecutionState,
     RookieSigningLedger? rookieSigningLedger,
+    AiRookieSigningState? aiRookieSigning,
   }) {
     return GmCareer(
       id: id ?? this.id,
@@ -326,6 +400,7 @@ final class GmCareer {
       draftClass: draftClass ?? this.draftClass,
       draftExecutionState: draftExecutionState ?? this.draftExecutionState,
       rookieSigningLedger: rookieSigningLedger ?? this.rookieSigningLedger,
+      aiRookieSigning: aiRookieSigning ?? this.aiRookieSigning,
     );
   }
 }

@@ -71,3 +71,6 @@ export 'src/draft/draft_execution_service.dart';
 export 'src/models/rookie_contract.dart';
 export 'src/models/rookie_signing_ledger.dart';
 export 'src/career/rookie_signing_service.dart';
+export 'src/models/ai_rookie_signing.dart';
+export 'src/draft/ai_rookie_signing_policy.dart';
+export 'src/draft/ai_rookie_signing_service.dart';

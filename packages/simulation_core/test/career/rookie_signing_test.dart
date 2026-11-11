@@ -362,7 +362,7 @@ void main() {
 
       final decoded = GmCareerCodec.decode(GmCareerCodec.encode(signed));
 
-      expect(decoded.schemaVersion, 5);
+      expect(decoded.schemaVersion, GmCareer.currentSchemaVersion);
       expect(decoded.userTeam.roster.size, 14);
       expect(decoded.userTeam.roster.standardCount, 13);
       expect(decoded.userTeam.roster.twoWayCount, 1);
@@ -520,7 +520,7 @@ void main() {
         ..['schemaVersion'] = 4
         ..remove('rookieSigningLedger');
       final migrated = GmCareerCodec.decode(jsonEncode(v4));
-      expect(migrated.schemaVersion, 5);
+      expect(migrated.schemaVersion, GmCareer.currentSchemaVersion);
       expect(migrated.rookieSigningLedger.isEmpty, isTrue);
       expect(migrated.draftExecutionState.isCompleted, isTrue);
       expect(migrated.draftExecutionState.selections.length, 60);
@@ -563,11 +563,11 @@ void main() {
       expect(migratedV1.userOpeningDraftPick, career.userOpeningDraftPick);
     });
 
-    test('18. v5 writer always emits the signing ledger', () {
+    test('18. writer always emits the signing ledger', () {
       final career = careers[FranchiseSituation.playIn]!;
       final older = career.copyWith(schemaVersion: 4);
       final encoded = jsonDecode(GmCareerCodec.encode(older));
-      expect(encoded['schemaVersion'], 5);
+      expect(encoded['schemaVersion'], GmCareer.currentSchemaVersion);
       expect(encoded['rookieSigningLedger'], {
         'contracts': <String, dynamic>{},
       });

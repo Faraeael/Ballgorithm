@@ -9,6 +9,7 @@ import '../models/league.dart';
 import '../models/player_career_profile.dart';
 import '../models/rookie_draft_class.dart';
 import '../models/rookie_signing_ledger.dart';
+import '../models/ai_rookie_signing.dart';
 import '../models/roster.dart';
 import '../models/roster_category.dart';
 import '../models/roster_membership.dart';
@@ -20,7 +21,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 5;
+  static const int currentSchemaVersion = 6;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -40,6 +41,7 @@ final class GmCareerCodec {
       'draftClass': career.draftClass.toJson(),
       'draftExecutionState': career.draftExecutionState.toJson(),
       'rookieSigningLedger': career.rookieSigningLedger.toJson(),
+      'aiRookieSigning': career.aiRookieSigning.toJson(),
       'rosterMemberships': {
         for (final team in career.league.teams)
           team.id.value: [
@@ -337,6 +339,19 @@ final class GmCareerCodec {
       rookieSigningLedger = RookieSigningLedger.empty();
     }
 
+    final AiRookieSigningState aiRookieSigning;
+    final rawAiRookieSigning = raw['aiRookieSigning'];
+    if (schemaVersion >= 6) {
+      if (rawAiRookieSigning is! Map<String, dynamic>) {
+        throw const FormatException(
+          'Missing or invalid aiRookieSigning in career JSON v6',
+        );
+      }
+      aiRookieSigning = AiRookieSigningState.fromJson(rawAiRookieSigning);
+    } else {
+      aiRookieSigning = AiRookieSigningState.empty();
+    }
+
     final career = GmCareer(
       id: id,
       schemaVersion: currentSchemaVersion,
@@ -352,6 +367,7 @@ final class GmCareerCodec {
       draftClass: draftClass,
       draftExecutionState: draftExecutionState,
       rookieSigningLedger: rookieSigningLedger,
+      aiRookieSigning: aiRookieSigning,
     );
     career.validate();
     return career;

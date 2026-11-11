@@ -16,6 +16,7 @@ class GmCareerController extends ChangeNotifier {
   bool _draftRecoveryRequired = false;
   static const _draftService = DraftExecutionService();
   static const _signingService = RookieSigningService();
+  static const _aiSigningService = RookieAiSigningService();
 
   GmCareer? get career => _career;
   bool get hasCareer => _career != null;
@@ -111,11 +112,13 @@ class GmCareerController extends ChangeNotifier {
   });
 
   /// Starts the draft, saving each AI pick before stopping at a human turn.
-  Future<void> startDraft({String slot = 'default'}) =>
-      _runCareerCommand(action: 'execute rookie draft', () async {
-        await _saveDraftState(_draftService.startDraft(_requireCareer()), slot);
-        await _advanceAiSelections(slot);
-      });
+  Future<void> startDraft({String slot = 'default'}) => _runCareerCommand(
+    action: 'execute rookie draft',
+    () async {
+      await _saveCareerState(_draftService.startDraft(_requireCareer()), slot);
+      await _advanceAiSelections(slot);
+    },
+  );
 
   /// Saves one human selection, then saves each following AI selection.
   Future<void> makeHumanSelection({
@@ -132,7 +135,7 @@ class GmCareerController extends ChangeNotifier {
         career: current,
         prospectId: prospectId,
       );
-      await _saveDraftState(next, slot);
+      await _saveCareerState(next, slot);
       await _advanceAiSelections(slot);
     });
   }
@@ -181,6 +184,31 @@ class GmCareerController extends ChangeNotifier {
     });
   }
 
+  /// Applies deterministic AI rookie signing decisions for non-human franchises.
+  ///
+  /// Each decision is persisted before the next one is evaluated. The process
+  /// never touches human-owned rights and is safe to resume after a restart.
+  Future<void> advanceAiRookieSigning({String slot = 'default'}) =>
+      _runCareerCommand(action: 'advance AI rookie signing', () async {
+        var current = _requireCareer();
+        if (!current.draftExecutionState.isCompleted) {
+          throw StateError(
+            'Cannot evaluate AI rookie signings before the draft completes',
+          );
+        }
+        final initialized = _aiSigningService.initialize(current);
+        if (!identical(initialized, current)) {
+          await _saveCareerState(initialized, slot);
+          current = initialized;
+        }
+        while (_aiSigningService.pendingRights(current).isNotEmpty) {
+          final next = _aiSigningService.applyNextDecision(current);
+          if (identical(next, current)) break;
+          await _saveCareerState(next, slot);
+          current = next;
+        }
+      });
+
   GmCareer _requireCareer() =>
       _career ?? (throw StateError('No active GM Career'));
 
@@ -195,11 +223,11 @@ class GmCareerController extends ChangeNotifier {
           )) {
         return;
       }
-      await _saveDraftState(_draftService.executeAiSelection(current), slot);
+      await _saveCareerState(_draftService.executeAiSelection(current), slot);
     }
   }
 
-  Future<void> _saveDraftState(GmCareer next, String slot) async {
+  Future<void> _saveCareerState(GmCareer next, String slot) async {
     if (identical(next, _career)) return;
     final encoded = GmCareerCodec.encode(next);
     try {
