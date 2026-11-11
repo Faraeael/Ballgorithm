@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
-
+import 'features/career/career_controller.dart';
+import 'features/career/career_setup_screens.dart';
+import 'features/career/career_storage.dart';
+import 'features/career/offseason_overview_screen.dart';
 import 'features/game/game_screen.dart';
 import 'features/league/league_screen.dart';
 import 'features/season/franchise_select_screen.dart';
@@ -13,27 +16,40 @@ class BasketballManagerApp extends StatefulWidget {
     super.key,
     required this.league,
     this.storage,
+    this.careerStorage,
+    this.careerController,
     this.seasonMode,
     this.gameRunner,
+    this.seedProvider,
   });
 
   final League league;
   final SeasonStorage? storage;
+  final GmCareerStorage? careerStorage;
+  final GmCareerController? careerController;
   final bool? seasonMode;
   final GameRunner? gameRunner;
-
+  final CareerSeedProvider? seedProvider;
   @override
   State<BasketballManagerApp> createState() => _BasketballManagerAppState();
 }
 
 class _BasketballManagerAppState extends State<BasketballManagerApp> {
   SeasonController? _controller;
+  GmCareerController? _careerController;
+  bool _showFranchiseSelect = false;
 
   bool get _isSeasonActive => widget.seasonMode ?? (widget.storage != null);
-
   @override
   void initState() {
     super.initState();
+    _careerController =
+        widget.careerController ??
+        GmCareerController(
+          storage: widget.careerStorage ?? InMemoryGmCareerStorage(),
+        );
+    _careerController!.loadCareer();
+
     if (_isSeasonActive) {
       _controller = SeasonController(
         league: widget.league,
@@ -47,6 +63,7 @@ class _BasketballManagerAppState extends State<BasketballManagerApp> {
   @override
   void dispose() {
     _controller?.dispose();
+    _careerController?.dispose();
     super.dispose();
   }
 
@@ -67,9 +84,9 @@ class _BasketballManagerAppState extends State<BasketballManagerApp> {
 
   Widget _buildSeasonHome(BuildContext context) {
     return ListenableBuilder(
-      listenable: _controller!,
+      listenable: Listenable.merge([_controller!, _careerController!]),
       builder: (context, _) {
-        if (_controller!.isLoading) {
+        if (_controller!.isLoading || _careerController!.isLoading) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
@@ -119,17 +136,39 @@ class _BasketballManagerAppState extends State<BasketballManagerApp> {
           );
         }
 
-        if (!_controller!.hasActiveSeason) {
-          return FranchiseSelectScreen(
+        // M007 playable-season takes priority if active
+        if (_controller!.hasActiveSeason) {
+          return SeasonDashboardScreen(
             league: widget.league,
             controller: _controller!,
+            runner: widget.gameRunner,
           );
         }
 
-        return SeasonDashboardScreen(
+        // If GM Career save is active and user has not navigated out to franchise select
+        if (_careerController!.hasCareer && !_showFranchiseSelect) {
+          return GmOffseasonOverviewScreen(
+            career: _careerController!.career!,
+            controller: _careerController,
+            onExit: () {
+              setState(() {
+                _showFranchiseSelect = true;
+              });
+            },
+          );
+        }
+
+        return FranchiseSelectScreen(
           league: widget.league,
           controller: _controller!,
-          runner: widget.gameRunner,
+          careerController: _careerController,
+          careerStorage: widget.careerStorage ?? _careerController!.storage,
+          seedProvider: widget.seedProvider ?? defaultCareerSeedProvider,
+          onResumeCareer: () {
+            setState(() {
+              _showFranchiseSelect = false;
+            });
+          },
         );
       },
     );

@@ -1,25 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
 
-typedef CareerSeedProvider = int Function();
+import 'career_controller.dart';
+import 'career_seed.dart';
+import 'career_storage.dart';
+import 'offseason_overview_screen.dart';
 
-/// Generates a fresh non-zero 31-bit seed based on current wall-clock microseconds
-/// masked to 31 bits.
-int defaultCareerSeedProvider() {
-  final now = DateTime.now().microsecondsSinceEpoch;
-  final seed = now & 0x7FFFFFFF;
-  return seed == 0 ? 20261028 : seed;
-}
+export 'career_seed.dart' show CareerSeedProvider, generateCareerSeed;
+
+/// Default provider generating varied non-zero 31-bit career seeds.
+int defaultCareerSeedProvider() => generateCareerSeed();
 
 /// Screen 1: Select franchise from the 30 fictional teams.
 class CareerSelectTeamScreen extends StatefulWidget {
   const CareerSelectTeamScreen({
     super.key,
     this.seedProvider = defaultCareerSeedProvider,
+    this.careerStorage,
+    this.careerController,
   });
 
   final CareerSeedProvider seedProvider;
-
+  final GmCareerStorage? careerStorage;
+  final GmCareerController? careerController;
   @override
   State<CareerSelectTeamScreen> createState() => _CareerSelectTeamScreenState();
 }
@@ -64,10 +67,12 @@ class _CareerSelectTeamScreenState extends State<CareerSelectTeamScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      'Step 1 of 2: Choose Franchise',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
+                    Expanded(
+                      child: Text(
+                        'Step 1 of 2: Choose Franchise',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ],
@@ -151,6 +156,8 @@ class _CareerSelectTeamScreenState extends State<CareerSelectTeamScreen> {
                       builder: (_) => CareerSelectSituationScreen(
                         selectedTeam: _selectedTeam,
                         seedProvider: widget.seedProvider,
+                        careerStorage: widget.careerStorage,
+                        careerController: widget.careerController,
                       ),
                     ),
                   );
@@ -171,10 +178,14 @@ class CareerSelectSituationScreen extends StatefulWidget {
     super.key,
     required this.selectedTeam,
     this.seedProvider = defaultCareerSeedProvider,
+    this.careerStorage,
+    this.careerController,
   });
 
   final TeamSeed selectedTeam;
   final CareerSeedProvider seedProvider;
+  final GmCareerStorage? careerStorage;
+  final GmCareerController? careerController;
 
   @override
   State<CareerSelectSituationScreen> createState() =>
@@ -257,10 +268,13 @@ class _CareerSelectSituationScreenState
                     seed: freshSeed,
                   );
                   final result = const CareerSetupService().generate(request);
-
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) => CareerLeaguePreviewScreen(result: result),
+                      builder: (_) => CareerLeaguePreviewScreen(
+                        result: result,
+                        careerStorage: widget.careerStorage,
+                        careerController: widget.careerController,
+                      ),
                     ),
                   );
                 },
@@ -361,9 +375,16 @@ class _CareerSelectSituationScreenState
 
 /// Screen 3: Generated 30-team league and player roster preview.
 class CareerLeaguePreviewScreen extends StatelessWidget {
-  const CareerLeaguePreviewScreen({super.key, required this.result});
+  const CareerLeaguePreviewScreen({
+    super.key,
+    required this.result,
+    this.careerStorage,
+    this.careerController,
+  });
 
   final CareerSetupResult result;
+  final GmCareerStorage? careerStorage;
+  final GmCareerController? careerController;
 
   @override
   Widget build(BuildContext context) {
@@ -628,6 +649,20 @@ class CareerLeaguePreviewScreen extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 20),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 24.0),
+            child: SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: FilledButton.icon(
+                key: const ValueKey('start-career-button'),
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Start GM Career'),
+                onPressed: () => _handleStartCareer(context),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -647,6 +682,92 @@ class CareerLeaguePreviewScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _handleStartCareer(BuildContext context) async {
+    final storage =
+        careerStorage ?? careerController?.storage ?? InMemoryGmCareerStorage();
+
+    final hasExisting = await storage.hasSave();
+    if (hasExisting) {
+      if (!context.mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Replace Existing Career?'),
+          content: const Text(
+            'A GM Career save already exists. Currently only one career slot is supported. Starting a new career will replace your current save.\n\nDo you want to overwrite your existing career?',
+          ),
+          actions: [
+            TextButton(
+              key: const ValueKey('cancel-overwrite-career-button'),
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const ValueKey('confirm-overwrite-career-button'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Replace Career'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    } else {
+      if (!context.mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Confirm GM Career Creation'),
+          content: Text(
+            'Start GM Career with the ${result.selectedTeam.name}?\n\n'
+            'Starting Situation: ${result.selectedSituation.displayName}\n'
+            'Guaranteed Opening Draft Pick: #${result.userOpeningDraftPick}',
+          ),
+          actions: [
+            TextButton(
+              key: const ValueKey('cancel-start-career-button'),
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const ValueKey('confirm-start-career-button'),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Confirm & Start'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+
+    final newCareer = GmCareer.fromSetupResult(result);
+    final encoded = GmCareerCodec.encode(newCareer);
+    await storage.write(encoded);
+
+    if (careerController != null) {
+      await careerController!.loadCareer();
+      if (!context.mounted) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      return;
+    }
+
+    if (!context.mounted) return;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(
+        builder: (_) => GmOffseasonOverviewScreen(
+          career: newCareer,
+          controller: careerController,
+          onExit: () =>
+              Navigator.of(context).popUntil((route) => route.isFirst),
+        ),
+      ),
+      (route) => route.isFirst,
     );
   }
 }

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
 
+import '../career/career_controller.dart';
 import '../career/career_setup_screens.dart';
+import '../career/career_storage.dart';
+import '../career/offseason_overview_screen.dart';
 import '../game/game_setup_screen.dart';
 import '../game/game_screen.dart';
 import 'season_controller.dart';
@@ -11,22 +14,117 @@ class FranchiseSelectScreen extends StatefulWidget {
     super.key,
     required this.league,
     required this.controller,
+    this.careerController,
+    this.careerStorage,
+    this.seedProvider = defaultCareerSeedProvider,
+    this.onResumeCareer,
   });
 
   final League league;
   final SeasonController controller;
-
+  final GmCareerController? careerController;
+  final GmCareerStorage? careerStorage;
+  final CareerSeedProvider seedProvider;
+  final VoidCallback? onResumeCareer;
   @override
   State<FranchiseSelectScreen> createState() => _FranchiseSelectScreenState();
 }
 
 class _FranchiseSelectScreenState extends State<FranchiseSelectScreen> {
   TeamId? _selectedId;
+  bool _hasSavedCareer = false;
+  GmCareer? _savedCareer;
+
+  bool get _hasCareer =>
+      _hasSavedCareer || (widget.careerController?.hasCareer ?? false);
+  GmCareer? get _activeCareer =>
+      _savedCareer ?? widget.careerController?.career;
 
   @override
   void initState() {
     super.initState();
     _selectedId = widget.league.teams.first.id;
+    if (widget.careerController?.hasCareer ?? false) {
+      _hasSavedCareer = true;
+      _savedCareer = widget.careerController!.career;
+    }
+    _checkCareerSave();
+  }
+
+  Future<void> _checkCareerSave() async {
+    final storage = widget.careerStorage ?? widget.careerController?.storage;
+    if (storage != null) {
+      final hasSave = await storage.hasSave();
+      if (hasSave && mounted) {
+        try {
+          final raw = await storage.read();
+          if (raw != null && raw.trim().isNotEmpty) {
+            final career = GmCareerCodec.decode(raw);
+            if (mounted) {
+              setState(() {
+                _hasSavedCareer = true;
+                _savedCareer = career;
+              });
+            }
+          }
+        } catch (_) {
+          if (mounted) {
+            setState(() {
+              _hasSavedCareer = true;
+              _savedCareer = null;
+            });
+          }
+        }
+      }
+    }
+  }
+
+  Future<void> _handleResumeCareer() async {
+    if (widget.onResumeCareer != null &&
+        (widget.careerController?.hasCareer ?? false)) {
+      widget.onResumeCareer!();
+      return;
+    }
+    final storage = widget.careerStorage ?? widget.careerController?.storage;
+    if (storage == null) return;
+    try {
+      final raw = await storage.read();
+      if (raw == null || raw.trim().isEmpty) {
+        throw const FormatException('Career save is missing or empty.');
+      }
+      final career = GmCareerCodec.decode(raw);
+      if (mounted) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => GmOffseasonOverviewScreen(
+              career: career,
+              controller: widget.careerController,
+            ),
+          ),
+        );
+        if (mounted) {
+          _checkCareerSave();
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Save Error'),
+            content: Text(
+              'Failed to load GM Career: $e\n\nThe save file has been preserved.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -35,21 +133,37 @@ class _FranchiseSelectScreenState extends State<FranchiseSelectScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Ballgorithm Season'),
+        title: const Text('Ballgorithm'),
         actions: [
+          if (_hasCareer)
+            IconButton(
+              key: const ValueKey('resume-career-button'),
+              tooltip: 'Resume GM Career',
+              icon: const Icon(Icons.history_edu),
+              onPressed: _handleResumeCareer,
+            ),
           TextButton(
             key: const ValueKey('open-career-preview'),
-            onPressed: () {
-              Navigator.of(context).push(
+            onPressed: () async {
+              await Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => const CareerSelectTeamScreen(),
+                  builder: (_) => CareerSelectTeamScreen(
+                    seedProvider: widget.seedProvider,
+                    careerStorage: widget.careerStorage,
+                    careerController: widget.careerController,
+                  ),
                 ),
               );
+              if (mounted) {
+                _checkCareerSave();
+              }
             },
             child: const Text('GM Career'),
           ),
-          TextButton(
+          IconButton(
             key: const ValueKey('open-exhibition'),
+            tooltip: 'Exhibition',
+            icon: const Icon(Icons.sports_basketball_outlined),
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
@@ -64,14 +178,71 @@ class _FranchiseSelectScreenState extends State<FranchiseSelectScreen> {
                 ),
               );
             },
-            child: const Text('Exhibition'),
           ),
         ],
       ),
       body: Column(
         children: [
+          if (_hasCareer)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 4.0),
+              child: Card(
+                color: theme.colorScheme.tertiaryContainer,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12.0,
+                    vertical: 6.0,
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.sports_basketball, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _activeCareer != null
+                                  ? 'Resume GM Career: ${_activeCareer!.userTeam.name}'
+                                  : 'Resume GM Career',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            Text(
+                              _activeCareer != null
+                                  ? 'Year ${_activeCareer!.currentYear} • ${_activeCareer!.phase.displayName}'
+                                  : 'Saved career data found',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        key: const ValueKey('resume-career-card-button'),
+                        style: FilledButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                        ),
+                        onPressed: _handleResumeCareer,
+                        child: const Text('Resume'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 8.0,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -91,7 +262,6 @@ class _FranchiseSelectScreenState extends State<FranchiseSelectScreen> {
               ],
             ),
           ),
-          const Divider(height: 1),
           Expanded(
             child: ListView.separated(
               itemCount: widget.league.teams.length,
