@@ -90,10 +90,19 @@ as separate systems, and a cap-only model would leave them economically meaningl
    `cash + revenue − payroll − operating expenses` must be ≥ 0. Construction is a cash
    payment and must leave cash ≥ 0.
 
-Player signing therefore checks cap and cash. Staff/facility commitments check operating
-budget and cash. A player can fit the cap but fail the cash check (rejected); a facility
-can fit cash but fail the operating budget via its maintenance (rejected). Cap space
-cannot pay staff; operating budget cannot pay players.
+Three payroll figures are distinct:
+
+- **Cap payroll** = sum of standard-contract schedules only; it is what the 41,000 cap
+  constrains.
+- **Two-way payroll** = sum of two-way schedules (at most 3 × 250 = 750).
+- **Cash payroll** = cap payroll + two-way payroll + any other player payments. Revenue,
+  cash solvency and operating expenses use cash payroll.
+
+Two-way salaries never consume cap space, but they are never financially free: they
+always reduce cash. Player signing checks cap payroll and cash payroll. Staff/facility
+commitments check the operating budget and cash. A player can fit the cap but fail the
+cash check (rejected); a facility can fit cash but fail the operating budget via its
+maintenance (rejected). Cap space cannot pay staff; operating budget cannot pay players.
 
 ### 3.3 Revenue (deterministic)
 
@@ -201,9 +210,10 @@ and do not set future free-agent prices.
 Three records, one authority each:
 
 1. **`PlayerContract` — employment and financial authority (new, future).**
-   `id`, `playerId`, `teamId`, `category`, `startYear`, `durationYears`,
-   `source` (`legacy` / `rookie` / `freeAgent` / `extension` / `trade`),
-   optional `rookieContractId`. Every rostered player has exactly one
+   `id` (`contract-<playerId>-<startYear>`), `playerId`, `teamId`, `category`,
+   `startYear`, `durationYears`, `source` (`legacy` / `rookie` / `freeAgent` /
+   `extension` / `trade`), optional `rookieContractId`. Renewals create a new id;
+   historical contracts are immutable. Every rostered player has exactly one
    `PlayerContract`. Financial schedules reference `PlayerContract.id`.
 2. **`RookieContract` — historical draft-signing record (existing).**
    Keeps player, selecting franchise, pick, category, start year and duration.
@@ -223,8 +233,9 @@ Validation:
   without a schedule is invalid. Missing money is never zero.
 - One active schedule per contract; one active contract per player.
 - Payroll = sum of standard schedules; two-way salaries tracked separately.
-- Trades change `PlayerContract.teamId` only. `RookieContract.selectingTeamId` and
-  `DraftRights.owningTeamId` remain historical and are not employment checks.
+- Trades change `PlayerContract.teamId` only. `RookieContract.teamId` (the signing franchise) and
+  `DraftRights.owningTeamId` remain historical and are not current-employment checks.
+  `DraftSelection.selectingTeamId` is a separate historical draft field.
 - Extensions create a new `PlayerContract` and schedule; history is immutable.
 
 Migration v7→v8 (future, owner-approved):
@@ -234,7 +245,9 @@ Migration v7→v8 (future, owner-approved):
    without a signed rookie record, plus a legacy financial schedule.
 3. Create one `PlayerContract(source: rookie)` per existing `RookieContract`, copying
    player, team, category, start year and duration exactly, plus a rookie schedule.
-4. Add free-agent pool initial identity snapshot and empty transaction ledger.
+4. Leave the free-agent pool and its validation unchanged; the initial-identity
+   snapshot and transaction ledger are deferred to the authorized acquisition
+   milestone (T08D).
 5. Strict v8 decode; v7 migrates deterministically; no zero salaries; no roster,
    duration, category or signing-history changes.
 
@@ -363,8 +376,10 @@ major facility in the same season.
 ### 9.1 Accounting model
 
 ```
-cash_t = cash_(t-1) + revenue_t - payroll_t - operating_t - construction_t
-payroll_t = sum of standard schedules for year t
+cash_t = cash_(t-1) + revenue_t - cashPayroll_t - operating_t - construction_t
+cashPayroll_t = capPayroll_t + twoWayPayroll_t
+capPayroll_t = sum of standard schedules for year t
+twoWayPayroll_t = sum of two-way schedules for year t (max 3 x 250)
 operating_t = staff commitments + facility maintenance + baseline operations
 ```
 
@@ -377,6 +392,12 @@ Four distinct tests:
    positive, the franchise enters **financial watch**.
 4. **Immediate cash expenditure** — construction is paid from cash and must leave
    cash ≥ 0.
+
+**Contract-expiry boundary:** committed projections include only schedules that exist.
+A player whose contract expires is not projected. The three-year projection is therefore
+a committed-obligation floor, not a complete roster-solvency claim. Renewals,
+expirations and replacements are a future lifecycle gate; no season may advance while a
+rostered player lacks an active contract. T08C does not implement expiry or renewal.
 
 Financial watch allows normal operations but blocks new multi-year contracts,
 premium staff and facility upgrades without an explicit solvency plan. If cash goes
@@ -414,9 +435,10 @@ minimum-roster relief in the R1 section.
 - Percentages use basis points and deterministic rounding.
 - Contract schedules are contiguous, length = duration, startYear ≥ 1, salary within
   category bounds; standard salaries ≤ 8,000, two-way exactly 250.
-- New standard payroll per team per season ≤ 41,000; two-way payroll ≤ 3 × 250.
-  Grandfathered over-cap payroll may not increase except through the minimum-roster
-  exception (at most two minimum deals to reach 14 standard players).
+- Cap payroll per team per season ≤ 41,000; two-way payroll ≤ 750; cash payroll =
+  cap payroll + two-way payroll. Grandfathered over-cap payroll may not increase except
+  through the minimum-roster exception (at most two minimum deals to reach 14 standard
+  players).
 - Operating commitments ≤ operating budget; cash ≥ 0 after any mutation.
 - One active `PlayerContract` per rostered player; one schedule per contract; every
   signed `RookieContract` links 1:1 to a `PlayerContract`; no duplicate obligations.
@@ -622,12 +644,17 @@ duplicated.
 
 ### 16.7 Minimum-roster relief (proposal, not implemented)
 
-- **Eligibility:** standard roster below 14; all normal cap room and cash options already
-  exhausted; no outstanding relief debt.
-- **Amount:** at most two minimum-salary contracts (800 CU) per season.
-- **Cap:** minimum salaries count normally; a `minimumRosterException` permits at most
-  two minimum deals above the cap solely to reach 14. It never permits a non-minimum deal.
-- **Cash:** if projected cash would go negative, the league advances up to 800 CU,
+- **Eligibility:** standard roster below 14; normal cap room cannot fit the remaining
+  minimum slots; no outstanding relief debt; over-cap grandfathered teams qualify only
+  for minimum deals.
+- **Maximum contracts:** two minimum-salary contracts per season.
+- **Maximum cap overage:** 800 CU (2 × 400). The audited worst case needs only 200 CU
+  (600 room against an 800 two-deal cost); the 200 is the actual exception, not the
+  maximum.
+- **Cap treatment:** minimum salaries count normally; `minimumRosterException` permits
+  at most 800 CU above the cap solely to reach 14 standard players. It never permits a
+  non-minimum deal.
+- **Cash relief:** if projected cash would go negative, the league advances up to 800 CU,
   recorded as `LeagueAdvance` debt and deducted from next season's distribution.
 - **Repayment:** no interest; debt must be cleared before any non-minimum signing.
 - **Anti-abuse:** once per season; only when below 14; only minimum salary; teams that
@@ -674,7 +701,46 @@ sign-off of the published 30-team table.
 the 24-league gate. This requires approving the market formula before T08C and replaces
 the OVR-band table rather than patching it.
 
-### 16.10 Proposed T08C acceptance criteria
+
+### 16.10 Reference payroll table (seed 20261028, human `team-1`, Play-In)
+
+Pre-draft baseline, CU. `cashPayroll` equals cap payroll here because no two-way
+contracts exist yet.
+
+| Team | Abbr | Situation | Std | 2W | Cash payroll | Cap room | Revenue | Staff | Maint | Year-1 cash |
+|---|---|---|---|---|---|---|---|---|---|---|
+| team-1 | AUR | Play-In | 12 | 0 | 13,450 | 27,550 | 47,000 | 9,500 | 2,800 | 34,250 |
+| team-2 | IRV | Playoff | 12 | 0 | 24,500 | 16,500 | 52,000 | 9,500 | 2,800 | 31,200 |
+| team-3 | PMT | Playoff | 12 | 0 | 26,300 | 14,700 | 52,000 | 9,500 | 2,800 | 29,400 |
+| team-4 | RSC | Playoff | 12 | 0 | 23,600 | 17,400 | 52,000 | 9,500 | 2,800 | 32,100 |
+| team-5 | NGL | Contender | 12 | 0 | 32,600 | 8,400 | 57,000 | 9,500 | 2,800 | 31,100 |
+| team-6 | SLK | Playoff | 12 | 0 | 26,000 | 15,000 | 52,000 | 9,500 | 2,800 | 29,700 |
+| team-7 | VDU | Tanking | 12 | 0 | 7,850 | 33,150 | 42,000 | 9,500 | 2,800 | 31,850 |
+| team-8 | CBE | Contender | 12 | 0 | 37,100 | 3,900 | 57,000 | 9,500 | 2,800 | 26,600 |
+| team-9 | MCV | Playoff | 12 | 0 | 22,700 | 18,300 | 52,000 | 9,500 | 2,800 | 33,000 |
+| team-10 | CRM | Play-In | 12 | 0 | 14,250 | 26,750 | 47,000 | 9,500 | 2,800 | 33,450 |
+| team-11 | SPA | Tanking | 12 | 0 | 8,200 | 32,800 | 42,000 | 9,500 | 2,800 | 31,500 |
+| team-12 | TLW | Tanking | 12 | 0 | 8,800 | 32,200 | 42,000 | 9,500 | 2,800 | 30,900 |
+| team-13 | BSC | Tanking | 12 | 0 | 8,700 | 32,300 | 42,000 | 9,500 | 2,800 | 31,000 |
+| team-14 | GCS | Play-In | 12 | 0 | 14,000 | 27,000 | 47,000 | 9,500 | 2,800 | 33,700 |
+| team-15 | HPA | Playoff | 12 | 0 | 22,800 | 18,200 | 52,000 | 9,500 | 2,800 | 32,900 |
+| team-16 | CLS | Play-In | 12 | 0 | 15,650 | 25,350 | 47,000 | 9,500 | 2,800 | 32,050 |
+| team-17 | GBG | Playoff | 12 | 0 | 26,500 | 14,500 | 52,000 | 9,500 | 2,800 | 29,200 |
+| team-18 | DMV | Play-In | 12 | 0 | 13,850 | 27,150 | 47,000 | 9,500 | 2,800 | 33,850 |
+| team-19 | KSM | Contender | 12 | 0 | 39,300 | 1,700 | 57,000 | 9,500 | 2,800 | 24,400 |
+| team-20 | HCN | Play-In | 12 | 0 | 14,750 | 26,250 | 47,000 | 9,500 | 2,800 | 32,950 |
+| team-21 | WWR | Tanking | 12 | 0 | 7,700 | 33,300 | 42,000 | 9,500 | 2,800 | 32,000 |
+| team-22 | SFS | Contender | 12 | 0 | 37,400 | 3,600 | 57,000 | 9,500 | 2,800 | 26,300 |
+| team-23 | OHS | Tanking | 12 | 0 | 8,450 | 32,550 | 42,000 | 9,500 | 2,800 | 31,250 |
+| team-24 | CCB | Tanking | 12 | 0 | 8,000 | 33,000 | 42,000 | 9,500 | 2,800 | 31,700 |
+| team-25 | FWG | Playoff | 12 | 0 | 25,000 | 16,000 | 52,000 | 9,500 | 2,800 | 30,700 |
+| team-26 | BWR | Play-In | 12 | 0 | 15,200 | 25,800 | 47,000 | 9,500 | 2,800 | 32,500 |
+| team-27 | ISL | Playoff | 12 | 0 | 24,800 | 16,200 | 52,000 | 9,500 | 2,800 | 30,900 |
+| team-28 | CVF | Play-In | 12 | 0 | 15,550 | 25,450 | 47,000 | 9,500 | 2,800 | 32,150 |
+| team-29 | SLV | Play-In | 12 | 0 | 14,400 | 26,600 | 47,000 | 9,500 | 2,800 | 33,300 |
+| team-30 | VFT | Contender | 12 | 0 | 37,100 | 3,900 | 57,000 | 9,500 | 2,800 | 26,600 |
+
+### 16.11 Proposed T08C acceptance criteria
 
 - **AC-T08C-01** Every one of the 360 initial players has exactly one `PlayerContract`
   and one financial schedule; no roster player is missing or duplicated.
