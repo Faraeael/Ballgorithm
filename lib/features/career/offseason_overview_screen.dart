@@ -4,6 +4,8 @@ import 'package:simulation_core/simulation_core.dart';
 import 'career_controller.dart';
 import 'career_storage.dart';
 import 'draft_board_screen.dart';
+import 'rookie_signing_screen.dart';
+import 'rookie_signing_status.dart';
 
 /// Screen presenting the Year 1 Opening Offseason overview for a persistent GM Career.
 class GmOffseasonOverviewScreen extends StatelessWidget {
@@ -65,6 +67,9 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
         .toList();
     final ownedRights = career.unsignedDraftRights
         .where((rights) => rights.owningTeamId == career.userFranchiseId)
+        .length;
+    final signedRookies = ownedSelections
+        .where((selection) => isSignedRookie(career, selection.prospectId))
         .length;
     final draftSummary = switch (draft.status) {
       DraftExecutionStatus.notStarted =>
@@ -272,34 +277,47 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
           if (draft.isCompleted) ...[
             const SizedBox(height: 8),
             Card(
+              key: const ValueKey('card-rookie-signing'),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Your Drafted Prospects',
-                      style: theme.textTheme.titleSmall,
+                      'Rookie Signing',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 8),
-                    for (final selection in ownedSelections)
-                      Builder(
-                        builder: (context) {
-                          final prospect =
-                              PublicProspectScoutingView.fromProspect(
-                                career.draftClass.byId(selection.prospectId)!,
-                              );
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              '${prospect.fullName} • ${prospect.position.shortName} • OVR ${prospect.overallRating}\n'
-                              'Round ${selection.round} • Pick #${selection.overallPick} • Unsigned draft rights',
-                            ),
-                          );
-                        },
+                    Text(
+                      '${ownedSelections.length} drafted prospects • '
+                      '$signedRookies signed • $ownedRights unsigned',
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Standard: ${team.roster.standardCount}/'
+                      '${RosterRules.maxOffseasonStandard} • Two-way: '
+                      '${team.roster.twoWayCount}/'
+                      '${RosterRules.maxOffseasonTwoWay} • Total: '
+                      '${team.roster.totalContractedCount}/'
+                      '${RosterRules.maxOffseasonTotal}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
-                    const Text(
-                      'Unsigned draft rights are not Active Roster Players and occupy no roster slots.',
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.tonal(
+                      key: const ValueKey('btn-open-rookie-signing'),
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                GmRookieSigningScreen(controller: controller),
+                          ),
+                        );
+                      },
+                      child: const Text('Manage Rookie Signing'),
                     ),
                   ],
                 ),
@@ -361,6 +379,12 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
                 final profile = profiles.forPlayer(player.id);
                 final overall = player.attributes.overallRating;
                 final isStarter = index < 5;
+                final contract = career.rookieSigningLedger.forPlayer(
+                  player.id,
+                );
+                final rookie = contract == null
+                    ? null
+                    : career.draftClass.byId(player.id)?.toPublicView();
 
                 return ListTile(
                   dense: true,
@@ -382,7 +406,9 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   subtitle: Text(
-                    'Age: ${profile?.age ?? "-"} • ${profile?.trajectory.displayName ?? "-"}',
+                    rookie == null
+                        ? 'Age: ${profile?.age ?? "-"} • ${profile?.trajectory.displayName ?? "-"}'
+                        : 'Age: ${rookie.age} • Rookie • ${contract!.category.displayName}',
                     style: const TextStyle(fontSize: 11),
                   ),
                   trailing: Column(
@@ -394,7 +420,9 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       Text(
-                        'POT ${profile?.potential ?? "-"}',
+                        rookie == null
+                            ? 'POT ${profile?.potential ?? "-"}'
+                            : 'Est. ${rookie.estimatedPotentialGrade}',
                         style: TextStyle(
                           fontSize: 11,
                           color: theme.colorScheme.primary,

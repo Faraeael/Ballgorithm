@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
 
 import 'career_controller.dart';
+import 'rookie_signing_status.dart';
 
 /// Live draft commands and public scouting, backed only by committed career state.
 class GmDraftBoardScreen extends StatefulWidget {
@@ -552,7 +553,8 @@ class _GmDraftBoardScreenState extends State<GmDraftBoardScreen>
           ? 'Undrafted • Available'
           : 'Available';
     }
-    return 'Selected #${rights.overallPick} • ${_findTeam(career, rights.owningTeamId).abbreviation}';
+    return 'Selected #${rights.overallPick} • ${_findTeam(career, rights.owningTeamId).abbreviation}'
+        ' • ${rookieSigningStatus(career, prospect.id)}';
   }
 
   Widget _buildProspectsTab(
@@ -697,6 +699,9 @@ class _GmDraftBoardScreenState extends State<GmDraftBoardScreen>
             .where((prospect) => !state.isProspectSelected(prospect.id))
             .toList()
           ..sort((a, b) => a.projectedRank.compareTo(b.projectedRank));
+    final signedCount = rights
+        .where((right) => isSignedRookie(career, right.prospectId))
+        .length;
     return ListView.builder(
       key: const ValueKey('draft-results'),
       padding: const EdgeInsets.all(16),
@@ -719,12 +724,14 @@ class _GmDraftBoardScreenState extends State<GmDraftBoardScreen>
               ),
               const SizedBox(height: 16),
               Text(
-                'Your Drafted Prospects • Owned Unsigned Rights (${rights.length})',
+                'Your Drafted Prospects • ${rights.length - signedCount} unsigned • '
+                '$signedCount signed',
                 key: const ValueKey('draft-owned-rights'),
                 style: Theme.of(context).textTheme.titleSmall,
               ),
               const Text(
-                'Unsigned draft rights are not Active Roster Players and consume no roster slots.',
+                'Unsigned draft rights are not Active Roster Players and consume no roster slots. '
+                'Signed rookies remain part of draft history.',
               ),
               if (rights.isEmpty) const Text('No owned draft rights yet.'),
             ],
