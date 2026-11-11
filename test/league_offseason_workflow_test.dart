@@ -365,9 +365,9 @@ void main() {
     ) async {
       _viewport(tester, _largeViewport);
       final right = _userRights(completed).first;
-      final unsignedRight = _userRights(completed).firstWhere(
-        (candidate) => candidate.prospectId != right.prospectId,
-      );
+      final unsignedRight = _userRights(
+        completed,
+      ).firstWhere((candidate) => candidate.prospectId != right.prospectId);
       final prospect = completed.draftClass.byId(right.prospectId)!;
       final humanSigned = const RookieSigningService().signDraftedRookie(
         career: completed,
