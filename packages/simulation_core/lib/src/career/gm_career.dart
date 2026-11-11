@@ -62,7 +62,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 2;
+  static const int currentSchemaVersion = 3;
 
   final String id;
   final int schemaVersion;
@@ -113,11 +113,12 @@ final class GmCareer {
       if (!teamIds.add(team.id.value)) {
         throw FormatException('Duplicate team ID in league: ${team.id.value}');
       }
-      if (team.roster.players.length != 12) {
+      if (team.roster.players.length < 5) {
         throw FormatException(
-          'Team ${team.id.value} must have exactly 12 players, found ${team.roster.players.length}',
+          'Team ${team.id.value} must have at least 5 players, found ${team.roster.players.length}',
         );
       }
+      team.roster.validateStructure(phase: phase).throwIfInvalid();
       for (final player in team.players) {
         if (!playerIds.add(player.id.value)) {
           throw FormatException(
@@ -163,5 +164,57 @@ final class GmCareer {
         'User franchise ${userFranchiseId.value} does not own opening draft pick $userOpeningDraftPick in draft order',
       );
     }
+  }
+
+  /// Returns a new [GmCareer] with [updatedTeam] swapped into the league.
+  GmCareer withUpdatedTeam(
+    Team updatedTeam, {
+    LeagueCareerProfiles? careerProfiles,
+  }) {
+    final updatedTeams = [
+      for (final t in league.teams)
+        if (t.id == updatedTeam.id) updatedTeam else t,
+    ];
+    final updatedLeague = League.create(
+      id: league.id,
+      name: league.name,
+      config: league.config,
+      teams: updatedTeams,
+      enforceRosterSize: false,
+    );
+    return copyWith(
+      league: updatedLeague,
+      careerProfiles: careerProfiles ?? this.careerProfiles,
+    );
+  }
+
+  GmCareer copyWith({
+    String? id,
+    int? schemaVersion,
+    int? generationSeed,
+    TeamId? userFranchiseId,
+    FranchiseSituation? originalSituation,
+    int? currentYear,
+    CareerPhase? phase,
+    League? league,
+    LeagueCareerProfiles? careerProfiles,
+    int? userOpeningDraftPick,
+    DraftOrder? draftOrder,
+    RookieDraftClass? draftClass,
+  }) {
+    return GmCareer(
+      id: id ?? this.id,
+      schemaVersion: schemaVersion ?? this.schemaVersion,
+      generationSeed: generationSeed ?? this.generationSeed,
+      userFranchiseId: userFranchiseId ?? this.userFranchiseId,
+      originalSituation: originalSituation ?? this.originalSituation,
+      currentYear: currentYear ?? this.currentYear,
+      phase: phase ?? this.phase,
+      league: league ?? this.league,
+      careerProfiles: careerProfiles ?? this.careerProfiles,
+      userOpeningDraftPick: userOpeningDraftPick ?? this.userOpeningDraftPick,
+      draftOrder: draftOrder ?? this.draftOrder,
+      draftClass: draftClass ?? this.draftClass,
+    );
   }
 }

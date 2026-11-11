@@ -6,6 +6,7 @@ import 'generation_config.dart';
 import 'ids.dart';
 import 'player.dart';
 import 'roster.dart';
+import 'roster_category.dart';
 import 'team.dart';
 
 /// Aggregate root. Construct with [League.create] so league-wide rules
@@ -56,14 +57,21 @@ final class League {
     required String name,
     required GenerationConfig config,
     required List<Team> teams,
+    bool enforceRosterSize = true,
   }) {
     config.validateForEngine().throwIfInvalid();
     final league = League._(id: id, name: name, config: config, teams: teams);
-    LeagueValidator.validate(league).throwIfInvalid();
+    LeagueValidator.validate(
+      league,
+      enforceRosterSize: enforceRosterSize,
+    ).throwIfInvalid();
     return league;
   }
 
-  factory League.fromJson(Map<String, Object?> json) {
+  factory League.fromJson(
+    Map<String, Object?> json, {
+    bool? enforceRosterSize,
+  }) {
     final schemaVersion = json['schemaVersion'];
     if (schemaVersion != snapshotSchemaVersion) {
       throw DomainValidationException([
@@ -151,21 +159,36 @@ final class League {
       final situation = rawSituation is String
           ? FranchiseSituation.fromJson(rawSituation)
           : null;
+      final rawCategories = rawRoster is Map<String, Object?>
+          ? rawRoster['categories']
+          : null;
+      Map<String, RosterCategory>? categories;
+      if (rawCategories is Map<String, Object?>) {
+        categories = {
+          for (final entry in rawCategories.entries)
+            entry.key: RosterCategory.fromJson(entry.value as String),
+        };
+      }
       teams.add(
         Team(
           id: TeamId(rawTeamId),
           name: rawTeamName,
           abbreviation: rawAbbreviation,
-          roster: Roster(players),
+          roster: Roster(players, categories: categories),
           situation: situation,
         ),
       );
     }
+    final config = GenerationConfig.fromJson(rawGeneration);
+    final shouldEnforceRosterSize =
+        enforceRosterSize ??
+        !teams.any((t) => t.roster.players.length > config.playersPerTeam);
     return League.create(
       id: LeagueId(rawId),
       name: rawName,
-      config: GenerationConfig.fromJson(rawGeneration),
+      config: config,
       teams: teams,
+      enforceRosterSize: shouldEnforceRosterSize,
     );
   }
 

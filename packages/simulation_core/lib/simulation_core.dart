@@ -59,3 +59,6 @@ export 'src/models/draft_order.dart';
 export 'src/models/rookie_prospect.dart';
 export 'src/models/rookie_draft_class.dart';
 export 'src/generation/draft_generator.dart';
+export 'src/models/roster_category.dart';
+export 'src/models/roster_membership.dart';
+export 'src/models/roster_rules.dart';

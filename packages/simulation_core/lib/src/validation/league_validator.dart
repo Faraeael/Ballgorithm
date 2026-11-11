@@ -6,7 +6,10 @@ import 'validation_result.dart';
 /// League-wide invariants that no single entity can check in isolation.
 /// Used for generated leagues, decoded snapshots and tests.
 abstract final class LeagueValidator {
-  static ValidationResult validate(League league) {
+  static ValidationResult validate(
+    League league, {
+    bool enforceRosterSize = true,
+  }) {
     final issues = <ValidationIssue>[];
     final config = league.config;
 
@@ -27,7 +30,7 @@ abstract final class LeagueValidator {
       final roster = team.roster;
       final rosterPath = 'teams[$t].roster';
 
-      if (roster.size != config.playersPerTeam) {
+      if (enforceRosterSize && roster.size != config.playersPerTeam) {
         issues.add(
           ValidationIssue(
             code: ValidationCode.rosterSizeMismatch,

@@ -7,6 +7,10 @@ import '../models/ids.dart';
 import '../models/league.dart';
 import '../models/player_career_profile.dart';
 import '../models/rookie_draft_class.dart';
+import '../models/roster.dart';
+import '../models/roster_category.dart';
+import '../models/roster_membership.dart';
+import '../models/team.dart';
 import 'career_phase.dart';
 import 'gm_career.dart';
 
@@ -14,7 +18,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 2;
+  static const int currentSchemaVersion = 3;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -32,6 +36,16 @@ final class GmCareerCodec {
       'careerProfiles': career.careerProfiles.toJson(),
       'draftOrder': career.draftOrder.toJson(),
       'draftClass': career.draftClass.toJson(),
+      'rosterMemberships': {
+        for (final team in career.league.teams)
+          team.id.value: [
+            for (final player in team.players)
+              RosterMembership(
+                playerId: player.id,
+                category: team.roster.categoryOf(player.id),
+              ).toJson(),
+          ],
+      },
     };
     return jsonEncode(map);
   }
@@ -107,8 +121,36 @@ final class GmCareerCodec {
     if (rawLeague is! Map<String, dynamic>) {
       throw const FormatException('Missing or invalid league in career JSON');
     }
-    final league = League.fromJson(rawLeague);
+    final baseLeague = League.fromJson(rawLeague, enforceRosterSize: false);
 
+    final rawRosterMemberships =
+        raw['rosterMemberships'] as Map<String, dynamic>?;
+    final leagueTeams = <Team>[];
+    for (final team in baseLeague.teams) {
+      final teamMembershipsRaw =
+          rawRosterMemberships?[team.id.value] as List<dynamic>?;
+      if (teamMembershipsRaw != null) {
+        final categories = <String, RosterCategory>{};
+        for (final m in teamMembershipsRaw) {
+          final membership = RosterMembership.fromJson(
+            m as Map<String, dynamic>,
+          );
+          categories[membership.playerId.value] = membership.category;
+        }
+        leagueTeams.add(
+          team.copyWith(roster: Roster(team.players, categories: categories)),
+        );
+      } else {
+        leagueTeams.add(team);
+      }
+    }
+    final league = League.create(
+      id: baseLeague.id,
+      name: baseLeague.name,
+      config: baseLeague.config,
+      teams: leagueTeams,
+      enforceRosterSize: false,
+    );
     final rawCareerProfiles = raw['careerProfiles'];
     if (rawCareerProfiles is! Map<String, dynamic>) {
       throw const FormatException(

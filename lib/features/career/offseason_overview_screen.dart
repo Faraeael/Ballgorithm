@@ -214,18 +214,38 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
 
           // Current Roster Section
           Column(
+            key: const ValueKey('card-roster-composition'),
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Current Roster (12 Players)',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Current Roster (${team.players.length} Players)',
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Total: ${team.roster.totalContractedCount}/${RosterRules.maxOffseasonTotal}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 2),
               Text(
-                'Starters & Reserves',
+                'Standard: ${team.roster.standardCount}/${RosterRules.maxOffseasonStandard} • Two-Way: ${team.roster.twoWayCount}/${RosterRules.maxOffseasonTwoWay} • Camp: ${team.roster.trainingCampCount}',
+                overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
+                  fontSize: 11,
                 ),
               ),
             ],
