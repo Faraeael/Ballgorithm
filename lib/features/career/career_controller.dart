@@ -17,6 +17,7 @@ class GmCareerController extends ChangeNotifier {
   static const _draftService = DraftExecutionService();
   static const _signingService = RookieSigningService();
   static const _offerService = FreeAgentOfferSubmissionService();
+  static const _marketService = FreeAgentMarketService();
   static const _aiSigningService = RookieAiSigningService();
 
   GmCareer? get career => _career;
@@ -191,6 +192,10 @@ class GmCareerController extends ChangeNotifier {
   /// Rejected offers are durable; invalid/financially illegal offers consume no
   /// attempt and are not saved. A failed write blocks further commands until
   /// an explicit reload.
+  @Deprecated(
+    'Use stageFreeAgentOffer and the shared market round; retained for '
+    'historical T08F domain workflows and tests.',
+  )
   Future<FreeAgentOfferSubmissionResult> submitFreeAgentOffer({
     required PlayerId freeAgentId,
     required RosterCategory category,
@@ -223,6 +228,69 @@ class GmCareerController extends ChangeNotifier {
     );
     return command.then((_) => result!);
   }
+
+  /// Starts or advances to the next free-agency market round.
+  Future<void> startFreeAgencyRound({String slot = 'default'}) =>
+      _runCareerCommand(action: 'start free-agency round', () async {
+        await _saveCareerState(
+          _marketService.startRound(_requireCareer()),
+          slot,
+        );
+      });
+
+  /// Stages one human offer for the current market round.
+  Future<void> stageFreeAgentOffer({
+    required PlayerId freeAgentId,
+    required RosterCategory category,
+    required int durationYears,
+    required int firstYearSalary,
+    String slot = 'default',
+  }) => _runCareerCommand(action: 'stage free-agent offer', () async {
+    final current = _requireCareer();
+    final next = _marketService.stageHumanOffer(
+      career: current,
+      teamId: current.userFranchiseId,
+      playerId: freeAgentId,
+      category: category,
+      durationYears: durationYears,
+      firstYearSalary: firstYearSalary,
+    );
+    await _saveCareerState(next, slot);
+  });
+
+  Future<void> cancelFreeAgentOffer({
+    required PlayerId freeAgentId,
+    String slot = 'default',
+  }) => _runCareerCommand(action: 'cancel free-agent offer', () async {
+    final current = _requireCareer();
+    await _saveCareerState(
+      _marketService.cancelHumanOffer(career: current, playerId: freeAgentId),
+      slot,
+    );
+  });
+
+  /// Seals AI offers and freezes the round for resolution.
+  Future<void> prepareFreeAgencyResolution({String slot = 'default'}) =>
+      _runCareerCommand(action: 'prepare free-agency round', () async {
+        await _saveCareerState(
+          _marketService.prepareResolution(_requireCareer()),
+          slot,
+        );
+      });
+
+  /// Resolves the round one player at a time, saving each decision.
+  Future<void> resolveFreeAgencyRound({String slot = 'default'}) =>
+      _runCareerCommand(action: 'resolve free-agency round', () async {
+        var current = _requireCareer();
+        if (!current.freeAgentMarket.isResolvable) {
+          throw StateError('Free-agent market is not ready for resolution');
+        }
+        while (current.freeAgentMarket.isResolvable) {
+          final next = _marketService.resolveNext(current);
+          await _saveCareerState(next, slot);
+          current = next;
+        }
+      });
 
   /// Applies deterministic AI rookie signing decisions for non-human franchises.
   ///

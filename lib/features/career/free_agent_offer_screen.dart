@@ -281,7 +281,9 @@ class _GmFreeAgentOfferScreenState extends State<GmFreeAgentOfferScreen> {
             'Current cap room: $capRoom CU\n'
             'Projected season-end cash: $projected CU\n'
             'Formal attempts remaining: '
-            '${career.freeAgentOffers.remainingAttempts(teamId: career.userFranchiseId, playerId: widget.freeAgentId, seasonYear: career.currentYear)}',
+            '${career.freeAgentOffers.remainingAttempts(teamId: career.userFranchiseId, playerId: widget.freeAgentId, seasonYear: career.currentYear)}\n\n'
+            'AI franchises will compete for the same available players '
+            'before this offer is resolved.',
           ),
         ),
         actions: [
@@ -301,51 +303,39 @@ class _GmFreeAgentOfferScreenState extends State<GmFreeAgentOfferScreen> {
     if (confirmed != true) return;
     setState(() => _submitting = true);
     try {
-      final result = await widget.controller.submitFreeAgentOffer(
+      await widget.controller.stageFreeAgentOffer(
         freeAgentId: widget.freeAgentId,
         category: _category,
         durationYears: _durationYears,
-        agreedFirstYearSalary: _salary,
+        firstYearSalary: _salary,
       );
       if (!mounted) return;
-      await _showResult(result);
-      if (result.status == FreeAgentOfferSubmissionStatus.accepted && mounted) {
-        Navigator.of(context).pop(true);
-      }
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Offer Pending'),
+          content: Text(
+            'The offer is staged for Round '
+            '${widget.controller.career!.freeAgentMarket.roundNumber}. '
+            'No contract is signed until the market round resolves.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Offer not submitted: $error')));
+      ).showSnackBar(SnackBar(content: Text('Offer not staged: $error')));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
-  }
-
-  Future<void> _showResult(FreeAgentOfferSubmissionResult result) {
-    final title = switch (result.status) {
-      FreeAgentOfferSubmissionStatus.accepted => 'Offer Accepted',
-      FreeAgentOfferSubmissionStatus.rejected => 'Offer Rejected',
-      FreeAgentOfferSubmissionStatus.invalidTerms => 'Invalid Offer',
-      FreeAgentOfferSubmissionStatus.financiallyIllegal =>
-        'Offer Not Financially Legal',
-    };
-    return showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(
-          '${result.decision.explanation}\n\n'
-          'Formal offers remaining: ${result.remainingAttempts}',
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
   }
 
   TextStyle? _sectionStyle(BuildContext context) =>

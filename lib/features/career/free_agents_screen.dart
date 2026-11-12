@@ -3,12 +3,12 @@ import 'package:simulation_core/simulation_core.dart';
 
 import 'career_controller.dart';
 import 'free_agent_offer_screen.dart';
+import 'league_market_summary_screen.dart';
 
 enum _FreeAgentSort { overall, age, name }
 
 const _market = FreeAgentMarketValueService();
 
-/// Free-agent board. Public information plus a formal offer entry point.
 class GmFreeAgentsScreen extends StatefulWidget {
   const GmFreeAgentsScreen({super.key, required this.controller});
 
@@ -30,6 +30,7 @@ class _GmFreeAgentsScreenState extends State<GmFreeAgentsScreen> {
       if (career == null) {
         return const Scaffold(body: Center(child: Text('No active career')));
       }
+      final market = career.freeAgentMarket;
       final entries =
           [
             for (final entry in career.freeAgentPool.entries)
@@ -46,6 +47,7 @@ class _GmFreeAgentsScreenState extends State<GmFreeAgentsScreen> {
               _FreeAgentSort.name => aView.fullName.compareTo(bView.fullName),
             };
           });
+      final canOffer = market.isCollecting;
       return Scaffold(
         key: const ValueKey('free-agents-screen'),
         appBar: AppBar(
@@ -53,69 +55,75 @@ class _GmFreeAgentsScreenState extends State<GmFreeAgentsScreen> {
         ),
         body: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        ChoiceChip(
-                          label: const Text('All'),
-                          selected: _position == null,
-                          onSelected: (_) => setState(() => _position = null),
-                        ),
-                        for (final position in Position.values) ...[
-                          const SizedBox(width: 6),
-                          ChoiceChip(
-                            key: ValueKey(
-                              'free-agent-filter-${position.shortName}',
-                            ),
-                            label: Text(position.shortName),
-                            selected: _position == position,
-                            onSelected: (_) =>
-                                setState(() => _position = position),
-                          ),
-                        ],
-                      ],
-                    ),
+            _MarketHeader(
+              career: career,
+              onStart: () =>
+                  _run(() => widget.controller.startFreeAgencyRound()),
+              onLock: () =>
+                  _run(() => widget.controller.prepareFreeAgencyResolution()),
+              onResolve: () =>
+                  _run(() => widget.controller.resolveFreeAgencyRound()),
+              onCancel: (id) => _run(
+                () => widget.controller.cancelFreeAgentOffer(freeAgentId: id),
+              ),
+              onSummary: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => GmLeagueMarketSummaryScreen(
+                    controller: widget.controller,
                   ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Text('Sort'),
-                      const SizedBox(width: 8),
-                      DropdownButton<_FreeAgentSort>(
-                        key: const ValueKey('free-agent-sort'),
-                        value: _sort,
-                        onChanged: (value) {
-                          if (value != null) setState(() => _sort = value);
-                        },
-                        items: const [
-                          DropdownMenuItem(
-                            value: _FreeAgentSort.overall,
-                            child: Text('Overall'),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          ChoiceChip(
+                            label: const Text('All'),
+                            selected: _position == null,
+                            onSelected: (_) => setState(() => _position = null),
                           ),
-                          DropdownMenuItem(
-                            value: _FreeAgentSort.age,
-                            child: Text('Age'),
-                          ),
-                          DropdownMenuItem(
-                            value: _FreeAgentSort.name,
-                            child: Text('Name'),
-                          ),
+                          for (final position in Position.values) ...[
+                            const SizedBox(width: 6),
+                            ChoiceChip(
+                              key: ValueKey(
+                                'free-agent-filter-${position.shortName}',
+                              ),
+                              label: Text(position.shortName),
+                              selected: _position == position,
+                              onSelected: (_) =>
+                                  setState(() => _position = position),
+                            ),
+                          ],
                         ],
                       ),
-                      const Spacer(),
-                      Text('${entries.length} shown'),
-                    ],
+                    ),
                   ),
-                  Text(
-                    'Estimated values are public guidance, not a guaranteed '
-                    'acceptance threshold.',
-                    style: Theme.of(context).textTheme.bodySmall,
+                  DropdownButton<_FreeAgentSort>(
+                    key: const ValueKey('free-agent-sort'),
+                    value: _sort,
+                    onChanged: (value) {
+                      if (value != null) setState(() => _sort = value);
+                    },
+                    items: const [
+                      DropdownMenuItem(
+                        value: _FreeAgentSort.overall,
+                        child: Text('OVR'),
+                      ),
+                      DropdownMenuItem(
+                        value: _FreeAgentSort.age,
+                        child: Text('Age'),
+                      ),
+                      DropdownMenuItem(
+                        value: _FreeAgentSort.name,
+                        child: Text('Name'),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -138,6 +146,7 @@ class _GmFreeAgentsScreenState extends State<GmFreeAgentsScreen> {
                                 playerId: entry.id,
                                 seasonYear: career.currentYear,
                               ),
+                          canOffer: canOffer,
                           onMakeOffer: () => Navigator.of(context).push(
                             MaterialPageRoute<void>(
                               builder: (_) => GmFreeAgentOfferScreen(
@@ -155,6 +164,191 @@ class _GmFreeAgentsScreenState extends State<GmFreeAgentsScreen> {
       );
     },
   );
+
+  Future<void> _run(Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$error')));
+    }
+  }
+}
+
+class _MarketHeader extends StatelessWidget {
+  const _MarketHeader({
+    required this.career,
+    required this.onStart,
+    required this.onLock,
+    required this.onResolve,
+    required this.onCancel,
+    required this.onSummary,
+  });
+
+  final GmCareer career;
+  final VoidCallback onStart;
+  final VoidCallback onLock;
+  final VoidCallback onResolve;
+  final void Function(PlayerId) onCancel;
+  final VoidCallback onSummary;
+
+  @override
+  Widget build(BuildContext context) {
+    final market = career.freeAgentMarket;
+    final theme = Theme.of(context);
+    final pending = market.humanOffers;
+    final acquisitions = career.freeAgentPool.acquisitions;
+    final aiAcquisitions = acquisitions.entries.values
+        .where((record) => record.teamId != career.userFranchiseId)
+        .length;
+    final humanAcquisitions = acquisitions.length - aiAcquisitions;
+    final ready = LeagueReadinessReport.fromCareer(
+      career,
+    ).teams.where((team) => team.isReady).length;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Free Agency Round ${market.roundNumber} • '
+              '${market.isCollecting && pending.isNotEmpty ? 'Offers Pending' : _statusLabel(market.status)}',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${career.freeAgentPool.length} available • '
+              '${pending.length} pending human offer(s) • '
+              '$humanAcquisitions human / $aiAcquisitions AI signings • '
+              '$ready/30 ready',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                if (market.status == FreeAgentMarketStatus.notStarted)
+                  FilledButton(
+                    key: const ValueKey('start-free-agency'),
+                    onPressed: onStart,
+                    child: const Text('Start Free Agency'),
+                  ),
+                if (market.isCollecting)
+                  FilledButton(
+                    key: const ValueKey('lock-free-agency'),
+                    onPressed: onLock,
+                    child: const Text('Lock Offers'),
+                  ),
+                if (market.isResolvable)
+                  FilledButton(
+                    key: const ValueKey('resolve-free-agency'),
+                    onPressed: onResolve,
+                    child: const Text('Resolve Free Agency Round'),
+                  ),
+                if (market.status == FreeAgentMarketStatus.roundComplete &&
+                    market.roundNumber == 1)
+                  FilledButton(
+                    key: const ValueKey('start-round-2'),
+                    onPressed: onStart,
+                    child: const Text('Start Round 2'),
+                  ),
+                if (market.status == FreeAgentMarketStatus.marketComplete)
+                  const Chip(label: Text('Market Complete')),
+                OutlinedButton(
+                  key: const ValueKey('market-summary'),
+                  onPressed: onSummary,
+                  child: const Text('League Summary'),
+                ),
+              ],
+            ),
+            if (pending.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                market.isCollecting ? 'Pending offers' : 'Submitted offers',
+                style: theme.textTheme.labelLarge,
+              ),
+              for (final offer in pending)
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    '${_playerName(career, offer.playerId)} • '
+                    '${offer.category == RosterCategory.twoWay ? 'Two-way' : 'Standard'} '
+                    '${offer.durationYears}y • ${offer.firstYearSalary} CU',
+                  ),
+                  trailing: market.isCollecting
+                      ? TextButton(
+                          key: ValueKey('cancel-offer-${offer.playerId.value}'),
+                          onPressed: () => onCancel(offer.playerId),
+                          child: const Text('Cancel'),
+                        )
+                      : null,
+                ),
+            ],
+            if (market.outcomes.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('Round results', style: theme.textTheme.labelLarge),
+              for (final outcome in market.outcomes.take(8))
+                Text(
+                  _outcomeText(career, outcome),
+                  style: theme.textTheme.bodySmall,
+                ),
+              if (market.outcomes.length > 8)
+                Text('… ${market.outcomes.length - 8} more'),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _statusLabel(FreeAgentMarketStatus status) => switch (status) {
+    FreeAgentMarketStatus.notStarted => 'Not Started',
+    FreeAgentMarketStatus.collectingHumanOffers => 'Offers Open',
+    FreeAgentMarketStatus.preparedForResolution =>
+      'Prepared — AI Offers Sealed',
+    FreeAgentMarketStatus.resolving => 'Resolving',
+    FreeAgentMarketStatus.roundComplete => 'Round Complete',
+    FreeAgentMarketStatus.marketComplete => 'Market Complete',
+    FreeAgentMarketStatus.recoveryRequired => 'Recovery Required',
+  };
+
+  static String _playerName(GmCareer career, PlayerId id) {
+    final entry = career.freeAgentPool.byId(id);
+    if (entry != null) return entry.player.fullName;
+    for (final team in career.league.teams) {
+      for (final player in team.players) {
+        if (player.id == id) return player.fullName;
+      }
+    }
+    return id.value;
+  }
+
+  static String _outcomeText(GmCareer career, FreeAgentMarketOutcome outcome) {
+    final player = _playerName(career, outcome.playerId);
+    if (outcome.winningTeamId == null) {
+      return '$player: no signing';
+    }
+    final team = career.league.teams.firstWhere(
+      (candidate) => candidate.id == outcome.winningTeamId,
+    );
+    final rejected = outcome.results
+        .where(
+          (result) => result.outcome == FreeAgentMarketOfferOutcome.rejected,
+        )
+        .length;
+    final outbid = outcome.results
+        .where((result) => result.outcome == FreeAgentMarketOfferOutcome.outbid)
+        .length;
+    return '$player → ${team.abbreviation} · $outbid outbid · $rejected rejected';
+  }
 }
 
 class _FreeAgentCard extends StatelessWidget {
@@ -162,12 +356,14 @@ class _FreeAgentCard extends StatelessWidget {
     required this.entry,
     required this.valuation,
     required this.remainingAttempts,
+    required this.canOffer,
     required this.onMakeOffer,
   });
 
   final FreeAgentEntry entry;
   final MarketValuation valuation;
   final int remainingAttempts;
+  final bool canOffer;
   final VoidCallback onMakeOffer;
 
   @override
@@ -247,9 +443,15 @@ class _FreeAgentCard extends StatelessWidget {
               alignment: Alignment.centerRight,
               child: FilledButton.tonal(
                 key: ValueKey('make-offer-${view.id.value}'),
-                onPressed: remainingAttempts > 0 ? onMakeOffer : null,
+                onPressed: canOffer && remainingAttempts > 0
+                    ? onMakeOffer
+                    : null,
                 child: Text(
-                  remainingAttempts > 0 ? 'Make Offer' : 'No Offers Remaining',
+                  !canOffer
+                      ? 'Offers Locked'
+                      : (remainingAttempts > 0
+                            ? 'Make Offer'
+                            : 'No Offers Remaining'),
                 ),
               ),
             ),

@@ -11,6 +11,7 @@ import '../models/rookie_draft_class.dart';
 import '../models/rookie_signing_ledger.dart';
 import '../models/ai_rookie_signing.dart';
 import '../models/free_agent.dart';
+import '../models/free_agent_market.dart';
 import '../models/free_agent_offer.dart';
 import '../models/roster.dart';
 import '../models/roster_category.dart';
@@ -25,7 +26,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 10;
+  static const int currentSchemaVersion = 11;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -48,6 +49,7 @@ final class GmCareerCodec {
       'aiRookieSigning': career.aiRookieSigning.toJson(),
       'freeAgentPool': career.freeAgentPool.toJson(),
       'freeAgentOffers': career.freeAgentOffers.toJson(),
+      'freeAgentMarket': career.freeAgentMarket.toJson(),
       'finances': career.finances.toJson(),
       'rosterMemberships': {
         for (final team in career.league.teams)
@@ -393,6 +395,19 @@ final class GmCareerCodec {
       freeAgentOffers = FreeAgentOfferLedger.empty();
     }
 
+    final FreeAgentMarketState freeAgentMarket;
+    final rawFreeAgentMarket = raw['freeAgentMarket'];
+    if (schemaVersion >= 11) {
+      if (rawFreeAgentMarket is! Map<String, dynamic>) {
+        throw const FormatException(
+          'Missing or invalid freeAgentMarket in career JSON v11',
+        );
+      }
+      freeAgentMarket = FreeAgentMarketState.fromJson(rawFreeAgentMarket);
+    } else {
+      freeAgentMarket = FreeAgentMarketState.initial(seasonYear: currentYear);
+    }
+
     final CareerFinances? finances;
     final rawFinances = raw['finances'];
     if (schemaVersion >= 8) {
@@ -424,6 +439,7 @@ final class GmCareerCodec {
       aiRookieSigning: aiRookieSigning,
       freeAgentPool: freeAgentPool,
       freeAgentOffers: freeAgentOffers,
+      freeAgentMarket: freeAgentMarket,
       finances: finances,
     );
     career.validate();

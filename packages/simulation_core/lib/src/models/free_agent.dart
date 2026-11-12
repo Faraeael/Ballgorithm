@@ -200,11 +200,17 @@ final class FreeAgentPool {
         );
       }
     }
+    final acquiredPlayerIds = <String>{};
     for (final acquisition in acquisitions.entries.values) {
       final id = acquisition.playerId.value;
       if (!initialSeen.contains(id)) {
         throw FormatException(
           'Acquisition references unknown free-agent identity $id',
+        );
+      }
+      if (!acquiredPlayerIds.add(id)) {
+        throw FormatException(
+          'Free-agent $id has multiple acquisition records',
         );
       }
       final stillAvailable = playerIds.contains(id);

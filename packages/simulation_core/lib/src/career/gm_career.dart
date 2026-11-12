@@ -8,6 +8,7 @@ import '../models/draft_rights.dart';
 import '../models/ai_rookie_signing.dart';
 import '../models/franchise_situation.dart';
 import '../models/free_agent.dart';
+import '../models/free_agent_market.dart';
 import '../models/free_agent_offer.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
@@ -40,12 +41,16 @@ final class GmCareer {
     AiRookieSigningState? aiRookieSigning,
     FreeAgentPool? freeAgentPool,
     FreeAgentOfferLedger? freeAgentOffers,
+    FreeAgentMarketState? freeAgentMarket,
     CareerFinances? finances,
   }) : draftExecutionState =
            draftExecutionState ?? DraftExecutionState.initial(),
        rookieSigningLedger = rookieSigningLedger ?? RookieSigningLedger.empty(),
        aiRookieSigning = aiRookieSigning ?? AiRookieSigningState.empty(),
        freeAgentOffers = freeAgentOffers ?? FreeAgentOfferLedger.empty(),
+       freeAgentMarket =
+           freeAgentMarket ??
+           FreeAgentMarketState.initial(seasonYear: currentYear),
        finances =
            finances ??
            FinancialMigration.bootstrapFromCareerState(
@@ -97,7 +102,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 10;
+  static const int currentSchemaVersion = 11;
 
   final String id;
   final int schemaVersion;
@@ -122,6 +127,9 @@ final class GmCareer {
 
   /// Durable formal player-side offer history.
   final FreeAgentOfferLedger freeAgentOffers;
+
+  /// Shared two-round free-agency market state.
+  final FreeAgentMarketState freeAgentMarket;
 
   /// Authoritative contract, payroll, budget, staff and facility records.
   final CareerFinances finances;
@@ -254,6 +262,7 @@ final class GmCareer {
     _validateAiSigningDecisions();
     _validateFreeAgentPool();
     _validateFreeAgentOffers();
+    _validateFreeAgentMarket();
     finances.validate(
       league: league,
       rookieSigningLedger: rookieSigningLedger,
@@ -386,7 +395,113 @@ final class GmCareer {
     }
   }
 
-  /// Rejects formal offers that disagree with acquisitions, teams or contracts.
+  /// Rejects market rounds that disagree with acquisitions or franchise roles.
+  void _validateFreeAgentMarket() {
+    freeAgentMarket.validate();
+    if (freeAgentMarket.seasonYear != currentYear) {
+      throw FormatException(
+        'Free-agent market season ${freeAgentMarket.seasonYear} does not '
+        'match career year $currentYear',
+      );
+    }
+    final initialIds = {
+      for (final id in freeAgentPool.initialPlayerIds) id.value,
+    };
+    final teamById = {for (final team in league.teams) team.id.value: team};
+    for (final offer in freeAgentMarket.allOffers) {
+      if (!initialIds.contains(offer.playerId.value)) {
+        throw FormatException(
+          'Market offer ${offer.offerId} references a player outside the '
+          'initial snapshot',
+        );
+      }
+      if (!teamById.containsKey(offer.teamId.value)) {
+        throw FormatException(
+          'Market offer ${offer.offerId} references unknown team',
+        );
+      }
+      if (offer.source == FreeAgentMarketOfferSource.human &&
+          offer.teamId != userFranchiseId) {
+        throw FormatException('Human market offer targets another franchise');
+      }
+      if (offer.source == FreeAgentMarketOfferSource.ai &&
+          offer.teamId == userFranchiseId) {
+        throw FormatException('AI market offer targets the human franchise');
+      }
+    }
+    for (final outcome in freeAgentMarket.outcomes) {
+      for (final result in outcome.results) {
+        if (result.outcome == FreeAgentMarketOfferOutcome.accepted) {
+          final acquisition = freeAgentPool.acquisitions.forPlayer(
+            outcome.playerId,
+          );
+          if (acquisition == null ||
+              outcome.winningTeamId != result.teamId ||
+              acquisition.teamId != result.teamId) {
+            throw FormatException(
+              'Market result ${result.offerId} lacks its acquisition',
+            );
+          }
+          final marketOffer = freeAgentMarket.allOffers.firstWhere(
+            (offer) => offer.offerId == result.offerId,
+            orElse: () => throw FormatException(
+              'Accepted market offer ${result.offerId} is missing',
+            ),
+          );
+          final contract = finances.contractForPlayer(outcome.playerId);
+          if (contract == null ||
+              contract.category != marketOffer.category ||
+              contract.durationYears != marketOffer.durationYears ||
+              contract.startYear != marketOffer.seasonYear ||
+              contract.source != ContractSource.freeAgent ||
+              finances.scheduleFor(contract.id)?.annualSalaries.first !=
+                  marketOffer.firstYearSalary) {
+            throw FormatException(
+              'Accepted market offer ${result.offerId} does not match its '
+              'contract',
+            );
+          }
+          final acceptedAttempt = freeAgentOffers
+              .attemptsFor(
+                teamId: result.teamId,
+                playerId: outcome.playerId,
+                seasonYear: freeAgentMarket.seasonYear,
+              )
+              .where(
+                (attempt) =>
+                    attempt.outcome.isAccepted &&
+                    attempt.acquisitionTransactionId ==
+                        acquisition.transactionId,
+              );
+          if (acceptedAttempt.isEmpty) {
+            throw FormatException(
+              'Accepted market offer ${result.offerId} lacks a formal '
+              'accepted offer record',
+            );
+          }
+        } else if (result.outcome == FreeAgentMarketOfferOutcome.rejected) {
+          final attempts = freeAgentOffers.attemptsFor(
+            teamId: result.teamId,
+            playerId: outcome.playerId,
+            seasonYear: freeAgentMarket.seasonYear,
+          );
+          final matching = attempts.where(
+            (attempt) =>
+                !attempt.outcome.isAccepted &&
+                attempt.attemptNumber <=
+                    FreeAgentOfferAttempt.maximumPlayerSideAttempts,
+          );
+          if (matching.isEmpty) {
+            throw FormatException(
+              'Rejected market result ${result.offerId} lacks a formal '
+              'rejection record',
+            );
+          }
+        }
+      }
+    }
+  }
+
   void _validateFreeAgentOffers() {
     freeAgentOffers.validate();
     final initialIds = {
@@ -612,6 +727,7 @@ final class GmCareer {
     AiRookieSigningState? aiRookieSigning,
     FreeAgentPool? freeAgentPool,
     FreeAgentOfferLedger? freeAgentOffers,
+    FreeAgentMarketState? freeAgentMarket,
     CareerFinances? finances,
   }) {
     return GmCareer(
@@ -632,6 +748,7 @@ final class GmCareer {
       aiRookieSigning: aiRookieSigning ?? this.aiRookieSigning,
       freeAgentPool: freeAgentPool ?? this.freeAgentPool,
       freeAgentOffers: freeAgentOffers ?? this.freeAgentOffers,
+      freeAgentMarket: freeAgentMarket ?? this.freeAgentMarket,
       finances: finances ?? this.finances,
     );
   }
