@@ -72,6 +72,8 @@ export 'src/draft/draft_execution_service.dart';
 export 'src/models/rookie_contract.dart';
 export 'src/models/rookie_signing_ledger.dart';
 export 'src/career/rookie_signing_service.dart';
+export 'src/career/free_agent_acquisition_service.dart';
+export 'src/models/free_agent_acquisition.dart';
 export 'src/finance/career_finances.dart';
 export 'src/finance/financial_migration.dart';
 export 'src/finance/financial_transactions.dart';

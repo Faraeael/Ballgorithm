@@ -39,6 +39,10 @@ enum ValidationCode {
   facilityInvalid,
   staffInvalid,
   financialDuplicate,
+  freeAgentInvalid,
+  freeAgentPoolInvalid,
+  freeAgentAcquisitionInvalid,
+  rosterCapacityExceeded,
 }
 
 final class ValidationIssue {

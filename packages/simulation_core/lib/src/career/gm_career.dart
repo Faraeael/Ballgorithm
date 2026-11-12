@@ -13,6 +13,7 @@ import '../models/league.dart';
 import '../models/player_career_profile.dart';
 import '../models/rookie_draft_class.dart';
 import '../models/rookie_signing_ledger.dart';
+import '../models/player_contract.dart';
 import '../models/roster_category.dart';
 import '../models/team.dart';
 import 'career_phase.dart';
@@ -93,7 +94,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 8;
+  static const int currentSchemaVersion = 9;
 
   final String id;
   final int schemaVersion;
@@ -299,6 +300,81 @@ final class GmCareer {
         throw FormatException(
           'Free agent $playerId has a roster career profile',
         );
+      }
+    }
+
+    if (freeAgentPool.initialPlayerIds.length != FreeAgentPool.expectedSize) {
+      throw FormatException(
+        'Initial free-agent identity snapshot must contain '
+        '${FreeAgentPool.expectedSize} IDs, got '
+        '${freeAgentPool.initialPlayerIds.length}',
+      );
+    }
+    final initialIds = {
+      for (final id in freeAgentPool.initialPlayerIds) id.value,
+    };
+    final teamById = {for (final team in league.teams) team.id.value: team};
+    final rosterCategoryByPlayer = <String, RosterCategory>{};
+    final rosterTeamByPlayer = <String, String>{};
+    for (final team in league.teams) {
+      for (final player in team.players) {
+        rosterCategoryByPlayer[player.id.value] = team.roster.categoryOf(
+          player.id,
+        );
+        rosterTeamByPlayer[player.id.value] = team.id.value;
+      }
+    }
+    for (final acquisition in freeAgentPool.acquisitions.entries.values) {
+      final pid = acquisition.playerId.value;
+      if (!initialIds.contains(pid)) {
+        throw FormatException(
+          'Acquisition ${acquisition.transactionId} references a player '
+          'outside the initial free-agent snapshot',
+        );
+      }
+      if (freeAgentIds.contains(pid)) {
+        throw FormatException(
+          'Acquired player $pid is still in the available free-agent pool',
+        );
+      }
+      final team = teamById[acquisition.teamId.value];
+      if (team == null) {
+        throw FormatException(
+          'Acquisition ${acquisition.transactionId} references unknown team '
+          '${acquisition.teamId.value}',
+        );
+      }
+      if (rosterTeamByPlayer[pid] != acquisition.teamId.value) {
+        throw FormatException(
+          'Acquired player $pid is not on franchise '
+          '${acquisition.teamId.value}',
+        );
+      }
+      if (rosterCategoryByPlayer[pid] != acquisition.category) {
+        throw FormatException(
+          'Acquired player $pid roster category does not match the '
+          'acquisition record',
+        );
+      }
+      final contract = finances.contractForPlayer(acquisition.playerId);
+      if (contract == null ||
+          contract.id != acquisition.contractId ||
+          contract.teamId != acquisition.teamId ||
+          contract.category != acquisition.category ||
+          contract.source != ContractSource.freeAgent) {
+        throw FormatException(
+          'Acquisition ${acquisition.transactionId} lacks its matching '
+          'freeAgent employment contract',
+        );
+      }
+      if (finances.scheduleFor(contract.id) == null) {
+        throw FormatException(
+          'Acquisition ${acquisition.transactionId} lacks a financial '
+          'schedule',
+        );
+      }
+      if (careerProfiles.forPlayer(acquisition.playerId) == null) {
+        throw FormatException('Acquired player $pid has no career profile');
       }
     }
   }

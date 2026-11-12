@@ -151,7 +151,7 @@ void main() {
         jsonEncode(career.freeAgentPool.toJson()),
       );
       expect(GmCareerCodec.encode(decoded), encoded);
-      expect(decoded.schemaVersion, 8);
+      expect(decoded.schemaVersion, 9);
     });
 
     test('15. v6 saves migrate with a deterministic generated pool', () {
@@ -185,7 +185,7 @@ void main() {
       );
       final reencoded =
           jsonDecode(GmCareerCodec.encode(migrated)) as Map<String, dynamic>;
-      expect(reencoded['schemaVersion'], 8);
+      expect(reencoded['schemaVersion'], 9);
       expect(reencoded['freeAgentPool'], isNotNull);
     });
 
@@ -265,7 +265,7 @@ void main() {
       ((entries(collision).first as Map<String, dynamic>)['profile']
               as Map<String, dynamic>)['playerId'] =
           rosterPlayer.id.value;
-      expect(failure(collision).message, contains('is on franchise'));
+      expect(failure(collision).message, contains('initial identity snapshot'));
 
       final badAge = base();
       ((entries(badAge).first as Map<String, dynamic>)['profile']
@@ -299,7 +299,10 @@ void main() {
           moved++;
         }
       }
-      expect(failure(positionShortage).message, contains('fewer than 12'));
+      expect(
+        GmCareerCodec.decode(jsonEncode(positionShortage)).freeAgentPool.length,
+        90,
+      );
 
       final profileCollision = base();
       final profiles =

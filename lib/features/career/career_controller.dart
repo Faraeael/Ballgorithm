@@ -16,6 +16,7 @@ class GmCareerController extends ChangeNotifier {
   bool _draftRecoveryRequired = false;
   static const _draftService = DraftExecutionService();
   static const _signingService = RookieSigningService();
+  static const _freeAgentService = FreeAgentAcquisitionService();
   static const _aiSigningService = RookieAiSigningService();
 
   GmCareer? get career => _career;
@@ -181,6 +182,36 @@ class GmCareerController extends ChangeNotifier {
       }
       _career = next;
       notifyListeners();
+    });
+  }
+
+  /// Acquires one available free agent for the user franchise.
+  ///
+  /// Availability is rechecked against the committed career at execution time.
+  /// The new state is persisted before publication; a failed write blocks
+  /// further commands until an explicit saved-career reload.
+  Future<void> acquireFreeAgent({
+    required PlayerId freeAgentId,
+    required RosterCategory category,
+    required int durationYears,
+    required int agreedFirstYearSalary,
+    String slot = 'default',
+  }) {
+    final submittedCareer = _career;
+    return _runCareerCommand(action: 'acquire free agent', () async {
+      final current = _requireCareer();
+      if (!identical(current, submittedCareer)) {
+        throw StateError('Career changed before the acquisition executed');
+      }
+      final next = _freeAgentService.acquire(
+        career: current,
+        teamId: current.userFranchiseId,
+        freeAgentId: freeAgentId,
+        category: category,
+        durationYears: durationYears,
+        agreedFirstYearSalary: agreedFirstYearSalary,
+      );
+      await _saveCareerState(next, slot);
     });
   }
 

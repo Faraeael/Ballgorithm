@@ -68,7 +68,9 @@ final class FreeAgentGenerator {
         ),
       );
     }
-    return FreeAgentPool(entries: entries);
+    final pool = FreeAgentPool(entries: entries);
+    pool.validateInitialGeneration();
+    return pool;
   }
 
   static int _age(DeterministicRandom random) {

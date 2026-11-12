@@ -24,7 +24,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 8;
+  static const int currentSchemaVersion = 9;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -363,6 +363,14 @@ final class GmCareerCodec {
       if (rawFreeAgentPool is! Map<String, dynamic>) {
         throw const FormatException(
           'Missing or invalid freeAgentPool in career JSON v7',
+        );
+      }
+      if (schemaVersion >= 9 &&
+          (!rawFreeAgentPool.containsKey('initialPlayerIds') ||
+              !rawFreeAgentPool.containsKey('acquisitions'))) {
+        throw const FormatException(
+          'Missing free-agent identity snapshot or acquisition ledger in '
+          'career JSON v9',
         );
       }
       freeAgentPool = FreeAgentPool.fromJson(rawFreeAgentPool);

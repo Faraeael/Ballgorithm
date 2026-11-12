@@ -4,6 +4,7 @@ import 'package:simulation_core/simulation_core.dart';
 import 'career_controller.dart';
 import 'career_storage.dart';
 import 'draft_board_screen.dart';
+import 'free_agents_screen.dart';
 import 'league_readiness_screen.dart';
 import 'rookie_signing_screen.dart';
 import 'rookie_signing_status.dart';
@@ -435,6 +436,49 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
                   ),
                 );
               },
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            key: const ValueKey('card-free-agents'),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Free Agents',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${career.freeAgentPool.length} available • '
+                    '${career.freeAgentPool.acquisitions.length} acquired',
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Read-only board. No contract offers yet.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.tonal(
+                    key: const ValueKey('btn-open-free-agents'),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              GmFreeAgentsScreen(controller: controller),
+                        ),
+                      );
+                    },
+                    child: const Text('View Free Agents'),
+                  ),
+                ],
+              ),
             ),
           ),
           if (draft.isCompleted) ...[

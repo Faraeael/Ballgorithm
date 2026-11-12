@@ -1,3 +1,4 @@
+import 'free_agent_acquisition.dart';
 import 'ids.dart';
 import 'player.dart';
 import 'player_attributes.dart';
@@ -95,9 +96,19 @@ final class PublicFreeAgentView {
 }
 
 /// The authoritative free-agent population of a GM career.
+///
+/// The initial generation must contain 90 entries with at least 12 per
+/// position; ongoing market state may shrink after authorized acquisitions.
 final class FreeAgentPool {
-  FreeAgentPool({required List<FreeAgentEntry> entries})
-    : entries = List.unmodifiable(entries) {
+  FreeAgentPool({
+    required List<FreeAgentEntry> entries,
+    List<PlayerId>? initialPlayerIds,
+    FreeAgentAcquisitionLedger? acquisitions,
+  }) : entries = List.unmodifiable(entries),
+       initialPlayerIds = List.unmodifiable(
+         initialPlayerIds ?? [for (final entry in entries) entry.id],
+       ),
+       acquisitions = acquisitions ?? FreeAgentAcquisitionLedger.empty() {
     validate();
   }
 
@@ -113,7 +124,33 @@ final class FreeAgentPool {
       }
       entries.add(FreeAgentEntry.fromJson(rawEntry));
     }
-    return FreeAgentPool(entries: entries);
+    final rawInitialIds = json['initialPlayerIds'];
+    List<PlayerId>? initialPlayerIds;
+    if (rawInitialIds != null) {
+      if (rawInitialIds is! List) {
+        throw const FormatException('Malformed initial free-agent IDs');
+      }
+      initialPlayerIds = [];
+      for (final rawId in rawInitialIds) {
+        if (rawId is! String || rawId.trim().isEmpty) {
+          throw const FormatException('Malformed initial free-agent ID');
+        }
+        initialPlayerIds.add(PlayerId(rawId));
+      }
+    }
+    final rawAcquisitions = json['acquisitions'];
+    FreeAgentAcquisitionLedger? acquisitions;
+    if (rawAcquisitions != null) {
+      if (rawAcquisitions is! Map<String, dynamic>) {
+        throw const FormatException('Malformed free-agent acquisition ledger');
+      }
+      acquisitions = FreeAgentAcquisitionLedger.fromJson(rawAcquisitions);
+    }
+    return FreeAgentPool(
+      entries: entries,
+      initialPlayerIds: initialPlayerIds,
+      acquisitions: acquisitions,
+    );
   }
 
   static const int expectedSize = 90;
@@ -122,6 +159,12 @@ final class FreeAgentPool {
   static const int maxAge = 36;
 
   final List<FreeAgentEntry> entries;
+
+  /// The original generated free-agent identities, frozen at creation.
+  final List<PlayerId> initialPlayerIds;
+
+  /// Authoritative acquisition history for this market.
+  final FreeAgentAcquisitionLedger acquisitions;
 
   int get length => entries.length;
 
@@ -137,19 +180,66 @@ final class FreeAgentPool {
   bool contains(PlayerId id) => byId(id) != null;
 
   void validate() {
-    if (entries.length != expectedSize) {
-      throw FormatException(
-        'Invalid free-agent pool size: expected $expectedSize, '
-        'got ${entries.length}',
-      );
-    }
     final seen = <String>{};
-    final positionCounts = <Position, int>{};
     for (final entry in entries) {
       entry.validate();
       if (!seen.add(entry.id.value)) {
         throw FormatException('Duplicate free-agent ID: ${entry.id.value}');
       }
+    }
+    final initialSeen = <String>{};
+    for (final id in initialPlayerIds) {
+      if (!initialSeen.add(id.value)) {
+        throw FormatException('Duplicate initial free-agent ID: ${id.value}');
+      }
+    }
+    for (final id in playerIds) {
+      if (!initialSeen.contains(id)) {
+        throw FormatException(
+          'Free-agent $id is not part of the initial identity snapshot',
+        );
+      }
+    }
+    for (final acquisition in acquisitions.entries.values) {
+      final id = acquisition.playerId.value;
+      if (!initialSeen.contains(id)) {
+        throw FormatException(
+          'Acquisition references unknown free-agent identity $id',
+        );
+      }
+      final stillAvailable = playerIds.contains(id);
+      if (stillAvailable) {
+        throw FormatException(
+          'Acquired free-agent $id is still in the available pool',
+        );
+      }
+    }
+    for (final id in initialPlayerIds) {
+      final available = playerIds.contains(id.value);
+      final acquired = acquisitions.hasPlayer(id);
+      if (available == acquired) {
+        throw FormatException(
+          available
+              ? 'Initial free-agent ${id.value} is both available and acquired'
+              : 'Initial free-agent ${id.value} is missing without an '
+                    'acquisition record',
+        );
+      }
+    }
+  }
+
+  /// Enforces the frozen initial-generation contract. Called by the generator,
+  /// not by ongoing market validation.
+  void validateInitialGeneration() {
+    validate();
+    if (entries.length != expectedSize) {
+      throw FormatException(
+        'Invalid initial free-agent pool size: expected $expectedSize, '
+        'got ${entries.length}',
+      );
+    }
+    final positionCounts = <Position, int>{};
+    for (final entry in entries) {
       positionCounts[entry.player.position] =
           (positionCounts[entry.player.position] ?? 0) + 1;
     }
@@ -157,7 +247,7 @@ final class FreeAgentPool {
       if ((positionCounts[position] ?? 0) < minPerPosition) {
         throw FormatException(
           'Position ${position.shortName} has fewer than '
-          '$minPerPosition free agents',
+          '$minPerPosition initial free agents',
         );
       }
     }
@@ -165,5 +255,7 @@ final class FreeAgentPool {
 
   Map<String, dynamic> toJson() => {
     'entries': [for (final entry in entries) entry.toJson()],
+    'initialPlayerIds': [for (final id in initialPlayerIds) id.value],
+    'acquisitions': acquisitions.toJson(),
   };
 }
