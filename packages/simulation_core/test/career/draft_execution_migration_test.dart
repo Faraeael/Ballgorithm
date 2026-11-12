@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:simulation_core/simulation_core.dart';
 import 'package:test/test.dart';
 
+import '../support/financial_fixtures.dart';
+
 void main() {
   final initial = GmCareer.fromSetupResult(
     const CareerSetupService().generate(
@@ -36,7 +38,8 @@ void main() {
     'v3 migration preserves mixed roster categories and every saved field',
     () {
       final team = initial.userTeam;
-      final mixed = initial.withUpdatedTeam(
+      final mixed = withBootstrappedTeam(
+        initial,
         team.copyWith(
           roster: team.roster
               .withCategory(team.players[0].id, RosterCategory.twoWay)

@@ -14,19 +14,17 @@ import '../models/team_finances.dart';
 import 'career_finances.dart';
 import 'financial_rules.dart';
 
-/// Builds deterministic financial records from existing career state.
+/// One-time bootstrap of financial records from existing career state.
 ///
-/// Used both for v1–v7 → v8 migration and for keeping [CareerFinances]
-/// consistent when rosters or the rookie signing ledger change. Existing
-/// records are preserved when their identity and amounts still match; nothing
-/// is regenerated merely because a copy was made.
+/// Used only when a career is created or a v1–v7 save is migrated and no
+/// financial section exists. It is not a runtime contract factory: roster
+/// changes after creation must use `FinancialTransactions` instead.
 abstract final class FinancialMigration {
-  static CareerFinances reconcile({
+  static CareerFinances bootstrapFromCareerState({
     required League league,
     required LeagueCareerProfiles careerProfiles,
     required RookieSigningLedger rookieSigningLedger,
     required int currentYear,
-    CareerFinances? previous,
   }) {
     final contracts = <PlayerContract>[];
     final schedules = <ContractFinancials>[];
@@ -39,89 +37,64 @@ abstract final class FinancialMigration {
           rookieSigningLedger: rookieSigningLedger,
           currentYear: currentYear,
         );
-        final salaryYears = _salariesFor(
-          contract: contract,
-          player: player,
-          careerProfiles: careerProfiles,
-          rookieSigningLedger: rookieSigningLedger,
-        );
-        final prior = previous?.contracts[contract.id];
-        final priorSchedule = previous?.schedules[contract.id];
-        if (_sameContract(prior, contract) &&
-            priorSchedule != null &&
-            _sameSalaries(priorSchedule.annualSalaries, salaryYears)) {
-          contracts.add(prior!);
-          schedules.add(priorSchedule);
-        } else {
-          contracts.add(contract);
-          schedules.add(
-            ContractFinancials(
-              contractId: contract.id,
-              playerId: contract.playerId,
-              teamId: contract.teamId,
-              annualSalaries: salaryYears,
-              guaranteedYears: contract.durationYears,
-              source: contract.source,
-              signedYear: contract.startYear,
+        contracts.add(contract);
+        schedules.add(
+          ContractFinancials(
+            contractId: contract.id,
+            playerId: contract.playerId,
+            teamId: contract.teamId,
+            annualSalaries: _salariesFor(
+              contract: contract,
+              player: player,
+              rookieSigningLedger: rookieSigningLedger,
             ),
-          );
-        }
+            guaranteedYears: contract.durationYears,
+            source: contract.source,
+            signedYear: contract.startYear,
+          ),
+        );
       }
     }
 
     final capPayrollByTeam = <String, int>{};
-    for (final contract in contracts) {
+    for (var i = 0; i < contracts.length; i++) {
+      final contract = contracts[i];
       if (contract.category != RosterCategory.standard) continue;
-      final schedule = schedules.firstWhere(
-        (candidate) => candidate.contractId == contract.id,
-      );
       capPayrollByTeam[contract.teamId.value] =
           (capPayrollByTeam[contract.teamId.value] ?? 0) +
-          schedule.annualSalaries.first;
+          schedules[i].annualSalaries.first;
     }
 
     final teams = <TeamFinances>[];
     for (final team in league.teams) {
-      final prior = previous?.teamFinances[team.id.value];
       final plan = FinancialRules.planFor(
         team.situation ?? FranchiseSituation.playIn,
       );
       final payroll = capPayrollByTeam[team.id.value] ?? 0;
-      final grandfathered = previous == null
-          ? payroll > FinancialRules.salaryCap
-          : prior?.capGrandfathered == true;
-      final priorBaseline = prior?.grandfatheredPayroll ?? 0;
+      final overCap = payroll > FinancialRules.salaryCap;
       teams.add(
         TeamFinances(
           teamId: team.id,
-          operatingBudget: prior?.operatingBudget ?? plan.operatingBudget,
-          cash: prior?.cash ?? plan.cash,
-          revenueBaseline: prior?.revenueBaseline ?? plan.revenueBaseline,
+          operatingBudget: plan.operatingBudget,
+          cash: plan.cash,
+          revenueBaseline: plan.revenueBaseline,
           season: currentYear,
-          capGrandfathered: grandfathered,
-          grandfatheredPayroll: grandfathered
-              ? (priorBaseline > 0 ? priorBaseline : payroll)
-              : 0,
+          capGrandfathered: overCap,
+          grandfatheredPayroll: overCap ? payroll : 0,
         ),
       );
     }
-
-    final staff = previous == null
-        ? [
-            for (final team in league.teams)
-              ..._initialStaff(team.id, currentYear),
-          ]
-        : previous.staffCommitments.values.toList();
-    final facilities = previous == null
-        ? [for (final team in league.teams) ..._initialFacilities(team.id)]
-        : previous.facilities.values.toList();
 
     return CareerFinances(
       contracts: contracts,
       schedules: schedules,
       teamFinances: teams,
-      staffCommitments: staff,
-      facilities: facilities,
+      staffCommitments: [
+        for (final team in league.teams) ..._initialStaff(team.id, currentYear),
+      ],
+      facilities: [
+        for (final team in league.teams) ..._initialFacilities(team.id),
+      ],
     );
   }
 
@@ -148,18 +121,17 @@ abstract final class FinancialMigration {
     final profile = careerProfiles.forPlayer(player.id);
     if (profile == null) {
       throw StateError(
-        'Cannot build financial records: player ${player.id.value} has no '
-        'career profile',
+        'Cannot bootstrap financial records: player ${player.id.value} has '
+        'no career profile',
       );
     }
-    final duration = FinancialRules.legacyDurationForAge(profile.age);
     return PlayerContract(
       id: PlayerContract.idFor(player.id, currentYear),
       playerId: player.id,
       teamId: team.id,
       category: team.roster.categoryOf(player.id),
       startYear: currentYear,
-      durationYears: duration,
+      durationYears: FinancialRules.legacyDurationForAge(profile.age),
       source: ContractSource.legacy,
     );
   }
@@ -167,44 +139,22 @@ abstract final class FinancialMigration {
   static List<int> _salariesFor({
     required PlayerContract contract,
     required Player player,
-    required LeagueCareerProfiles careerProfiles,
     required RookieSigningLedger rookieSigningLedger,
   }) {
-    if (contract.source == ContractSource.rookie) {
-      final rookie = rookieSigningLedger.forPlayer(contract.playerId)!;
-      return contract.category == RosterCategory.twoWay
-          ? FinancialRules.twoWaySchedule(contract.durationYears)
-          : FinancialRules.standardSchedule(
-              FinancialRules.rookieSalaryForPick(rookie.overallPick),
-              contract.durationYears,
-            );
-    }
     if (contract.category == RosterCategory.twoWay) {
       return FinancialRules.twoWaySchedule(contract.durationYears);
+    }
+    if (contract.source == ContractSource.rookie) {
+      final rookie = rookieSigningLedger.forPlayer(contract.playerId)!;
+      return FinancialRules.standardSchedule(
+        FinancialRules.rookieSalaryForPick(rookie.overallPick),
+        contract.durationYears,
+      );
     }
     return FinancialRules.standardSchedule(
       FinancialRules.legacySalaryForOverall(player.attributes.overallRating),
       contract.durationYears,
     );
-  }
-
-  static bool _sameContract(PlayerContract? left, PlayerContract right) =>
-      left != null &&
-      left.id == right.id &&
-      left.playerId == right.playerId &&
-      left.teamId == right.teamId &&
-      left.category == right.category &&
-      left.startYear == right.startYear &&
-      left.durationYears == right.durationYears &&
-      left.source == right.source &&
-      left.rookieContractId == right.rookieContractId;
-
-  static bool _sameSalaries(List<int> left, List<int> right) {
-    if (left.length != right.length) return false;
-    for (var i = 0; i < left.length; i++) {
-      if (left[i] != right[i]) return false;
-    }
-    return true;
   }
 
   static List<StaffCommitment> _initialStaff(TeamId teamId, int startYear) {

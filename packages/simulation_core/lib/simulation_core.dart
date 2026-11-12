@@ -74,6 +74,7 @@ export 'src/models/rookie_signing_ledger.dart';
 export 'src/career/rookie_signing_service.dart';
 export 'src/finance/career_finances.dart';
 export 'src/finance/financial_migration.dart';
+export 'src/finance/financial_transactions.dart';
 export 'src/finance/financial_rules.dart';
 export 'src/finance/money.dart';
 export 'src/models/player_contract.dart';

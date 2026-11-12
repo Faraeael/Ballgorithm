@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:simulation_core/simulation_core.dart';
 import 'package:test/test.dart';
 
+import '../support/financial_fixtures.dart';
+
 const _seed = 20261028;
 const _team = TeamId('team-1');
 const _service = RookieSigningService();
@@ -668,7 +670,8 @@ GmCareer _expanded(
     added.add(player);
     roster = roster.withPlayer(player, category: RosterCategory.trainingCamp);
   }
-  return career.withUpdatedTeam(
+  return withBootstrappedTeam(
+    career,
     career.userTeam.copyWith(roster: roster),
     careerProfiles: LeagueCareerProfiles(
       leagueSeed: career.careerProfiles.leagueSeed,

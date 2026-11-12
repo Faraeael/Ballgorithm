@@ -44,7 +44,7 @@ final class GmCareer {
        aiRookieSigning = aiRookieSigning ?? AiRookieSigningState.empty(),
        finances =
            finances ??
-           FinancialMigration.reconcile(
+           FinancialMigration.bootstrapFromCareerState(
              league: league,
              careerProfiles: careerProfiles,
              rookieSigningLedger:
@@ -248,7 +248,6 @@ final class GmCareer {
     _validateFreeAgentPool();
     finances.validate(
       league: league,
-      careerProfiles: careerProfiles,
       rookieSigningLedger: rookieSigningLedger,
       currentYear: currentYear,
     );
@@ -430,6 +429,7 @@ final class GmCareer {
   GmCareer withUpdatedTeam(
     Team updatedTeam, {
     LeagueCareerProfiles? careerProfiles,
+    CareerFinances? finances,
   }) {
     final updatedTeams = [
       for (final t in league.teams)
@@ -445,6 +445,7 @@ final class GmCareer {
     return copyWith(
       league: updatedLeague,
       careerProfiles: careerProfiles ?? this.careerProfiles,
+      finances: finances,
     );
   }
 
@@ -467,43 +468,24 @@ final class GmCareer {
     FreeAgentPool? freeAgentPool,
     CareerFinances? finances,
   }) {
-    final nextLeague = league ?? this.league;
-    final nextProfiles = careerProfiles ?? this.careerProfiles;
-    final nextLedger = rookieSigningLedger ?? this.rookieSigningLedger;
-    final nextYear = currentYear ?? this.currentYear;
-    final rosterUnchangedForMoney =
-        identical(nextLeague, this.league) &&
-        identical(nextProfiles, this.careerProfiles) &&
-        identical(nextLedger, this.rookieSigningLedger) &&
-        nextYear == this.currentYear;
     return GmCareer(
       id: id ?? this.id,
       schemaVersion: schemaVersion ?? this.schemaVersion,
       generationSeed: generationSeed ?? this.generationSeed,
       userFranchiseId: userFranchiseId ?? this.userFranchiseId,
       originalSituation: originalSituation ?? this.originalSituation,
-      currentYear: nextYear,
+      currentYear: currentYear ?? this.currentYear,
       phase: phase ?? this.phase,
-      league: nextLeague,
-      careerProfiles: nextProfiles,
+      league: league ?? this.league,
+      careerProfiles: careerProfiles ?? this.careerProfiles,
       userOpeningDraftPick: userOpeningDraftPick ?? this.userOpeningDraftPick,
       draftOrder: draftOrder ?? this.draftOrder,
       draftClass: draftClass ?? this.draftClass,
       draftExecutionState: draftExecutionState ?? this.draftExecutionState,
-      rookieSigningLedger: nextLedger,
+      rookieSigningLedger: rookieSigningLedger ?? this.rookieSigningLedger,
       aiRookieSigning: aiRookieSigning ?? this.aiRookieSigning,
       freeAgentPool: freeAgentPool ?? this.freeAgentPool,
-      finances:
-          finances ??
-          (rosterUnchangedForMoney
-              ? this.finances
-              : FinancialMigration.reconcile(
-                  league: nextLeague,
-                  careerProfiles: nextProfiles,
-                  rookieSigningLedger: nextLedger,
-                  currentYear: nextYear,
-                  previous: this.finances,
-                )),
+      finances: finances ?? this.finances,
     );
   }
 }

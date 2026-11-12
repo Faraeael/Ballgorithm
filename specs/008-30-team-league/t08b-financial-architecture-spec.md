@@ -861,3 +861,11 @@ financial UI, season advancement or bailouts.
 
 Verification evidence is recorded in `t08c-acceptance.md`.
 
+### 16.14 T08C-P1 contract immutability repair (2026-11-12)
+
+The T08C copy-time reconciliation described in §16.13 was removed. Contracts and
+schedules are now immutable after creation. Bootstrap runs only for new careers and
+v1–v7 migration; runtime additions go through `FinancialTransactions`. Validation uses
+committed terms rather than current OVR or age. Schema stays v8. See
+`t08c-p1-contract-integrity-spec.md` and `t08c-p1-acceptance.md`.
+

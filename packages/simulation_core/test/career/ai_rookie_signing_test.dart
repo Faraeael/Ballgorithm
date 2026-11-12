@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:simulation_core/simulation_core.dart';
 import 'package:test/test.dart';
 
+import '../support/financial_fixtures.dart';
+
 const _seed = 20261028;
 const _team = TeamId('team-1');
 const _aiService = RookieAiSigningService();
@@ -721,17 +723,19 @@ GmCareer _expandTeam(
   add(twoWay, 'ai-tw', RosterCategory.twoWay);
   add(trainingCamp, 'ai-tc', RosterCategory.trainingCamp);
   final updated = team.copyWith(roster: roster);
-  return career.copyWith(
-    league: League.create(
-      id: career.league.id,
-      name: career.league.name,
-      config: career.league.config,
-      teams: [
-        for (final candidate in career.league.teams)
-          candidate.id == teamId ? updated : candidate,
-      ],
-      enforceRosterSize: false,
-    ),
+  final updatedLeague = League.create(
+    id: career.league.id,
+    name: career.league.name,
+    config: career.league.config,
+    teams: [
+      for (final candidate in career.league.teams)
+        candidate.id == teamId ? updated : candidate,
+    ],
+    enforceRosterSize: false,
+  );
+  return withBootstrappedLeague(
+    career,
+    updatedLeague,
     careerProfiles: LeagueCareerProfiles(
       leagueSeed: career.careerProfiles.leagueSeed,
       profiles: {

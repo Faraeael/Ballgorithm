@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:simulation_core/simulation_core.dart';
 import 'package:test/test.dart';
 
+import '../support/financial_fixtures.dart';
+
 void main() {
   const service = CareerSetupService();
   const seed = 20261028;
@@ -378,7 +380,8 @@ void main() {
           profiles: updatedProfiles,
         );
 
-        final expandedCareer = career.withUpdatedTeam(
+        final expandedCareer = withBootstrappedTeam(
+          career,
           updatedUserTeam,
           careerProfiles: newLeagueCareerProfiles,
         );

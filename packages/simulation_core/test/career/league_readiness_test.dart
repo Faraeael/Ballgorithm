@@ -1,6 +1,8 @@
 import 'package:simulation_core/simulation_core.dart';
 import 'package:test/test.dart';
 
+import '../support/financial_fixtures.dart';
+
 const _seed = 20261028;
 const _team = TeamId('team-1');
 
@@ -200,17 +202,19 @@ GmCareer _expandTeam(
   add(standard, RosterCategory.standard, 'std');
   add(twoWay, RosterCategory.twoWay, 'tw');
   final updated = team.copyWith(roster: roster);
-  return career.copyWith(
-    league: League.create(
-      id: career.league.id,
-      name: career.league.name,
-      config: career.league.config,
-      teams: [
-        for (final candidate in career.league.teams)
-          candidate.id == teamId ? updated : candidate,
-      ],
-      enforceRosterSize: false,
-    ),
+  final updatedLeague = League.create(
+    id: career.league.id,
+    name: career.league.name,
+    config: career.league.config,
+    teams: [
+      for (final candidate in career.league.teams)
+        candidate.id == teamId ? updated : candidate,
+    ],
+    enforceRosterSize: false,
+  );
+  return withBootstrappedLeague(
+    career,
+    updatedLeague,
     careerProfiles: LeagueCareerProfiles(
       leagueSeed: career.careerProfiles.leagueSeed,
       profiles: {

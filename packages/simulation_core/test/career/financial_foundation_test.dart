@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:simulation_core/simulation_core.dart';
 import 'package:test/test.dart';
 
+import '../support/financial_fixtures.dart';
+
 const _seed = 20261028;
 
 CareerSetupResult _setup({
@@ -147,7 +149,8 @@ void main() {
       final base = _career();
       final team = base.userTeam;
       final twoWayPlayer = team.players.first;
-      final moved = base.withUpdatedTeam(
+      final moved = withBootstrappedTeam(
+        base,
         team.copyWith(
           roster: team.roster.withCategory(
             twoWayPlayer.id,

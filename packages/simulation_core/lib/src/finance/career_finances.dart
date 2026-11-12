@@ -2,8 +2,6 @@ import '../models/contract_financials.dart';
 import '../models/facility_state.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
-import '../models/player.dart';
-import '../models/player_career_profile.dart';
 import '../models/player_contract.dart';
 import '../models/rookie_contract.dart';
 import '../models/rookie_signing_ledger.dart';
@@ -242,7 +240,6 @@ final class CareerFinances {
   /// Cross-record validation against the career state that owns this money.
   void validate({
     required League league,
-    required LeagueCareerProfiles careerProfiles,
     required RookieSigningLedger rookieSigningLedger,
     required int currentYear,
   }) {
@@ -400,8 +397,6 @@ final class CareerFinances {
       final playerId = contract.playerId.value;
       final rosterTeam = rosterTeamByPlayer[playerId];
       final rosterCategory = rosterCategoryByPlayer[playerId];
-      final player = _playerById(league, contract.playerId);
-      final profile = careerProfiles.forPlayer(contract.playerId);
       final schedule = schedules[contract.id];
       if (schedule == null) {
         issues.add(
@@ -486,8 +481,6 @@ final class CareerFinances {
         issues: issues,
         contract: contract,
         schedule: schedule,
-        player: player,
-        profile: profile,
         rookieContract: ledgerByPlayer[playerId],
       );
       if (contract.source == ContractSource.rookie) {
@@ -615,26 +608,9 @@ final class CareerFinances {
     required List<ValidationIssue> issues,
     required PlayerContract contract,
     required ContractFinancials schedule,
-    required Player? player,
-    required PlayerCareerProfile? profile,
     required RookieContract? rookieContract,
   }) {
     final salaries = schedule.annualSalaries;
-    if (contract.source == ContractSource.legacy && profile != null) {
-      final expectedDuration = FinancialRules.legacyDurationForAge(profile.age);
-      if (contract.durationYears != expectedDuration) {
-        issues.add(
-          ValidationIssue(
-            code: ValidationCode.contractInvalid,
-            path: 'finances.contracts',
-            message:
-                'legacy contract ${contract.id} duration '
-                '${contract.durationYears} must be $expectedDuration for '
-                'age ${profile.age}',
-          ),
-        );
-      }
-    }
     if (contract.category == RosterCategory.twoWay) {
       for (var i = 0; i < salaries.length; i++) {
         if (salaries[i] != FinancialRules.twoWaySalary) {
@@ -665,21 +641,57 @@ final class CareerFinances {
           );
         }
       }
+      for (var i = 1; i < salaries.length; i++) {
+        final expectedRaise = FinancialRules.raiseStandardSalary(
+          salaries[i - 1],
+        );
+        if (salaries[i] != expectedRaise) {
+          issues.add(
+            ValidationIssue(
+              code: ValidationCode.scheduleInvalid,
+              path: 'finances.schedules',
+              message:
+                  'salary year ${i + 1} in ${schedule.contractId} must apply '
+                  'the 5% raise ($expectedRaise)',
+            ),
+          );
+        }
+      }
     }
 
-    final expected = switch (contract.source) {
-      ContractSource.legacy => _expectedLegacy(
-        contract: contract,
-        player: player,
-        profile: profile,
-      ),
-      ContractSource.rookie => _expectedRookie(
-        contract: contract,
-        rookieContract: rookieContract,
-      ),
-      _ => null,
-    };
-    if (expected != null) {
+    if (contract.source == ContractSource.legacy) {
+      if (contract.durationYears > 2) {
+        issues.add(
+          ValidationIssue(
+            code: ValidationCode.contractInvalid,
+            path: 'finances.contracts',
+            message:
+                'legacy contract ${contract.id} duration must be 1 or 2, '
+                'got ${contract.durationYears}',
+          ),
+        );
+      }
+      if (contract.category == RosterCategory.standard &&
+          !FinancialRules.legacyBootstrapSalaries.contains(salaries.first)) {
+        issues.add(
+          ValidationIssue(
+            code: ValidationCode.scheduleInvalid,
+            path: 'finances.schedules',
+            message:
+                'legacy contract ${contract.id} year one salary '
+                '${salaries.first} is not an approved bootstrap value',
+          ),
+        );
+      }
+    }
+
+    if (contract.source == ContractSource.rookie && rookieContract != null) {
+      final expected = contract.category == RosterCategory.twoWay
+          ? FinancialRules.twoWaySchedule(contract.durationYears)
+          : FinancialRules.standardSchedule(
+              FinancialRules.rookieSalaryForPick(rookieContract.overallPick),
+              contract.durationYears,
+            );
       if (expected.length != salaries.length) {
         issues.add(
           ValidationIssue(
@@ -705,65 +717,7 @@ final class CareerFinances {
           }
         }
       }
-    } else if (contract.category == RosterCategory.standard &&
-        contract.source != ContractSource.legacy &&
-        contract.source != ContractSource.rookie) {
-      for (var i = 1; i < salaries.length; i++) {
-        final expectedRaise = FinancialRules.raiseStandardSalary(
-          salaries[i - 1],
-        );
-        if (salaries[i] != expectedRaise) {
-          issues.add(
-            ValidationIssue(
-              code: ValidationCode.scheduleInvalid,
-              path: 'finances.schedules',
-              message:
-                  'salary year ${i + 1} in ${schedule.contractId} must apply '
-                  'the 5% raise ($expectedRaise)',
-            ),
-          );
-        }
-      }
     }
-  }
-
-  List<int>? _expectedLegacy({
-    required PlayerContract contract,
-    required Player? player,
-    required PlayerCareerProfile? profile,
-  }) {
-    if (player == null || profile == null) return null;
-    final duration = FinancialRules.legacyDurationForAge(profile.age);
-    if (contract.durationYears != duration) return null;
-    if (contract.category == RosterCategory.twoWay) {
-      return FinancialRules.twoWaySchedule(duration);
-    }
-    return FinancialRules.standardSchedule(
-      FinancialRules.legacySalaryForOverall(player.attributes.overallRating),
-      duration,
-    );
-  }
-
-  List<int>? _expectedRookie({
-    required PlayerContract contract,
-    required RookieContract? rookieContract,
-  }) {
-    if (rookieContract == null) return null;
-    return contract.category == RosterCategory.twoWay
-        ? FinancialRules.twoWaySchedule(contract.durationYears)
-        : FinancialRules.standardSchedule(
-            FinancialRules.rookieSalaryForPick(rookieContract.overallPick),
-            contract.durationYears,
-          );
-  }
-
-  static Player? _playerById(League league, PlayerId playerId) {
-    for (final team in league.teams) {
-      for (final player in team.players) {
-        if (player.id == playerId) return player;
-      }
-    }
-    return null;
   }
 
   /// Deterministic canonical JSON: every list is sorted by its stable key.

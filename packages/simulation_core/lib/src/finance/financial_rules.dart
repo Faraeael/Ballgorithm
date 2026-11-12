@@ -47,7 +47,22 @@ abstract final class FinancialRules {
   static const int initialStaffCost = 9500;
   static const int initialFacilityMaintenance = 2800;
 
-  /// Legacy migration salary by current overall rating.
+  /// Legacy bootstrap values. Membership is checked to detect unauthorized
+  /// rewrites; it is never recalculated from a player's current overall.
+  static const Set<int> legacyBootstrapSalaries = {
+    400,
+    550,
+    800,
+    1100,
+    1500,
+    2000,
+    2600,
+    3300,
+    4100,
+    5000,
+    6000,
+  };
+
   static int legacySalaryForOverall(int overall) {
     if (overall < 42) return 400;
     if (overall <= 45) return 550;

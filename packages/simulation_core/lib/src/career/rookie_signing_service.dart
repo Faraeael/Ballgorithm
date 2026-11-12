@@ -1,3 +1,4 @@
+import '../finance/financial_transactions.dart';
 import '../models/draft_selection.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
@@ -140,6 +141,10 @@ final class RookieSigningService {
       league: updatedLeague,
       careerProfiles: updatedProfiles,
       rookieSigningLedger: career.rookieSigningLedger.withContract(contract),
+      finances: FinancialTransactions.signRookie(
+        finances: career.finances,
+        rookieContract: contract,
+      ),
     );
   }
 

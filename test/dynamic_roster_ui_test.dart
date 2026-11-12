@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simulation_core/simulation_core.dart';
 
+import 'support/financial_fixtures.dart';
+
 void _useSmallViewport(WidgetTester tester) {
   tester.view.physicalSize = const Size(360, 640);
   tester.view.devicePixelRatio = 1.0;
@@ -138,7 +140,8 @@ void main() {
         for (final p in expandedRoster.players.skip(12)) {
           updatedProfiles[p.id.value] = createTestProfile(p);
         }
-        final updatedCareer = career.withUpdatedTeam(
+        final updatedCareer = withBootstrappedTeam(
+          career,
           updatedTeam,
           careerProfiles: LeagueCareerProfiles(
             leagueSeed: career.generationSeed,

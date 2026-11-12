@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simulation_core/simulation_core.dart';
 
+import 'support/financial_fixtures.dart';
+
 const _seed = 20261028;
 const _team = TeamId('team-1');
 const _smallViewport = Size(360, 640);
@@ -660,7 +662,8 @@ GmCareer _expanded(
   add(standard, 'added-std', RosterCategory.standard);
   add(twoWay, 'added-tw', RosterCategory.twoWay);
   add(trainingCamp, 'added-tc', RosterCategory.trainingCamp);
-  return career.withUpdatedTeam(
+  return withBootstrappedTeam(
+    career,
     career.userTeam.copyWith(roster: roster),
     careerProfiles: LeagueCareerProfiles(
       leagueSeed: career.careerProfiles.leagueSeed,

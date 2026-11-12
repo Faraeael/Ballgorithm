@@ -26,15 +26,15 @@ New domain:
 - `lib/src/finance/money.dart` — integer CU validation and bounded arithmetic.
 - `lib/src/finance/career_finances.dart` — authoritative aggregate and cross-record
   validation.
-- `lib/src/finance/financial_migration.dart` — deterministic v1–v7 migration and
-  roster/ledger reconciliation.
+- `lib/src/finance/financial_migration.dart` — deterministic one-time v1–v7
+  bootstrap.
 - `lib/src/models/player_contract.dart`, `contract_financials.dart`,
   `team_finances.dart`, `staff_commitment.dart`, `facility_state.dart`.
 
 Modified:
 
-- `lib/src/career/gm_career.dart` — finances field, schema v8, validation, copyWith
-  reconciliation.
+- `lib/src/career/gm_career.dart` — finances field, schema v8, validation, explicit
+  financial replacement in copyWith.
 - `lib/src/career/gm_career_codec.dart` — v8 encode/decode, v1–v7 migration.
 - `lib/src/validation/validation_result.dart` — typed financial error codes.
 - `lib/simulation_core.dart` — exports.
@@ -98,8 +98,8 @@ historical R1 after-draft table mixed these; §16.3 now publishes both, and
 ## 9. Rookie preservation
 
 Existing `RookieContract` records are copied exactly into the linked `PlayerContract`
-and schedule. The existing rookie signing workflow now creates employment terms
-atomically through career reconciliation, so a signed rookie cannot lack a contract.
+and schedule. Rookie signing creates employment terms atomically through
+`FinancialTransactions`, so a signed rookie cannot lack a contract.
 Round-trip tests compare the historical record and linked contract JSON.
 
 ## 10. Validation
