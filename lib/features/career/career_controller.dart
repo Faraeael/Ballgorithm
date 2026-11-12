@@ -16,7 +16,7 @@ class GmCareerController extends ChangeNotifier {
   bool _draftRecoveryRequired = false;
   static const _draftService = DraftExecutionService();
   static const _signingService = RookieSigningService();
-  static const _freeAgentService = FreeAgentAcquisitionService();
+  static const _offerService = FreeAgentOfferSubmissionService();
   static const _aiSigningService = RookieAiSigningService();
 
   GmCareer? get career => _career;
@@ -185,12 +185,13 @@ class GmCareerController extends ChangeNotifier {
     });
   }
 
-  /// Acquires one available free agent for the user franchise.
+  /// Submits one formal free-agent offer for the human franchise.
   ///
-  /// Availability is rechecked against the committed career at execution time.
-  /// The new state is persisted before publication; a failed write blocks
-  /// further commands until an explicit saved-career reload.
-  Future<void> acquireFreeAgent({
+  /// The player decision and any acquisition are persisted before publication.
+  /// Rejected offers are durable; invalid/financially illegal offers consume no
+  /// attempt and are not saved. A failed write blocks further commands until
+  /// an explicit reload.
+  Future<FreeAgentOfferSubmissionResult> submitFreeAgentOffer({
     required PlayerId freeAgentId,
     required RosterCategory category,
     required int durationYears,
@@ -198,21 +199,29 @@ class GmCareerController extends ChangeNotifier {
     String slot = 'default',
   }) {
     final submittedCareer = _career;
-    return _runCareerCommand(action: 'acquire free agent', () async {
-      final current = _requireCareer();
-      if (!identical(current, submittedCareer)) {
-        throw StateError('Career changed before the acquisition executed');
-      }
-      final next = _freeAgentService.acquire(
-        career: current,
-        teamId: current.userFranchiseId,
-        freeAgentId: freeAgentId,
-        category: category,
-        durationYears: durationYears,
-        agreedFirstYearSalary: agreedFirstYearSalary,
-      );
-      await _saveCareerState(next, slot);
-    });
+    FreeAgentOfferSubmissionResult? result;
+    final command = _runCareerCommand(
+      action: 'submit free-agent offer',
+      () async {
+        final current = _requireCareer();
+        if (!identical(current, submittedCareer)) {
+          throw StateError('Career changed before the offer executed');
+        }
+        final submission = _offerService.submit(
+          career: current,
+          teamId: current.userFranchiseId,
+          freeAgentId: freeAgentId,
+          category: category,
+          durationYears: durationYears,
+          agreedFirstYearSalary: agreedFirstYearSalary,
+        );
+        result = submission;
+        if (submission.recorded) {
+          await _saveCareerState(submission.career, slot);
+        }
+      },
+    );
+    return command.then((_) => result!);
   }
 
   /// Applies deterministic AI rookie signing decisions for non-human franchises.

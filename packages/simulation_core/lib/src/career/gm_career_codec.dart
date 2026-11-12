@@ -11,6 +11,7 @@ import '../models/rookie_draft_class.dart';
 import '../models/rookie_signing_ledger.dart';
 import '../models/ai_rookie_signing.dart';
 import '../models/free_agent.dart';
+import '../models/free_agent_offer.dart';
 import '../models/roster.dart';
 import '../models/roster_category.dart';
 import '../models/roster_membership.dart';
@@ -24,7 +25,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 9;
+  static const int currentSchemaVersion = 10;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -46,6 +47,7 @@ final class GmCareerCodec {
       'rookieSigningLedger': career.rookieSigningLedger.toJson(),
       'aiRookieSigning': career.aiRookieSigning.toJson(),
       'freeAgentPool': career.freeAgentPool.toJson(),
+      'freeAgentOffers': career.freeAgentOffers.toJson(),
       'finances': career.finances.toJson(),
       'rosterMemberships': {
         for (final team in career.league.teams)
@@ -378,6 +380,19 @@ final class GmCareerCodec {
       freeAgentPool = const FreeAgentGenerator().generate(seed: generationSeed);
     }
 
+    final FreeAgentOfferLedger freeAgentOffers;
+    final rawFreeAgentOffers = raw['freeAgentOffers'];
+    if (schemaVersion >= 10) {
+      if (rawFreeAgentOffers is! Map<String, dynamic>) {
+        throw const FormatException(
+          'Missing or invalid freeAgentOffers in career JSON v10',
+        );
+      }
+      freeAgentOffers = FreeAgentOfferLedger.fromJson(rawFreeAgentOffers);
+    } else {
+      freeAgentOffers = FreeAgentOfferLedger.empty();
+    }
+
     final CareerFinances? finances;
     final rawFinances = raw['finances'];
     if (schemaVersion >= 8) {
@@ -408,6 +423,7 @@ final class GmCareerCodec {
       rookieSigningLedger: rookieSigningLedger,
       aiRookieSigning: aiRookieSigning,
       freeAgentPool: freeAgentPool,
+      freeAgentOffers: freeAgentOffers,
       finances: finances,
     );
     career.validate();

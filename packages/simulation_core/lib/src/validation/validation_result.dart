@@ -43,6 +43,9 @@ enum ValidationCode {
   freeAgentPoolInvalid,
   freeAgentAcquisitionInvalid,
   rosterCapacityExceeded,
+  freeAgentOfferInvalid,
+  freeAgentOfferDuplicate,
+  freeAgentOfferLimitReached,
 }
 
 final class ValidationIssue {

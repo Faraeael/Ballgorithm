@@ -8,6 +8,7 @@ import '../models/draft_rights.dart';
 import '../models/ai_rookie_signing.dart';
 import '../models/franchise_situation.dart';
 import '../models/free_agent.dart';
+import '../models/free_agent_offer.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
 import '../models/player_career_profile.dart';
@@ -38,11 +39,13 @@ final class GmCareer {
     RookieSigningLedger? rookieSigningLedger,
     AiRookieSigningState? aiRookieSigning,
     FreeAgentPool? freeAgentPool,
+    FreeAgentOfferLedger? freeAgentOffers,
     CareerFinances? finances,
   }) : draftExecutionState =
            draftExecutionState ?? DraftExecutionState.initial(),
        rookieSigningLedger = rookieSigningLedger ?? RookieSigningLedger.empty(),
        aiRookieSigning = aiRookieSigning ?? AiRookieSigningState.empty(),
+       freeAgentOffers = freeAgentOffers ?? FreeAgentOfferLedger.empty(),
        finances =
            finances ??
            FinancialMigration.bootstrapFromCareerState(
@@ -94,7 +97,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 9;
+  static const int currentSchemaVersion = 10;
 
   final String id;
   final int schemaVersion;
@@ -116,6 +119,9 @@ final class GmCareer {
   final AiRookieSigningState aiRookieSigning;
 
   final FreeAgentPool freeAgentPool;
+
+  /// Durable formal player-side offer history.
+  final FreeAgentOfferLedger freeAgentOffers;
 
   /// Authoritative contract, payroll, budget, staff and facility records.
   final CareerFinances finances;
@@ -247,6 +253,7 @@ final class GmCareer {
     );
     _validateAiSigningDecisions();
     _validateFreeAgentPool();
+    _validateFreeAgentOffers();
     finances.validate(
       league: league,
       rookieSigningLedger: rookieSigningLedger,
@@ -375,6 +382,68 @@ final class GmCareer {
       }
       if (careerProfiles.forPlayer(acquisition.playerId) == null) {
         throw FormatException('Acquired player $pid has no career profile');
+      }
+    }
+  }
+
+  /// Rejects formal offers that disagree with acquisitions, teams or contracts.
+  void _validateFreeAgentOffers() {
+    freeAgentOffers.validate();
+    final initialIds = {
+      for (final id in freeAgentPool.initialPlayerIds) id.value,
+    };
+    final teamById = {for (final team in league.teams) team.id.value: team};
+    for (final attempt in freeAgentOffers.entries.values) {
+      if (!initialIds.contains(attempt.playerId.value)) {
+        throw FormatException(
+          'Offer ${attempt.offerId} references a player outside the initial '
+          'free-agent snapshot',
+        );
+      }
+      if (!teamById.containsKey(attempt.teamId.value)) {
+        throw FormatException(
+          'Offer ${attempt.offerId} references unknown team '
+          '${attempt.teamId.value}',
+        );
+      }
+      if (!attempt.outcome.isAccepted) continue;
+      final transactionId = attempt.acquisitionTransactionId;
+      final acquisition = transactionId == null
+          ? null
+          : freeAgentPool.acquisitions.entries[transactionId];
+      if (acquisition == null) {
+        throw FormatException(
+          'Accepted offer ${attempt.offerId} has no acquisition record',
+        );
+      }
+      if (acquisition.playerId != attempt.playerId ||
+          acquisition.teamId != attempt.teamId ||
+          acquisition.seasonYear != attempt.seasonYear ||
+          acquisition.category != attempt.category) {
+        throw FormatException(
+          'Accepted offer ${attempt.offerId} does not match its acquisition',
+        );
+      }
+      final contract = finances.contractForPlayer(attempt.playerId);
+      if (contract == null ||
+          contract.id != acquisition.contractId ||
+          contract.teamId != attempt.teamId ||
+          contract.category != attempt.category ||
+          contract.startYear != attempt.seasonYear ||
+          contract.durationYears != attempt.durationYears ||
+          contract.source != ContractSource.freeAgent) {
+        throw FormatException(
+          'Accepted offer ${attempt.offerId} lacks its matching contract',
+        );
+      }
+      final schedule = finances.scheduleFor(contract.id);
+      if (schedule == null ||
+          schedule.annualSalaries.isEmpty ||
+          schedule.annualSalaries.first != attempt.firstYearSalary) {
+        throw FormatException(
+          'Accepted offer ${attempt.offerId} salary does not match its '
+          'schedule',
+        );
       }
     }
   }
@@ -542,6 +611,7 @@ final class GmCareer {
     RookieSigningLedger? rookieSigningLedger,
     AiRookieSigningState? aiRookieSigning,
     FreeAgentPool? freeAgentPool,
+    FreeAgentOfferLedger? freeAgentOffers,
     CareerFinances? finances,
   }) {
     return GmCareer(
@@ -561,6 +631,7 @@ final class GmCareer {
       rookieSigningLedger: rookieSigningLedger ?? this.rookieSigningLedger,
       aiRookieSigning: aiRookieSigning ?? this.aiRookieSigning,
       freeAgentPool: freeAgentPool ?? this.freeAgentPool,
+      freeAgentOffers: freeAgentOffers ?? this.freeAgentOffers,
       finances: finances ?? this.finances,
     );
   }

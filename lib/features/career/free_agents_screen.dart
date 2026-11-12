@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
 
 import 'career_controller.dart';
+import 'free_agent_offer_screen.dart';
 
 enum _FreeAgentSort { overall, age, name }
 
-/// Read-only free-agent board. No offer or signing action exists in T08D.
+const _market = FreeAgentMarketValueService();
+
+/// Free-agent board. Public information plus a formal offer entry point.
 class GmFreeAgentsScreen extends StatefulWidget {
   const GmFreeAgentsScreen({super.key, required this.controller});
 
@@ -27,22 +30,22 @@ class _GmFreeAgentsScreenState extends State<GmFreeAgentsScreen> {
       if (career == null) {
         return const Scaffold(body: Center(child: Text('No active career')));
       }
-      final views = [
-        for (final entry in career.freeAgentPool.entries) entry.toPublicView(),
-      ];
-      final filtered =
+      final entries =
           [
-            for (final view in views)
-              if (_position == null || view.position == _position) view,
-          ]..sort(
-            (a, b) => switch (_sort) {
-              _FreeAgentSort.overall => b.overallRating.compareTo(
-                a.overallRating,
+            for (final entry in career.freeAgentPool.entries)
+              if (_position == null || entry.player.position == _position)
+                entry,
+          ]..sort((a, b) {
+            final aView = a.toPublicView();
+            final bView = b.toPublicView();
+            return switch (_sort) {
+              _FreeAgentSort.overall => bView.overallRating.compareTo(
+                aView.overallRating,
               ),
-              _FreeAgentSort.age => a.age.compareTo(b.age),
-              _FreeAgentSort.name => a.fullName.compareTo(b.fullName),
-            },
-          );
+              _FreeAgentSort.age => aView.age.compareTo(bView.age),
+              _FreeAgentSort.name => aView.fullName.compareTo(bView.fullName),
+            };
+          });
       return Scaffold(
         key: const ValueKey('free-agents-screen'),
         appBar: AppBar(
@@ -106,25 +109,45 @@ class _GmFreeAgentsScreenState extends State<GmFreeAgentsScreen> {
                         ],
                       ),
                       const Spacer(),
-                      Text('${filtered.length} shown'),
+                      Text('${entries.length} shown'),
                     ],
                   ),
                   Text(
-                    'Read-only board. No contract offers yet.',
+                    'Estimated values are public guidance, not a guaranteed '
+                    'acceptance threshold.',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
               ),
             ),
             Expanded(
-              child: filtered.isEmpty
+              child: entries.isEmpty
                   ? const Center(child: Text('No free agents match the filter'))
                   : ListView.builder(
                       key: const ValueKey('free-agent-list'),
                       padding: const EdgeInsets.all(12),
-                      itemCount: filtered.length,
-                      itemBuilder: (context, index) =>
-                          _FreeAgentCard(view: filtered[index]),
+                      itemCount: entries.length,
+                      itemBuilder: (context, index) {
+                        final entry = entries[index];
+                        return _FreeAgentCard(
+                          entry: entry,
+                          valuation: _market.estimate(entry.toPublicView()),
+                          remainingAttempts: career.freeAgentOffers
+                              .remainingAttempts(
+                                teamId: career.userFranchiseId,
+                                playerId: entry.id,
+                                seasonYear: career.currentYear,
+                              ),
+                          onMakeOffer: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => GmFreeAgentOfferScreen(
+                                controller: widget.controller,
+                                freeAgentId: entry.id,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
             ),
           ],
@@ -135,13 +158,22 @@ class _GmFreeAgentsScreenState extends State<GmFreeAgentsScreen> {
 }
 
 class _FreeAgentCard extends StatelessWidget {
-  const _FreeAgentCard({required this.view});
+  const _FreeAgentCard({
+    required this.entry,
+    required this.valuation,
+    required this.remainingAttempts,
+    required this.onMakeOffer,
+  });
 
-  final PublicFreeAgentView view;
+  final FreeAgentEntry entry;
+  final MarketValuation valuation;
+  final int remainingAttempts;
+  final VoidCallback onMakeOffer;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final view = entry.toPublicView();
     final attributes = view.attributes;
     return Card(
       key: ValueKey('free-agent-${view.id.value}'),
@@ -172,7 +204,8 @@ class _FreeAgentCard extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        'Age ${view.age} • ${view.position.fullName}',
+                        'Age ${view.age} • ${view.position.fullName} • '
+                        '${valuation.expectedRole.displayName}',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -201,6 +234,24 @@ class _FreeAgentCard extends StatelessWidget {
                 _Attribute(label: 'DEF', value: attributes.perimeterDefense),
                 _Attribute(label: 'REB', value: attributes.rebounding),
               ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Est. market ${valuation.estimatedAnnualSalary} CU • '
+              'Preferred ${valuation.preferredDurationYears}y • '
+              '$remainingAttempts offer(s) remaining',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.tonal(
+                key: ValueKey('make-offer-${view.id.value}'),
+                onPressed: remainingAttempts > 0 ? onMakeOffer : null,
+                child: Text(
+                  remainingAttempts > 0 ? 'Make Offer' : 'No Offers Remaining',
+                ),
+              ),
             ),
           ],
         ),
