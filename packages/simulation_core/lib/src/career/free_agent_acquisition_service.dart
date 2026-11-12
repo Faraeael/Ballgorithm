@@ -1,5 +1,6 @@
 import '../models/free_agent.dart';
 import '../models/free_agent_acquisition.dart';
+import '../models/free_agent_market.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
 import '../models/player_career_profile.dart';
@@ -8,6 +9,7 @@ import '../models/roster_category.dart';
 import '../validation/validation_result.dart';
 import 'career_phase.dart';
 import 'gm_career.dart';
+import 'free_agent_offer_evaluator.dart';
 import '../finance/financial_rules.dart';
 import '../finance/financial_transactions.dart';
 
@@ -123,20 +125,26 @@ final class FreeAgentAcquisitionService {
     final addedCapSalary = category == RosterCategory.standard
         ? salaries.first
         : 0;
-    final capException = career.finances.financesFor(teamId).capException;
-    if (capPayroll + addedCapSalary > FinancialRules.salaryCap + capException) {
-      _fail(
-        ValidationCode.capBreach,
-        'Cap payroll ${capPayroll + addedCapSalary} exceeds '
-        '${FinancialRules.salaryCap + capException} CU',
+    if (origin == AcquisitionOrigin.clearance) {
+      _validateClearanceAuthorization(
+        career: career,
+        teamId: teamId,
+        freeAgentId: freeAgentId,
+        category: category,
+        durationYears: durationYears,
+        salary: agreedFirstYearSalary,
       );
     }
-    if (capException > 0 &&
-        category == RosterCategory.standard &&
-        salaries.first != FinancialRules.minimumSalary) {
+    final capException = origin == AcquisitionOrigin.clearance
+        ? career.finances.financesFor(teamId).capException
+        : 0;
+    final payrollAfter = capPayroll + addedCapSalary;
+    if (payrollAfter > FinancialRules.salaryCap + capException ||
+        (payrollAfter > FinancialRules.salaryCap &&
+            agreedFirstYearSalary != FinancialRules.minimumSalary)) {
       _fail(
         ValidationCode.capBreach,
-        'Approved cap exception only funds 400 CU minimum deals',
+        'Cap payroll $payrollAfter exceeds its authorized limit',
       );
     }
 
@@ -207,6 +215,79 @@ final class FreeAgentAcquisitionService {
       freeAgentPool: updatedPool,
       finances: updatedFinances,
     );
+  }
+
+  void _validateClearanceAuthorization({
+    required GmCareer career,
+    required TeamId teamId,
+    required PlayerId freeAgentId,
+    required RosterCategory category,
+    required int durationYears,
+    required int salary,
+  }) {
+    final state = career.offseasonClearance;
+    if (category != RosterCategory.standard ||
+        !state.isResolvable ||
+        state.seasonYear != career.currentYear ||
+        career.freeAgentMarket.status != FreeAgentMarketStatus.marketComplete ||
+        state.nextResolutionIndex >= state.resolutionOrder.length ||
+        state.resolutionOrder[state.nextResolutionIndex] != freeAgentId) {
+      _fail(
+        ValidationCode.freeAgentAcquisitionInvalid,
+        'Clearance acquisition has no active authorization',
+      );
+    }
+    final authorizedOffer = state.allOffers.any(
+      (offer) =>
+          offer.playerId == freeAgentId &&
+          offer.teamId == teamId &&
+          offer.category == category &&
+          offer.durationYears == durationYears &&
+          offer.firstYearSalary == salary,
+    );
+    if (!authorizedOffer) {
+      _fail(
+        ValidationCode.freeAgentAcquisitionInvalid,
+        'Clearance acquisition does not match a sealed offer',
+      );
+    }
+    final team = career.league.teams.firstWhere(
+      (candidate) => candidate.id == teamId,
+    );
+    if (team.roster.standardCount >= FinancialRules.minimumStandardRoster) {
+      _fail(
+        ValidationCode.rosterCapacityExceeded,
+        'Clearance cannot sign an optional 15th standard player',
+      );
+    }
+    if (career.freeAgentOffers.remainingAttempts(
+          teamId: teamId,
+          playerId: freeAgentId,
+          seasonYear: career.currentYear,
+        ) <=
+        0) {
+      _fail(
+        ValidationCode.freeAgentOfferLimitReached,
+        'Clearance offer has no player-side attempt remaining',
+      );
+    }
+    career.validate();
+    final decision = const FreeAgentOfferEvaluator().evaluate(
+      career: career,
+      teamId: teamId,
+      freeAgentId: freeAgentId,
+      category: category,
+      durationYears: durationYears,
+      agreedFirstYearSalary: salary,
+      clearanceOffer: true,
+    );
+    if (!decision.isAcceptable) {
+      _fail(
+        ValidationCode.freeAgentOfferInvalid,
+        'Clearance transaction is not an acceptable offer: '
+        '${decision.reasonCode}',
+      );
+    }
   }
 
   static Never _fail(ValidationCode code, String message) =>

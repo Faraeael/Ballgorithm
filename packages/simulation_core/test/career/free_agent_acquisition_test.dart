@@ -159,6 +159,21 @@ void main() {
         acquired.finances.capPayrollFor(acquired.userFranchiseId, 1) + 250,
       );
     });
+    test('clearance origin cannot be forged before authorization', () {
+      final career = _career();
+      expect(
+        () => _service.acquire(
+          career: career,
+          teamId: career.userFranchiseId,
+          freeAgentId: career.freeAgentPool.entries.first.id,
+          category: RosterCategory.standard,
+          durationYears: 1,
+          agreedFirstYearSalary: FinancialRules.minimumSalary,
+          origin: AcquisitionOrigin.clearance,
+        ),
+        _codesContain(ValidationCode.freeAgentAcquisitionInvalid),
+      );
+    });
 
     test('sequential acquisitions shrink the pool below 90', () {
       var career = _career();

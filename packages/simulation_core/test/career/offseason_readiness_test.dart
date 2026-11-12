@@ -110,6 +110,73 @@ void main() {
         expect(roster.roster.standardCount, inInclusiveRange(12, 13));
       }
     });
+    test(
+      'readiness counts approved relief without claiming player acceptance',
+      () {
+        final career = _clearance.start(_offseason());
+        final exception = career.offseasonClearance.capExceptions.firstWhere(
+          (item) => item.amount > 0,
+        );
+        final need = _gate
+            .evaluate(career)
+            .teams
+            .singleWhere((item) => item.teamId == exception.teamId);
+
+        expect(need.capRoom, lessThan(FinancialRules.minimumSalary));
+        expect(need.authorizedCapRelief, exception.amount);
+        expect(need.financiallyLegalMinimumOffers, greaterThan(0));
+        expect(need.willingMinimumOffers, 0);
+        expect(need.playerRejectedMinimumOffers, greaterThan(0));
+      },
+    );
+    test('financial illegality does not become player refusal', () {
+      final marketCareer = _offseason();
+      final authorized = _clearance.start(marketCareer);
+      final exception = authorized.offseasonClearance.capExceptions.first;
+      final entry = authorized.freeAgentPool.entries.first;
+      const evaluator = FreeAgentOfferEvaluator();
+      final illegal = evaluator.evaluate(
+        career: marketCareer,
+        teamId: exception.teamId,
+        freeAgentId: entry.id,
+        category: RosterCategory.standard,
+        durationYears: 1,
+        agreedFirstYearSalary: FinancialRules.minimumSalary,
+        clearanceOffer: true,
+      );
+      final willingness = evaluator.evaluateWillingness(
+        career: marketCareer,
+        teamId: exception.teamId,
+        freeAgentId: entry.id,
+        category: RosterCategory.standard,
+        durationYears: 1,
+        salary: FinancialRules.minimumSalary,
+      );
+
+      expect(illegal.status, FreeAgentOfferStatus.financiallyIllegal);
+      expect(illegal.reasonCode, 'capBreach');
+      expect(willingness.accepts, isFalse);
+      expect(willingness.reasonCode, isNot('capBreach'));
+    });
+
+    test('forged exception amount fails career validation', () {
+      final career = _clearance.start(_offseason());
+      final original = career.offseasonClearance.capExceptions.first;
+      final forged = CapException(
+        teamId: original.teamId,
+        amount: original.amount == 1 ? 2 : original.amount - 1,
+        missingPlayers: original.missingPlayers,
+        reason: original.reason,
+      );
+      final altered = career.offseasonClearance.copyWith(
+        capExceptions: [forged],
+      );
+
+      expect(
+        () => career.copyWith(offseasonClearance: altered),
+        throwsFormatException,
+      );
+    });
 
     test('human clearance offer can fill a missing standard spot', () {
       var career = _clearance.start(_offseason());
@@ -136,6 +203,53 @@ void main() {
         greaterThanOrEqualTo(human.roster.standardCount),
       );
     });
+
+    test(
+      'clearance resume after persisted step does not replay acquisitions',
+      () {
+        var sealed = _clearance.start(_offseason());
+        final entry = sealed.freeAgentPool.entries.first;
+        sealed = _clearance.stageHumanOffer(
+          career: sealed,
+          teamId: sealed.userFranchiseId,
+          playerId: entry.id,
+          durationYears: 1,
+          firstYearSalary: _value
+              .estimate(entry.toPublicView())
+              .acceptableMaximum,
+        );
+        sealed = _clearance.prepare(sealed);
+
+        var uninterrupted = sealed;
+        while (uninterrupted.offseasonClearance.isResolvable) {
+          uninterrupted = _clearance.resolveNext(uninterrupted);
+        }
+
+        var resumed = GmCareerCodec.decode(
+          GmCareerCodec.encode(_clearance.resolveNext(sealed)),
+        );
+        while (resumed.offseasonClearance.isResolvable) {
+          resumed = _clearance.resolveNext(resumed);
+        }
+
+        expect(
+          GmCareerCodec.encode(resumed),
+          GmCareerCodec.encode(uninterrupted),
+        );
+        final acquisitions = resumed.freeAgentPool.acquisitions.entries.values;
+        expect(
+          acquisitions.map((item) => item.playerId).toSet().length,
+          acquisitions.length,
+        );
+        expect(
+          resumed.offseasonClearance.outcomes
+              .map((item) => item.playerId)
+              .toSet()
+              .length,
+          resumed.offseasonClearance.outcomes.length,
+        );
+      },
+    );
 
     test('mark cleared is blocked while any team is short', () {
       var career = _clearance.start(_offseason());

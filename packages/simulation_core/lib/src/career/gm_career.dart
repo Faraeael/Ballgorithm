@@ -9,6 +9,7 @@ import '../models/draft_rights.dart';
 import '../models/ai_rookie_signing.dart';
 import '../models/franchise_situation.dart';
 import '../models/free_agent.dart';
+import '../models/free_agent_acquisition.dart';
 import '../models/free_agent_market.dart';
 import '../models/free_agent_offer.dart';
 import '../models/offseason_clearance.dart';
@@ -444,6 +445,7 @@ final class GmCareer {
         outcome: outcome,
         offers: freeAgentMarket.allOffers,
         seasonYear: freeAgentMarket.seasonYear,
+        expectedOrigin: AcquisitionOrigin.initialPool,
       );
     }
     for (final round in freeAgentMarket.roundHistory) {
@@ -453,6 +455,7 @@ final class GmCareer {
           outcome: outcome,
           offers: offers,
           seasonYear: round.seasonYear,
+          expectedOrigin: AcquisitionOrigin.initialPool,
         );
       }
     }
@@ -462,6 +465,7 @@ final class GmCareer {
     required FreeAgentMarketOutcome outcome,
     required Iterable<FreeAgentMarketOffer> offers,
     required int seasonYear,
+    required AcquisitionOrigin expectedOrigin,
   }) {
     for (final result in outcome.results) {
       if (result.outcome == FreeAgentMarketOfferOutcome.accepted) {
@@ -470,7 +474,8 @@ final class GmCareer {
         );
         if (acquisition == null ||
             outcome.winningTeamId != result.teamId ||
-            acquisition.teamId != result.teamId) {
+            acquisition.teamId != result.teamId ||
+            acquisition.origin != expectedOrigin) {
           throw FormatException(
             'Market result ${result.offerId} lacks its acquisition',
           );
@@ -575,6 +580,7 @@ final class GmCareer {
         outcome: outcome,
         offers: clearance.allOffers,
         seasonYear: clearance.seasonYear,
+        expectedOrigin: AcquisitionOrigin.clearance,
       );
     }
     final clearanceOfferCounts = <String, int>{};
@@ -589,16 +595,47 @@ final class GmCareer {
         );
       }
     }
+    if (clearance.status == OffseasonClearanceStatus.notStarted &&
+        clearance.capExceptions.isNotEmpty) {
+      throw FormatException('Unstarted clearance carries cap exceptions');
+    }
     final exceptionTeams = <String>{};
     for (final exception in clearance.capExceptions) {
-      exceptionTeams.add(exception.teamId.value);
+      if (!exceptionTeams.add(exception.teamId.value)) {
+        throw FormatException('Duplicate team cap exception');
+      }
       final team = teamById[exception.teamId.value];
       if (team == null) {
         throw FormatException('Cap exception references unknown team');
       }
-      final standard = team.roster.standardCount;
-      if (standard < 12 || standard > 15) {
-        throw FormatException('Cap exception requires a 12-15 standard roster');
+      final clearanceAcquisitions = freeAgentPool.acquisitions.entries.values
+          .where(
+            (acquisition) =>
+                acquisition.teamId == exception.teamId &&
+                acquisition.origin == AcquisitionOrigin.clearance,
+          )
+          .toList();
+      final initialStandard =
+          team.roster.standardCount - clearanceAcquisitions.length;
+      final initialPayroll =
+          finances.capPayrollFor(exception.teamId, currentYear) -
+          clearanceAcquisitions.fold<int>(0, (sum, acquisition) {
+            final contract = finances.contractForPlayer(acquisition.playerId);
+            return sum +
+                finances.scheduleFor(contract!.id)!.annualSalaries.first;
+          });
+      final expectedAmount = FinancialRules.minimumRosterReliefOverage(
+        standardCount: initialStandard,
+        capRoom: FinancialRules.salaryCap - initialPayroll,
+      );
+      if (exception.missingPlayers !=
+              FinancialRules.minimumStandardRoster - initialStandard ||
+          expectedAmount == null ||
+          expectedAmount == 0 ||
+          exception.amount != expectedAmount) {
+        throw FormatException(
+          'Cap exception does not match the authorized roster shortage',
+        );
       }
       final teamFinances = finances.financesFor(exception.teamId);
       if (teamFinances.capException != exception.amount) {
@@ -617,6 +654,25 @@ final class GmCareer {
         throw FormatException(
           'Team finances carry an unrecorded cap exception',
         );
+      }
+    }
+    if (clearance.isComplete) {
+      for (final acquisition in freeAgentPool.acquisitions.entries.values) {
+        if (acquisition.origin != AcquisitionOrigin.clearance) continue;
+        final linkedResult = clearance.outcomes.any(
+          (outcome) =>
+              outcome.playerId == acquisition.playerId &&
+              outcome.results.any(
+                (result) =>
+                    result.teamId == acquisition.teamId &&
+                    result.outcome == FreeAgentMarketOfferOutcome.accepted,
+              ),
+        );
+        if (!linkedResult) {
+          throw FormatException(
+            'Completed clearance acquisition lacks accepted outcome',
+          );
+        }
       }
     }
   }

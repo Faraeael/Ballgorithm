@@ -29,10 +29,16 @@ final class FranchiseClearanceNeed {
     required this.standardCount,
     required this.requiredPlayers,
     required this.capRoom,
+    required this.authorizedCapRelief,
     required this.cash,
     required this.projectedCash,
     required this.eligibleFreeAgents,
-    required this.affordableFreeAgents,
+    required this.financiallyLegalMinimumOffers,
+    required this.willingMinimumOffers,
+    required this.willingAndLegalMinimumOffers,
+    required this.playerRejectedMinimumOffers,
+    required this.attemptBlockedMinimumOffers,
+    required this.acquiredByOtherFranchises,
     required this.acceptableOffers,
     required this.unsignedDraftRights,
     required this.blockers,
@@ -43,15 +49,22 @@ final class FranchiseClearanceNeed {
   final int standardCount;
   final int requiredPlayers;
   final int capRoom;
+  final int authorizedCapRelief;
   final int cash;
   final int projectedCash;
   final int eligibleFreeAgents;
-  final int affordableFreeAgents;
+  final int financiallyLegalMinimumOffers;
+  final int willingMinimumOffers;
+  final int willingAndLegalMinimumOffers;
+  final int playerRejectedMinimumOffers;
+  final int attemptBlockedMinimumOffers;
+  final int acquiredByOtherFranchises;
   final int acceptableOffers;
   final int unsignedDraftRights;
   final List<String> blockers;
 
-  bool get canClear => requiredPlayers > 0 && acceptableOffers > 0;
+  bool get canClear =>
+      requiredPlayers > 0 && acceptableOffers >= requiredPlayers;
 }
 
 final class OffseasonReadinessResult {
@@ -115,7 +128,10 @@ final class OffseasonReadinessGate {
     if (clearance.isResolvable) {
       reasons.add('Clearance offers are not resolved');
     }
-    if (reasons.isNotEmpty) {
+    if (reasons.isNotEmpty &&
+        !(clearance.isResolvable &&
+            reasons.length == 1 &&
+            reasons.single == 'Clearance offers are not resolved')) {
       return OffseasonReadinessResult(
         status: OffseasonReadinessStatus.offseasonInProgress,
         reasons: reasons,
@@ -171,6 +187,17 @@ final class OffseasonReadinessGate {
         );
       }
     }
+    if (clearance.isResolvable) {
+      return OffseasonReadinessResult(
+        status: OffseasonReadinessStatus.offseasonInProgress,
+        reasons: reasons,
+        teams: needs,
+        readyCount: ready,
+        belowMinimumCount: below,
+        totalShortage: shortageTotal,
+        humanShortage: humanShortage,
+      );
+    }
 
     if (ready == career.league.teams.length) {
       final cleared = clearance.status == OffseasonClearanceStatus.cleared;
@@ -189,8 +216,8 @@ final class OffseasonReadinessGate {
 
     final financialException = needs.any((need) {
       return need.requiredPlayers > 0 &&
-          need.capRoom < FinancialRules.minimumSalary * need.requiredPlayers &&
-          !clearance.isExceptionApproved(need.teamId);
+          need.capRoom + need.authorizedCapRelief <
+              FinancialRules.minimumSalary * need.requiredPlayers;
     });
     final status = financialException
         ? OffseasonReadinessStatus.financialExceptionRequired
@@ -226,53 +253,110 @@ final class OffseasonReadinessGate {
       team.id,
       career.currentYear,
     );
+    final authorizedRelief =
+        career.offseasonClearance.capExceptions
+            .where((exception) => exception.teamId == team.id)
+            .firstOrNull
+            ?.amount ??
+        0;
     var eligible = 0;
-    var affordable = 0;
+    var willingAtMinimum = 0;
+    var legalAtMinimum = 0;
+    var willingAndLegalAtMinimum = 0;
+    var rejectedAtMinimum = 0;
+    var attemptBlocked = 0;
     var acceptable = 0;
     for (final entry in career.freeAgentPool.entries) {
       eligible++;
-      var anyAffordable = false;
       final view = entry.toPublicView();
       final valuation = market.estimate(view);
       final duration = valuation.preferredDurationYears;
-      final candidates =
-          <int>{
-            FinancialRules.minimumSalary,
-            valuation.acceptableMinimum,
-            valuation.estimatedAnnualSalary,
-            valuation.acceptableMaximum,
-          }.where((salary) {
-            return salary <= FinancialRules.maximumSalary &&
-                salary <= capRoom + (required <= 2 ? 0 : 0);
-          });
-      for (final salary in candidates) {
+      final attemptRemaining = career.freeAgentOffers.remainingAttempts(
+        teamId: team.id,
+        playerId: entry.id,
+        seasonYear: career.currentYear,
+      );
+      if (attemptRemaining == 0) attemptBlocked++;
+
+      final minDecision = evaluator.evaluate(
+        career: career,
+        teamId: team.id,
+        freeAgentId: entry.id,
+        category: RosterCategory.standard,
+        durationYears: duration,
+        agreedFirstYearSalary: FinancialRules.minimumSalary,
+        clearanceOffer: true,
+      );
+      final minWillingness = evaluator.evaluateWillingness(
+        career: career,
+        teamId: team.id,
+        freeAgentId: entry.id,
+        category: RosterCategory.standard,
+        durationYears: duration,
+        salary: FinancialRules.minimumSalary,
+      );
+      if (minWillingness.accepts) willingAtMinimum++;
+      if (minDecision.isFinanciallyLegal) {
+        legalAtMinimum++;
+        if (minDecision.isAcceptable) {
+          willingAndLegalAtMinimum++;
+        } else {
+          rejectedAtMinimum++;
+        }
+      }
+
+      final maxSalary = FreeAgentMarketValueService.maxYearOneForDuration(
+        duration,
+      );
+      var low = FinancialRules.minimumSalary;
+      var high = maxSalary + 1;
+      while (low < high) {
+        final candidate = low + (high - low) ~/ 2;
+        final response = evaluator.evaluateWillingness(
+          career: career,
+          teamId: team.id,
+          freeAgentId: entry.id,
+          category: RosterCategory.standard,
+          durationYears: duration,
+          salary: candidate,
+        );
+        if (response.accepts) {
+          high = candidate;
+        } else {
+          low = candidate + 1;
+        }
+      }
+      if (low <= maxSalary && attemptRemaining > 0) {
         final decision = evaluator.evaluate(
           career: career,
           teamId: team.id,
           freeAgentId: entry.id,
           category: RosterCategory.standard,
           durationYears: duration,
-          agreedFirstYearSalary: salary,
+          agreedFirstYearSalary: low,
+          clearanceOffer: true,
         );
-        if (decision.isFinanciallyLegal) anyAffordable = true;
-        if (decision.isAcceptable) {
-          acceptable++;
-          break;
+        if (decision.isFinanciallyLegal) {
+          if (decision.isAcceptable) acceptable++;
         }
       }
-      if (anyAffordable) affordable++;
     }
     final blockers = <String>[];
     if (required == 0) {
       blockers.add('non-roster readiness issue');
-    } else if (capRoom < FinancialRules.minimumSalary * required) {
+    } else if (capRoom + authorizedRelief <
+        FinancialRules.minimumSalary * required) {
       blockers.add(
-        'cap room $capRoom does not cover $required minimum deal(s)',
+        'cap room $capRoom plus authorized relief $authorizedRelief does not '
+        'cover $required minimum deal(s)',
       );
     } else if (projected < FinancialRules.minimumSalary * required) {
       blockers.add('projected cash $projected does not cover minimum deals');
-    } else if (acceptable == 0) {
-      blockers.add('no available player accepts a legal offer');
+    } else if (acceptable < required) {
+      blockers.add(
+        'only $acceptable distinct remaining player(s) accept a legal offer '
+        'for $required spot(s)',
+      );
     }
     return FranchiseClearanceNeed(
       teamId: team.id,
@@ -280,10 +364,22 @@ final class OffseasonReadinessGate {
       standardCount: team.roster.standardCount,
       requiredPlayers: required,
       capRoom: capRoom,
+      authorizedCapRelief: authorizedRelief,
       cash: cash,
       projectedCash: projected,
       eligibleFreeAgents: eligible,
-      affordableFreeAgents: affordable,
+      financiallyLegalMinimumOffers: legalAtMinimum,
+      willingMinimumOffers: willingAtMinimum,
+      willingAndLegalMinimumOffers: willingAndLegalAtMinimum,
+      playerRejectedMinimumOffers: rejectedAtMinimum,
+      attemptBlockedMinimumOffers: attemptBlocked,
+      acquiredByOtherFranchises: career
+          .freeAgentPool
+          .acquisitions
+          .entries
+          .values
+          .where((acquisition) => acquisition.teamId != team.id)
+          .length,
       acceptableOffers: acceptable,
       unsignedDraftRights: career.unsignedDraftRights
           .where((rights) => rights.owningTeamId == team.id)

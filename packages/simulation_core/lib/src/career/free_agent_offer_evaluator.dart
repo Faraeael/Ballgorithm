@@ -5,6 +5,8 @@ import '../models/free_agent.dart';
 import '../models/ids.dart';
 import '../models/player_contract.dart';
 import '../models/roster_category.dart';
+import '../models/offseason_clearance.dart';
+import '../models/free_agent_market.dart';
 import '../models/team.dart';
 import 'career_phase.dart';
 import 'free_agent_market_value_service.dart';
@@ -48,6 +50,23 @@ final class FreeAgentOfferDecision {
       status != FreeAgentOfferStatus.financiallyIllegal;
 }
 
+/// Player response without implying that the franchise can afford the offer.
+final class PlayerOfferWillingness {
+  const PlayerOfferWillingness({
+    required this.status,
+    required this.reasonCode,
+    required this.explanation,
+    required this.valuation,
+  });
+
+  final FreeAgentOfferStatus status;
+  final String reasonCode;
+  final String explanation;
+  final MarketValuation valuation;
+
+  bool get accepts => status == FreeAgentOfferStatus.acceptable;
+}
+
 /// Deterministic, public-information offer acceptance policy.
 ///
 /// The evaluator never mutates the career, pool, roster, contracts, ledger or
@@ -67,6 +86,7 @@ final class FreeAgentOfferEvaluator {
     required RosterCategory category,
     required int durationYears,
     required int agreedFirstYearSalary,
+    bool clearanceOffer = false,
   }) {
     final entry = career.freeAgentPool.byId(freeAgentId);
     if (entry == null) {
@@ -131,6 +151,7 @@ final class FreeAgentOfferEvaluator {
       category: category,
       durationYears: durationYears,
       salaries: salaries,
+      clearanceOffer: clearanceOffer,
     );
     if (legality != null) {
       return FreeAgentOfferDecision(
@@ -148,6 +169,80 @@ final class FreeAgentOfferEvaluator {
       category: category,
       durationYears: durationYears,
       salary: agreedFirstYearSalary,
+      valuation: valuation,
+    );
+  }
+
+  /// Evaluates player response only; it does not assess cap, cash or roster
+  /// legality. Use [evaluate] before treating this as a legal offer.
+  PlayerOfferWillingness evaluateWillingness({
+    required GmCareer career,
+    required TeamId teamId,
+    required PlayerId freeAgentId,
+    required RosterCategory category,
+    required int durationYears,
+    required int salary,
+  }) {
+    final entry = career.freeAgentPool.byId(freeAgentId);
+    final team = _team(career, teamId);
+    if (entry == null || team == null) {
+      return PlayerOfferWillingness(
+        status: FreeAgentOfferStatus.invalidTerms,
+        reasonCode: entry == null ? 'unknownPlayer' : 'unknownTeam',
+        explanation: entry == null
+            ? 'Player is not available'
+            : 'Franchise does not exist',
+        valuation: _emptyValuation(),
+      );
+    }
+    if (category != RosterCategory.standard &&
+        category != RosterCategory.twoWay) {
+      return PlayerOfferWillingness(
+        status: FreeAgentOfferStatus.invalidTerms,
+        reasonCode: 'unsupportedCategory',
+        explanation: 'Offers must be standard or two-way',
+        valuation: _emptyValuation(),
+      );
+    }
+    final maxDuration = FinancialRules.maxDurationForCategory(category);
+    if (durationYears < PlayerContract.minDurationYears ||
+        durationYears > maxDuration) {
+      return PlayerOfferWillingness(
+        status: FreeAgentOfferStatus.invalidTerms,
+        reasonCode: 'invalidDuration',
+        explanation: 'Duration must be 1..$maxDuration',
+        valuation: _emptyValuation(),
+      );
+    }
+    final salaryValid = category == RosterCategory.twoWay
+        ? salary == FinancialRules.twoWaySalary
+        : salary >= FinancialRules.minimumSalary &&
+              salary <= FinancialRules.maximumSalary;
+    if (!salaryValid) {
+      return PlayerOfferWillingness(
+        status: FreeAgentOfferStatus.invalidTerms,
+        reasonCode: 'invalidSalary',
+        explanation: 'Salary is outside the allowed category range',
+        valuation: _emptyValuation(),
+      );
+    }
+    final view = entry.toPublicView();
+    final valuation = category == RosterCategory.twoWay
+        ? _twoWayValuation(view)
+        : market.estimate(view);
+    final decision = _playerDecision(
+      career: career,
+      team: team,
+      view: view,
+      category: category,
+      durationYears: durationYears,
+      salary: salary,
+      valuation: valuation,
+    );
+    return PlayerOfferWillingness(
+      status: decision.status,
+      reasonCode: decision.reasonCode,
+      explanation: decision.explanation,
       valuation: valuation,
     );
   }
@@ -252,6 +347,7 @@ final class FreeAgentOfferEvaluator {
     required RosterCategory category,
     required int durationYears,
     required List<int> salaries,
+    required bool clearanceOffer,
   }) {
     if (career.phase != CareerPhase.openingOffseason) {
       return 'wrongPhase';
@@ -268,11 +364,15 @@ final class FreeAgentOfferEvaluator {
       career.currentYear,
     );
     if (category == RosterCategory.standard) {
-      final exception = career.finances.financesFor(team.id).capException;
-      if (capPayroll + salaries.first > FinancialRules.salaryCap + exception) {
+      final exception = clearanceOffer
+          ? _authorizedClearanceException(career, team)
+          : 0;
+      final payrollAfter = capPayroll + salaries.first;
+      if (payrollAfter > FinancialRules.salaryCap + exception) {
         return 'capBreach';
       }
-      if (exception > 0 && salaries.first != FinancialRules.minimumSalary) {
+      if (payrollAfter > FinancialRules.salaryCap &&
+          salaries.first != FinancialRules.minimumSalary) {
         return 'capBreach';
       }
     }
@@ -295,6 +395,38 @@ final class FreeAgentOfferEvaluator {
     }
     return null;
   }
+
+  int _authorizedClearanceException(GmCareer career, Team team) {
+    final clearance = career.offseasonClearance;
+    if (clearance.seasonYear != career.currentYear ||
+        career.freeAgentMarket.status != FreeAgentMarketStatus.marketComplete ||
+        ![
+          OffseasonClearanceStatus.collectingHumanOffers,
+          OffseasonClearanceStatus.preparedForResolution,
+          OffseasonClearanceStatus.resolving,
+          OffseasonClearanceStatus.complete,
+        ].contains(clearance.status) ||
+        team.roster.standardCount >= FinancialRules.minimumStandardRoster) {
+      return 0;
+    }
+    final exception = clearance.capExceptions
+        .where((candidate) => candidate.teamId == team.id)
+        .firstOrNull;
+    if (exception == null ||
+        career.finances.financesFor(team.id).capException != exception.amount) {
+      return 0;
+    }
+    return exception.amount;
+  }
+
+  MarketValuation _emptyValuation() => const MarketValuation(
+    estimatedAnnualSalary: FinancialRules.minimumSalary,
+    acceptableMinimum: FinancialRules.minimumSalary,
+    acceptableMaximum: FinancialRules.minimumSalary,
+    preferredDurationYears: 1,
+    expectedRole: ExpectedPlayerRole.developmental,
+    explanation: 'No public player valuation available',
+  );
 
   int _situationFit(Team team, PublicFreeAgentView view) {
     final age = view.age;

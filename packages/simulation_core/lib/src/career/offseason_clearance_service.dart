@@ -102,6 +102,7 @@ final class OffseasonClearanceService {
       finances: updated,
       offseasonClearance: career.offseasonClearance.copyWith(
         capExceptions: exceptions,
+        status: OffseasonClearanceStatus.collectingHumanOffers,
       ),
     );
   }
@@ -159,6 +160,7 @@ final class OffseasonClearanceService {
       category: RosterCategory.standard,
       durationYears: durationYears,
       agreedFirstYearSalary: firstYearSalary,
+      clearanceOffer: true,
     );
     if (!decision.isFinanciallyLegal) {
       _fail(ValidationCode.freeAgentOfferInvalid, decision.explanation);
@@ -238,6 +240,7 @@ final class OffseasonClearanceService {
         category: offer.category,
         durationYears: offer.durationYears,
         agreedFirstYearSalary: offer.firstYearSalary,
+        clearanceOffer: true,
       );
       switch (decision.status) {
         case FreeAgentOfferStatus.acceptable:
@@ -472,9 +475,13 @@ final class OffseasonClearanceService {
             category: RosterCategory.standard,
             durationYears: duration,
             agreedFirstYearSalary: candidate,
+            clearanceOffer: true,
           );
           if (!decision.isAcceptable) continue;
-          if (capPayroll + committedCap + candidate > allowedCap) {
+          final totalCap = capPayroll + committedCap + candidate;
+          if (totalCap > allowedCap ||
+              (totalCap > FinancialRules.salaryCap &&
+                  candidate != FinancialRules.minimumSalary)) {
             continue;
           }
           if (projected - committedCash - candidate < 0) continue;
@@ -528,11 +535,13 @@ final class OffseasonClearanceService {
       (sum, offer) => sum + offer.firstYearSalary,
     );
     final finances = career.finances.financesFor(team.id);
+    final totalCap = capPayroll + pendingCap + salary;
     final allowedCap = FinancialRules.salaryCap + finances.capException;
-    if (capPayroll + pendingCap + salary > allowedCap) {
+    if (totalCap > allowedCap) {
       _fail(ValidationCode.capBreach, 'Clearance cap reservation exceeded');
     }
-    if (finances.capException > 0 && salary != FinancialRules.minimumSalary) {
+    if (totalCap > FinancialRules.salaryCap &&
+        salary != FinancialRules.minimumSalary) {
       _fail(
         ValidationCode.capBreach,
         'Cap exception can only fund 400 CU minimum deals',
