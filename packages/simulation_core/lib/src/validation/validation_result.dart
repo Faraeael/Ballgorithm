@@ -23,6 +23,22 @@ enum ValidationCode {
   unknownPosition,
   malformedJson,
   unsupportedSchemaVersion,
+  moneyInvalid,
+  financialTeamInvalid,
+  contractInvalid,
+  contractDuplicate,
+  contractMissing,
+  scheduleMissing,
+  scheduleInvalid,
+  salaryOutOfBounds,
+  financialOwnershipMismatch,
+  capBreach,
+  budgetBreach,
+  cashInsufficient,
+  rookieLinkMismatch,
+  facilityInvalid,
+  staffInvalid,
+  financialDuplicate,
 }
 
 final class ValidationIssue {

@@ -16,6 +16,7 @@ import '../models/roster_category.dart';
 import '../models/roster_membership.dart';
 import '../models/team.dart';
 import '../generation/free_agent_generator.dart';
+import '../finance/career_finances.dart';
 import 'career_phase.dart';
 import 'gm_career.dart';
 
@@ -23,7 +24,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 7;
+  static const int currentSchemaVersion = 8;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -45,6 +46,7 @@ final class GmCareerCodec {
       'rookieSigningLedger': career.rookieSigningLedger.toJson(),
       'aiRookieSigning': career.aiRookieSigning.toJson(),
       'freeAgentPool': career.freeAgentPool.toJson(),
+      'finances': career.finances.toJson(),
       'rosterMemberships': {
         for (final team in career.league.teams)
           team.id.value: [
@@ -368,6 +370,19 @@ final class GmCareerCodec {
       freeAgentPool = const FreeAgentGenerator().generate(seed: generationSeed);
     }
 
+    final CareerFinances? finances;
+    final rawFinances = raw['finances'];
+    if (schemaVersion >= 8) {
+      if (rawFinances is! Map<String, dynamic>) {
+        throw const FormatException(
+          'Missing or invalid finances in career JSON v8',
+        );
+      }
+      finances = CareerFinances.fromJson(rawFinances);
+    } else {
+      finances = null;
+    }
+
     final career = GmCareer(
       id: id,
       schemaVersion: currentSchemaVersion,
@@ -385,6 +400,7 @@ final class GmCareerCodec {
       rookieSigningLedger: rookieSigningLedger,
       aiRookieSigning: aiRookieSigning,
       freeAgentPool: freeAgentPool,
+      finances: finances,
     );
     career.validate();
     return career;

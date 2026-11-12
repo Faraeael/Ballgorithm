@@ -1,5 +1,7 @@
 import '../generation/draft_generator.dart';
 import '../generation/free_agent_generator.dart';
+import '../finance/career_finances.dart';
+import '../finance/financial_migration.dart';
 import '../models/draft_execution_state.dart';
 import '../models/draft_order.dart';
 import '../models/draft_rights.dart';
@@ -35,10 +37,20 @@ final class GmCareer {
     RookieSigningLedger? rookieSigningLedger,
     AiRookieSigningState? aiRookieSigning,
     FreeAgentPool? freeAgentPool,
+    CareerFinances? finances,
   }) : draftExecutionState =
            draftExecutionState ?? DraftExecutionState.initial(),
        rookieSigningLedger = rookieSigningLedger ?? RookieSigningLedger.empty(),
        aiRookieSigning = aiRookieSigning ?? AiRookieSigningState.empty(),
+       finances =
+           finances ??
+           FinancialMigration.reconcile(
+             league: league,
+             careerProfiles: careerProfiles,
+             rookieSigningLedger:
+                 rookieSigningLedger ?? RookieSigningLedger.empty(),
+             currentYear: currentYear,
+           ),
        freeAgentPool =
            freeAgentPool ??
            const FreeAgentGenerator().generate(seed: generationSeed),
@@ -81,7 +93,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 7;
+  static const int currentSchemaVersion = 8;
 
   final String id;
   final int schemaVersion;
@@ -103,6 +115,9 @@ final class GmCareer {
   final AiRookieSigningState aiRookieSigning;
 
   final FreeAgentPool freeAgentPool;
+
+  /// Authoritative contract, payroll, budget, staff and facility records.
+  final CareerFinances finances;
 
   /// Draft rights whose prospect has not signed a rookie contract yet.
   ///
@@ -231,6 +246,12 @@ final class GmCareer {
     );
     _validateAiSigningDecisions();
     _validateFreeAgentPool();
+    finances.validate(
+      league: league,
+      careerProfiles: careerProfiles,
+      rookieSigningLedger: rookieSigningLedger,
+      currentYear: currentYear,
+    );
   }
 
   /// Rejects free agents that collide with ownership, contracts or prospects.
@@ -444,24 +465,45 @@ final class GmCareer {
     RookieSigningLedger? rookieSigningLedger,
     AiRookieSigningState? aiRookieSigning,
     FreeAgentPool? freeAgentPool,
+    CareerFinances? finances,
   }) {
+    final nextLeague = league ?? this.league;
+    final nextProfiles = careerProfiles ?? this.careerProfiles;
+    final nextLedger = rookieSigningLedger ?? this.rookieSigningLedger;
+    final nextYear = currentYear ?? this.currentYear;
+    final rosterUnchangedForMoney =
+        identical(nextLeague, this.league) &&
+        identical(nextProfiles, this.careerProfiles) &&
+        identical(nextLedger, this.rookieSigningLedger) &&
+        nextYear == this.currentYear;
     return GmCareer(
       id: id ?? this.id,
       schemaVersion: schemaVersion ?? this.schemaVersion,
       generationSeed: generationSeed ?? this.generationSeed,
       userFranchiseId: userFranchiseId ?? this.userFranchiseId,
       originalSituation: originalSituation ?? this.originalSituation,
-      currentYear: currentYear ?? this.currentYear,
+      currentYear: nextYear,
       phase: phase ?? this.phase,
-      league: league ?? this.league,
-      careerProfiles: careerProfiles ?? this.careerProfiles,
+      league: nextLeague,
+      careerProfiles: nextProfiles,
       userOpeningDraftPick: userOpeningDraftPick ?? this.userOpeningDraftPick,
       draftOrder: draftOrder ?? this.draftOrder,
       draftClass: draftClass ?? this.draftClass,
       draftExecutionState: draftExecutionState ?? this.draftExecutionState,
-      rookieSigningLedger: rookieSigningLedger ?? this.rookieSigningLedger,
+      rookieSigningLedger: nextLedger,
       aiRookieSigning: aiRookieSigning ?? this.aiRookieSigning,
       freeAgentPool: freeAgentPool ?? this.freeAgentPool,
+      finances:
+          finances ??
+          (rosterUnchangedForMoney
+              ? this.finances
+              : FinancialMigration.reconcile(
+                  league: nextLeague,
+                  careerProfiles: nextProfiles,
+                  rookieSigningLedger: nextLedger,
+                  currentYear: nextYear,
+                  previous: this.finances,
+                )),
     );
   }
 }

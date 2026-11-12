@@ -127,7 +127,7 @@ basis-point steps. No RNG in revenue.
 | Minimum standard salary | 400 CU |
 | Two-way salary | 250 CU (fixed) |
 | Salary floor | **none in v1** (documented future anti-tanking lever) |
-| Annual raise | 5% (500 bp), rounded down, standard contracts only |
+| Annual raise | 5% (500 bp), rounded down, every standard contract (legacy and rookie alike); two-way deals are flat |
 | Guarantee | full guarantee for all scheduled years in v1 |
 | Options / bonuses | out of scope |
 
@@ -152,7 +152,7 @@ a published OVR band table (not per-player arbitrary values):
 
 | OVR | Year 1 salary | Remaining years by age |
 |---|---|---|
-| <42 | 400 | ≤23: 2; 24–29: 2; ≥30: 1 |
+| <42 | 400 | ≤29: 2; ≥30: 1 |
 | 42–45 | 550 | same |
 | 46–49 | 800 | same |
 | 50–53 | 1,100 | same |
@@ -225,8 +225,9 @@ Three records, one authority each:
 
 Validation:
 
-- Every roster player has exactly one `PlayerContract`; no contract exists for a
-  player outside a roster.
+- Every roster player has exactly one **active** `PlayerContract`; no active contract
+  exists for a player outside a roster. Expired contracts may be retained as immutable
+  history (`startYear + duration ≤ currentYear`) and never count toward any payroll.
 - Every signed `RookieContract` maps to exactly one `PlayerContract` with the same
   player, team, category, start year and duration at migration time.
 - A financial schedule without a `PlayerContract` is invalid; a contracted player
@@ -238,7 +239,7 @@ Validation:
   `DraftSelection.selectingTeamId` is a separate historical draft field.
 - Extensions create a new `PlayerContract` and schedule; history is immutable.
 
-Migration v7→v8 (future, owner-approved):
+Migration v1–v7 → v8 (future, owner-approved):
 
 1. Add `TeamFinances` per franchise (section 5).
 2. Create one `PlayerContract(source: legacy)` for each of the 360 rostered players
@@ -248,12 +249,14 @@ Migration v7→v8 (future, owner-approved):
 4. Leave the free-agent pool and its validation unchanged; the initial-identity
    snapshot and transaction ledger are deferred to the authorized acquisition
    milestone (T08D).
-5. Strict v8 decode; v7 migrates deterministically; no zero salaries; no roster,
-   duration, category or signing-history changes.
+5. Strict v8 decode; every older version (1–7) migrates deterministically; no zero
+   salaries; no roster, duration, category or signing-history changes.
 
 **Over-cap compatibility:** existing contracts are never invalidated, rewritten,
 shortened or waived. If a migrated franchise's payroll exceeds 41,000, it is
-`capGrandfathered`: it may only add minimum-salary players through the minimum-roster
+`capGrandfathered`: it stores the over-cap payroll baseline
+(`grandfatheredPayroll`) and may not exceed that baseline plus the bounded relief
+overage of 800 CU. It may only add minimum-salary players through the minimum-roster
 exception, and it must become compliant through expiry or a future trade/waiver.
 New non-minimum signings are rejected until payroll is at or below the cap.
 
@@ -357,15 +360,18 @@ major facility in the same season.
 
 ## 8. Financial ledger and ownership
 
-- `TeamFinances`: teamId, operatingBudget, cash, revenueBaseline, season.
+- `TeamFinances`: teamId, operatingBudget, cash, revenueBaseline, season,
+  capGrandfathered, grandfatheredPayroll.
 - `ContractFinancials`: contractId, playerId, teamId, annualSalaries, guaranteedYears,
   source, signedYear.
 - `StaffCommitment`: teamId, category, tier, annualCost, startYear, duration.
 - `FacilityState`: teamId, facility, level, maintenancePerYear.
-- `FreeAgentTransaction`: transactionId, playerId, fromPool, toTeamId, contractId, year.
-- All are persisted inside `GmCareer` (schema v8, future); no second save file.
+- `FreeAgentTransaction`: future T08D record; not part of v8.
+- `TeamFinances`, `ContractFinancials`, `StaffCommitment` and `FacilityState` are
+  persisted inside `GmCareer` (schema v8); no second save file. `FreeAgentTransaction`
+  and `initialPlayerIds` follow in T08D.
 - Ownership: a player has exactly one active contract/team; a contract has exactly one
-  schedule; a transaction references exactly one removed free agent.
+  schedule. T08C stores no free-agent transactions.
 - The event ledger remains authoritative for games; financial records are career state,
   not game events.
 
@@ -380,8 +386,13 @@ cash_t = cash_(t-1) + revenue_t - cashPayroll_t - operating_t - construction_t
 cashPayroll_t = capPayroll_t + twoWayPayroll_t
 capPayroll_t = sum of standard schedules for year t
 twoWayPayroll_t = sum of two-way schedules for year t (max 3 x 250)
-operating_t = staff commitments + facility maintenance + baseline operations
+operating_t = staff commitments + facility maintenance
 ```
+
+Two-way salaries are excluded from `capPayroll_t` and included in `cashPayroll_t`; a
+contracted player is never financially free. The "discretionary allowance" in section 5
+is unallocated budget headroom, not a committed expense, so it is not subtracted in the
+cash equation.
 
 Four distinct tests:
 
@@ -431,14 +442,16 @@ minimum-roster relief in the R1 section.
 
 ## 10. Economic safety invariants
 
-- Money is `int` CU in `0..1,000,000`; no floating point, no NaN, no negative balances.
+- Money is a non-negative `int` CU balance (implementation bound `0..1,000,000`); no
+  floating point, no NaN. Projections may be negative for watch/distress decisions, but
+  a negative stored balance is invalid.
 - Percentages use basis points and deterministic rounding.
 - Contract schedules are contiguous, length = duration, startYear ≥ 1, salary within
   category bounds; standard salaries ≤ 8,000, two-way exactly 250.
-- Cap payroll per team per season ≤ 41,000; two-way payroll ≤ 750; cash payroll =
-  cap payroll + two-way payroll. Grandfathered over-cap payroll may not increase except
-  through the minimum-roster exception (at most two minimum deals to reach 14 standard
-  players).
+- New non-minimum commitments may not raise cap payroll above 41,000; two-way payroll
+  ≤ 750; cash payroll = cap payroll + two-way payroll. A migrated over-cap payroll is
+  preserved as `capGrandfathered`: it may not increase except through the bounded
+  minimum-roster exception (at most two minimum deals to reach 14 standard players).
 - Operating commitments ≤ operating budget; cash ≥ 0 after any mutation.
 - One active `PlayerContract` per rostered player; one schedule per contract; every
   signed `RookieContract` links 1:1 to a `PlayerContract`; no duplicate obligations.
@@ -446,7 +459,7 @@ minimum-roster relief in the R1 section.
 - Revenue/expense formulas are pure and deterministic; no RNG, clock or locale.
 - Failed transactions return the input career unchanged (pure command pattern).
 - v8 validation rejects orphan contracts, team/roster mismatches, schedule length
-  mismatches, cap/budget breaches, negative cash and duplicate transactions.
+  mismatches and cap/budget breaches, negative cash and duplicate financial obligations.
 - Human and AI franchises use identical rules; AI policy is deterministic and auditable.
 
 ---
@@ -462,8 +475,9 @@ Correction design (implement in the acquisition milestone, not now):
 1. Move initial-generation constraints into `FreeAgentGenerator` / career creation.
 2. `FreeAgentPool` validates structural integrity only: valid entries, unique IDs, no
    roster/contract ownership; size may shrink to 0.
-3. Persist `initialPlayerIds` (90 IDs) with the pool at schema v8, populated from the
-   current pool during migration.
+3. Persist `initialPlayerIds` (90 IDs) with the pool when the acquisition milestone
+   introduces the transaction ledger (T08D), populated from the then-current pool. T08C
+   v8 leaves the pool serialization unchanged.
 4. Add `FreeAgentTransactionLedger`. Validation: current IDs ⊆ initial IDs; every
    removed ID has exactly one authorized transaction (acquisition or authorized event);
    no transaction references a non-initial ID; acquired players are on exactly one roster
@@ -478,11 +492,13 @@ This milestone only documents the correction; T08A validation remains unchanged.
 
 ## 12. Save migration plan (future v8)
 
-1. Decode v7 strictly as today.
-2. Generate `TeamFinances` deterministically from situation and seed (section 5).
+1. Decode v1–v7 strictly as today.
+2. Generate `TeamFinances` deterministically from the franchise situation (no RNG, no
+   seed-dependent amounts).
 3. Create legacy financial schedules for every rostered player (section 3.6).
 4. Create rookie schedules for every `RookieContract` (section 3.5).
-5. Add `initialPlayerIds` from the current free-agent pool; empty transaction ledger.
+5. Leave `FreeAgentPool` and its v7 validation unchanged: no `initialPlayerIds`, no
+   transaction ledger, no pool shrinkage in T08C. Both belong to T08D.
 6. Encode v8. No league, draft, contract, AI decision, roster or profile changes.
 7. v8 requires all financial sections; malformed data is rejected, not zero-filled.
 8. Atomic writes, backup recovery and M007 isolation unchanged.
@@ -514,8 +530,10 @@ This milestone only documents the correction; T08A validation remains unchanged.
 | D6 | Staff tiers and effect caps |
 | D7 | Facility costs, maintenance and effect caps |
 | D8 | No salary floor in v1; bounded minimum-roster relief |
-| D9 | FreeAgentPool lifecycle correction (initial IDs + transaction ledger) |
-| D10 | Implementation order below |
+| D9 | `PlayerContract` employment authority and `RookieContract` link |
+| D10 | FreeAgentPool lifecycle correction (initial IDs + transaction ledger) |
+| D11 | T08C implementation order and acceptance criteria |
+| D12 | Apply the 5% annual raise to legacy standard contracts (supersedes the flat-legacy assumption behind the historical year-2 figures) |
 
 ---
 
@@ -556,9 +574,9 @@ the earlier illustrative estimates where they differ.
 | Defect | Correction |
 |---|---|
 | A. Missing 42–45 salary | Restored 550 CU; table is complete and monotonic |
-| B. No contract for 360 players | New `PlayerContract` employment record; every rostered player has exactly one; schedules reference it |
+| B. No contract for 360 players | New `PlayerContract` employment record; every rostered player has exactly one active contract; schedules reference it |
 | C. Existing rookies vs cap | Existing contracts are never rewritten; over-cap teams are grandfathered and may only add minimum players via the roster exception |
-| D. Draft vs employment ownership | `RookieContract.selectingTeamId` and `DraftRights` stay historical; `PlayerContract.teamId` is current employment; trades change only the latter |
+| D. Draft vs employment ownership | `RookieContract.teamId` (the signing franchise), `DraftRights` and `DraftSelection.selectingTeamId` stay historical; `PlayerContract.teamId` is current employment; trades and renewals change only the latter |
 | E. Unexplained staff/maintenance | Initial staff roster (9,500) and facility inventory (2,800 maintenance) are explicit records |
 | F. 42,000 payroll under 40,000 cap | Cap corrected to 41,000; the example is rewritten around actual audited payrolls |
 
@@ -573,43 +591,55 @@ Pre-draft payroll by team situation (n = team observations):
 | Playoff | 216 | 21,200 | 24,400 | 24,177 | 27,300 |
 | Contender | 120 | 32,600 | 37,400 | 37,593 | 40,400 |
 
-After the draft and all AI signings:
+After the draft and all AI signings (n = 720 team observations). Two measures are
+reported: two-way salaries never consume cap space but always consume cash.
 
-| Situation | Min | Median | Mean | Max |
-|---|---|---|---|---|
-| Tanking | 7,750 | 10,650 | 10,587 | 12,000 |
-| Play-In | 13,450 | 16,150 | 16,217 | 18,100 |
-| Playoff | 21,200 | 24,650 | 24,402 | 27,550 |
-| Contender | 32,600 | 37,400 | 37,593 | 40,400 |
-
-No contender signed a standard rookie in the audited careers; two-way signings did not
-move the contender aggregate.
-
-Projected payroll in later contract years (legacy durations 2/1, rookie raises 5%):
-
-| Situation | Year 2 min / median / mean / max | Year 3 min / median / mean / max |
+| Situation | Cap payroll min / median / mean / max | Cash payroll min / median / mean / max |
 |---|---|---|
-| Tanking | 7,200 / 10,010 / 10,079 / 12,125 | 0 / 2,755 / 2,516 / 2,755 |
-| Play-In | 7,500 / 12,225 / 12,353 / 15,975 | 0 / 1,323 / 1,488 / 2,424 |
-| Playoff | 12,600 / 17,300 / 17,335 / 24,060 | 0 / 0 / 0 / 0 |
-| Contender | 12,300 / 18,400 / 19,208 / 25,200 | 0 / 0 / 0 / 0 |
+| Tanking | 7,750 / 10,650 / 10,572 / 12,000 | 7,750 / 10,650 / 10,587 / 12,000 |
+| Play-In | 13,450 / 16,100 / 16,057 / 17,850 | 13,450 / 16,150 / 16,217 / 18,100 |
+| Playoff | 21,200 / 24,400 / 24,221 / 27,300 | 21,200 / 24,650 / 24,402 / 27,550 |
+| Contender | 32,600 / 37,400 / 37,593 / 40,400 | 32,600 / 37,400 / 37,593 / 40,400 |
 
-Cap room after existing rookie contracts (cap 41,000):
+The historical R1 table published the **cash-payroll** figures under a generic
+"payroll" label. Cap payroll is lower by the two-way total wherever two-way contracts
+exist. No contender signed a standard rookie in the audited careers; its cap payroll is
+therefore unchanged by signing.
+
+Projected payroll in later contract years (legacy durations 2/1). The historical R1
+figures held year-2 legacy salaries flat and contradict section 3.4; both variants are
+published pending D12:
+
+| Situation | Year 2 min / median / mean / max (5% on every standard contract) | Year 2 min / median / mean / max (legacy held flat) | Year 3 min / median / mean / max |
+|---|---|---|---|
+| Tanking | 7,558 / 10,394 / 10,446 / 12,598 | 7,200 / 9,900 / 9,965 / 12,000 | 0 / 2,755 / 2,516 / 2,755 |
+| Play-In | 7,612 / 12,547 / 12,732 / 16,484 | 7,500 / 12,150 / 12,286 / 15,900 | 0 / 1,323 / 1,488 / 2,424 |
+| Playoff | 13,230 / 18,165 / 18,200 / 25,200 | 12,600 / 17,300 / 17,333 / 24,000 | 0 / 0 / 0 / 0 |
+| Contender | 12,915 / 19,320 / 20,169 / 26,460 | 12,300 / 18,400 / 19,208 / 25,200 | 0 / 0 / 0 / 0 |
+
+Year 3 is unaffected because no legacy contract reaches year 3; only standard rookies
+with at least three scheduled years contribute.
+
+Cap room after existing rookie contracts (cap 41,000 − cap payroll):
 
 | Situation | Min | Median | Mean | Max |
 |---|---|---|---|---|
-| Tanking | 29,000 | 30,350 | 30,413 | 33,250 |
-| Play-In | 22,900 | 24,850 | 24,783 | 27,550 |
-| Playoff | 13,450 | 16,400 | 16,598 | 19,800 |
+| Tanking | 29,000 | 30,350 | 30,428 | 33,250 |
+| Play-In | 23,150 | 24,900 | 24,943 | 27,550 |
+| Playoff | 13,700 | 16,600 | 16,779 | 19,800 |
 | Contender | 600 | 3,600 | 3,408 | 8,400 |
 
 ### 16.4 Cap compliance
 
+Counting unit: 24 leagues × 30 franchises = 720 observations. Each unique generated
+roster repeats across 8 leagues (4 situations × 2 human identities) for the same seed,
+so observations and distinct rosters differ by a factor of 8.
+
 | Rule | Result |
 |---|---|
-| Cap 40,000 | 1 over-cap team (`team-23`, seed `1604126146`, 40,400); 2 teams unable to add one minimum; 3 teams unable to cover a two-player shortage |
-| Cap 41,000 | **0 over-cap teams**; 0 teams unable to add one minimum; 1 team unable to cover a two-player shortage (`team-23`, 600 room vs 800 cost) |
-| Minimum-roster exception | Allows up to two minimum deals to reach 14; resolves the remaining team with at most 200 CU overage |
+| Cap 40,000 | 8 observations = 1 distinct roster over cap (`team-23`, seed `1604126146`, 40,400); 2 distinct rosters cannot add one minimum (`team-23`, `team-12` at 39,900); 3 cannot cover a two-player shortage (`team-23`, `team-12`, `team-19` at 39,300) |
+| Cap 41,000 | **0 over-cap rosters**; 0 cannot add one minimum; 1 distinct roster cannot cover a two-player shortage (`team-23`, 600 room vs 800 cost) |
+| Minimum-roster exception | Allows up to two minimum deals to reach 14; resolves `team-23` with exactly 200 CU overage |
 | Grandfathering | Any migrated over-cap payroll is preserved; no non-minimum additions until compliant |
 
 ### 16.5 Cash and multi-year solvency
@@ -621,8 +651,10 @@ Cap room after existing rookie contracts (cap 41,000):
   **1 negative** (`team-23`, seed `1604126146`), which is the documented financial-watch
   case.
 
-Human franchise payrolls across the 24 audited leagues ranged 8,000–39,200 (all under
-41,000), with cap room 800–32,250 and three-year cash 81,700–97,900. Generation-position
+Human franchise payrolls across the 24 audited leagues ranged 7,750–39,200 (all under
+41,000), with cap room 1,800–33,250. Three-year cash ranged 81,700–97,900 under the
+historical flat-legacy year 2 and 81,267–96,955 under the section 3.4 raise rule. The
+earlier 800 lower cap-room bound belonged to the retired 40,000 cap. Generation-position
 effects changed payroll by up to about 4,300 CU between `team-1` and `team-16` in the
 same seed/situation, so franchise identity matters.
 
@@ -644,16 +676,18 @@ duplicated.
 
 ### 16.7 Minimum-roster relief (proposal, not implemented)
 
-- **Eligibility:** standard roster below 14; normal cap room cannot fit the remaining
-  minimum slots; no outstanding relief debt; over-cap grandfathered teams qualify only
-  for minimum deals.
-- **Maximum contracts:** two minimum-salary contracts per season.
-- **Maximum cap overage:** 800 CU (2 × 400). The audited worst case needs only 200 CU
-  (600 room against an 800 two-deal cost); the 200 is the actual exception, not the
-  maximum.
+- **Eligibility:** standard roster count 12–13 (so at most two minimum deals reach 14);
+  normal cap room cannot fit the remaining slots; no outstanding relief debt; an
+  over-cap grandfathered team qualifies only for minimum deals.
+- **Maximum contracts:** two minimum-salary contracts per season, and only when
+  `14 − standardCount ≤ 2`.
+- **Maximum cap overage:** `min(800, 400 × (14 − standardCount))` CU. The audited worst
+  case needs only 200 CU (600 room against an 800 two-deal cost); the 200 is the actual
+  exception, not the maximum. A team with 600 room and a two-player shortage may exceed
+  the cap by exactly 200; it may not use the remaining 600 of headroom for anything else.
 - **Cap treatment:** minimum salaries count normally; `minimumRosterException` permits
-  at most 800 CU above the cap solely to reach 14 standard players. It never permits a
-  non-minimum deal.
+  only the computed overage above, solely to reach 14 standard players. It never permits
+  a non-minimum deal.
 - **Cash relief:** if projected cash would go negative, the league advances up to 800 CU,
   recorded as `LeagueAdvance` debt and deducted from next season's distribution.
 - **Repayment:** no interest; debt must be cleared before any non-minimum signing.
@@ -690,6 +724,7 @@ duplicated.
 | D9 | `PlayerContract` employment authority and `RookieContract` link | Requires approval |
 | D10 | FreeAgentPool lifecycle correction | Requires approval |
 | D11 | T08C implementation order and acceptance criteria | Requires approval |
+| D12 | Legacy standard contracts receive the 5% annual raise (single raise rule) | Requires approval |
 
 JEV review (`jev-latest`): contract authority 0.88; cap correction 0.86;
 relief/lifecycle 0.95; legacy bootstrap 0.60 before the situation-band gate and 0.69
@@ -752,11 +787,77 @@ contracts exist yet.
   cannot add non-minimum players; the minimum exception is bounded to two deals.
 - **AC-T08C-05** `TeamFinances`, staff commitments and facility states are explicit and
   deterministic by situation; budget covers staff + maintenance + allowance.
-- **AC-T08C-06** v8 migration from v7 preserves league, draft, contracts, AI decisions,
-  rosters, profiles and the free-agent pool; no regeneration.
+- **AC-T08C-06** v8 migration from v1–v7 preserves league, draft, contracts, AI
+  decisions, rosters, profiles and the free-agent pool; no regeneration.
 - **AC-T08C-07** Corrupt financial data is rejected with typed errors.
 - **AC-T08C-08** The 24-league audit reproduces the documented payroll distributions and
-  the single minimum-roster exception.
+  the single minimum-roster exception, with cap payroll, two-way payroll and cash
+  payroll reported separately and counting units stated (observations vs distinct
+  rosters).
 - **AC-T08C-09** No signing, staff, facility or UI transaction is implemented.
 - **AC-T08C-10** Core and Flutter regression suites pass.
+- **AC-T08C-11** v8 migration and round-trip leave the `FreeAgentPool` bytes and the
+  M007 season-save isolation behavior unchanged.
+
+### 16.12 T08C preflight reproduction (2026-11-12)
+
+Read-only preflight at `e97ee5231c24b2b5b35a71e111c3f40792f0aedc` (one documentation
+commit after the stated `249de83` baseline). No production source, test, fixture or
+version constant was modified. The audit tool is retained at
+`packages/simulation_core/tool/t08c_financial_audit.dart`; its output is
+`specs/008-30-team-league/t08c-financial-audit.md`, regenerated with
+`dart run tool/t08c_financial_audit.dart` from `packages/simulation_core`.
+
+Verified:
+
+1. The pre-draft 24-league distribution and the §16.10 30-team reference table
+   reproduce exactly.
+2. The historical after-draft table is **cash payroll** (includes two-way salaries),
+   not cap payroll; both are now published in §16.3.
+3. Cap compliance at 41,000 is 0 over-cap rosters and one roster (`team-23`, 600 room)
+   that needs the two-deal exception; at 40,000 the earlier 1/2/3 counts are distinct
+   rosters, repeated across 8 league observations each.
+4. Human ranges are 7,750–39,200 payroll and 1,800–33,250 cap room at the 41,000 cap.
+   The earlier 800 room bound was computed against the retired 40,000 cap.
+5. §16.3 year-2 figures assumed flat legacy salaries; §3.4 requires a 5% raise on every
+   standard contract. Both variants are published; D12 decides. Historical year-2 values
+   are not exactly reproducible under either rule (±60 CU per roster, ≤2 CU mean); the
+   reproducible tables supersede them.
+6. Two-way salaries were included in the historical cash figures but excluded from the
+   cap figures. The corrected tables keep the three totals distinct.
+
+Unresolved before implementation: D12 (legacy raise rule) and the §16.7 relief bound
+wording. No financial rule is implemented by this reproduction.
+
+### 16.13 T08C implementation record (2026-11-12)
+
+Owner approved D1–D12 with D12 accepted: the 5% annual raise applies to every
+standard contract, legacy included. Implementation branch:
+`feat/m008-t08c-financial-foundation`.
+
+Implemented:
+
+- `FinancialRules`, `Money`, `PlayerContract`, `ContractFinancials`,
+  `TeamFinances`, `StaffCommitment`, `FacilityState`, `CareerFinances` and
+  `FinancialMigration` under `packages/simulation_core/lib/src/finance/` and
+  `models/`.
+- Career schema v8 with strict financial decode; v1–v7 decode regenerates the same
+  deterministic records. `FreeAgentPool` serialization is unchanged.
+- Every rostered player has exactly one active contract and one schedule; legacy
+  schedules use the approved OVR table and 2/1 durations; rookie schedules use the
+  approved pick scale and preserve each `RookieContract`.
+- Cap payroll excludes two-way salaries; cash payroll includes them. Both are stored
+  and validated separately.
+- Cap, operating-budget and year-1 cash-solvency checks run on every career
+  validation. Grandfathered payroll must stay within its stored baseline plus 800 CU.
+- Initial staff 9,500 and facility maintenance 2,800 are explicit records per team.
+- Existing rookie signing now creates the linked `PlayerContract` and schedule
+  atomically, so the previous signing workflow cannot produce a player without
+  employment terms.
+
+Not implemented: free-agent acquisition, negotiations, bidding, waivers, expiry,
+renewals, trades, staff hiring, facility construction, staff/facility effects,
+financial UI, season advancement or bailouts.
+
+Verification evidence is recorded in `t08c-acceptance.md`.
 
