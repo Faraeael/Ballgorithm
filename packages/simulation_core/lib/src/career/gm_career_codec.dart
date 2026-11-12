@@ -26,7 +26,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 11;
+  static const int currentSchemaVersion = 12;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -402,6 +402,10 @@ final class GmCareerCodec {
         throw const FormatException(
           'Missing or invalid freeAgentMarket in career JSON v11',
         );
+      }
+      if (schemaVersion >= 12 &&
+          !rawFreeAgentMarket.containsKey('roundHistory')) {
+        throw const FormatException('Missing roundHistory in career JSON v12');
       }
       freeAgentMarket = FreeAgentMarketState.fromJson(rawFreeAgentMarket);
     } else {

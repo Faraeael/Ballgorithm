@@ -289,6 +289,141 @@ final class FreeAgentMarketOutcome {
 }
 
 /// Persistent shared-market state for the two opening-offseason rounds.
+/// Immutable snapshot of one completed market round.
+final class FreeAgentMarketRoundRecord {
+  FreeAgentMarketRoundRecord({
+    required this.roundNumber,
+    required this.seasonYear,
+    required List<FreeAgentMarketOffer> humanOffers,
+    required List<FreeAgentMarketOffer> aiOffers,
+    required List<PlayerId> resolutionOrder,
+    required List<FreeAgentMarketOutcome> outcomes,
+  }) : humanOffers = List.unmodifiable(humanOffers),
+       aiOffers = List.unmodifiable(aiOffers),
+       resolutionOrder = List.unmodifiable(resolutionOrder),
+       outcomes = List.unmodifiable(outcomes) {
+    _validate();
+  }
+
+  factory FreeAgentMarketRoundRecord.fromJson(Map<String, dynamic> json) {
+    final roundNumber = json['roundNumber'];
+    final seasonYear = json['seasonYear'];
+    final rawHuman = json['humanOffers'];
+    final rawAi = json['aiOffers'];
+    final rawOrder = json['resolutionOrder'];
+    final rawOutcomes = json['outcomes'];
+    if (roundNumber is! int ||
+        seasonYear is! int ||
+        rawHuman is! List ||
+        rawAi is! List ||
+        rawOrder is! List ||
+        rawOutcomes is! List) {
+      throw const FormatException('Malformed round history JSON');
+    }
+    return FreeAgentMarketRoundRecord(
+      roundNumber: roundNumber,
+      seasonYear: seasonYear,
+      humanOffers: [
+        for (final raw in rawHuman)
+          if (raw is Map<String, dynamic>)
+            FreeAgentMarketOffer.fromJson(raw)
+          else
+            throw const FormatException('Malformed historical human offer'),
+      ],
+      aiOffers: [
+        for (final raw in rawAi)
+          if (raw is Map<String, dynamic>)
+            FreeAgentMarketOffer.fromJson(raw)
+          else
+            throw const FormatException('Malformed historical AI offer'),
+      ],
+      resolutionOrder: [
+        for (final raw in rawOrder)
+          if (raw is String)
+            PlayerId(raw)
+          else
+            throw const FormatException('Malformed historical order'),
+      ],
+      outcomes: [
+        for (final raw in rawOutcomes)
+          if (raw is Map<String, dynamic>)
+            FreeAgentMarketOutcome.fromJson(raw)
+          else
+            throw const FormatException('Malformed historical outcome'),
+      ],
+    );
+  }
+
+  final int roundNumber;
+  final int seasonYear;
+  final List<FreeAgentMarketOffer> humanOffers;
+  final List<FreeAgentMarketOffer> aiOffers;
+  final List<PlayerId> resolutionOrder;
+  final List<FreeAgentMarketOutcome> outcomes;
+
+  void _validate() {
+    if (roundNumber < 1 || roundNumber > 2) {
+      throw const FormatException('Historical round must be 1 or 2');
+    }
+    final offered = {
+      for (final offer in [...humanOffers, ...aiOffers]) offer.playerId.value,
+    }.toList()..sort();
+    final order = [for (final id in resolutionOrder) id.value];
+    if (offered.join(',') != order.join(',')) {
+      throw const FormatException(
+        'Historical resolution order must match submitted players',
+      );
+    }
+    if (outcomes.length != resolutionOrder.length) {
+      throw const FormatException(
+        'Historical outcomes must cover the resolution order',
+      );
+    }
+    for (var i = 0; i < outcomes.length; i++) {
+      if (outcomes[i].playerId != resolutionOrder[i]) {
+        throw const FormatException(
+          'Historical outcomes must follow resolution order',
+        );
+      }
+    }
+    final offers = [...humanOffers, ...aiOffers];
+    for (final outcome in outcomes) {
+      final expected = {
+        for (final offer in offers)
+          if (offer.playerId == outcome.playerId) offer.offerId,
+      };
+      final seen = <String>{};
+      for (final result in outcome.results) {
+        final offer = offers.where(
+          (candidate) => candidate.offerId == result.offerId,
+        );
+        if (offer.isEmpty ||
+            offer.single.playerId != outcome.playerId ||
+            offer.single.teamId != result.teamId ||
+            !seen.add(result.offerId)) {
+          throw const FormatException(
+            'Historical outcome does not match its submitted offer',
+          );
+        }
+      }
+      if (seen.length != expected.length || !seen.containsAll(expected)) {
+        throw const FormatException(
+          'Historical outcome must cover every submitted offer',
+        );
+      }
+    }
+  }
+
+  Map<String, Object?> toJson() => {
+    'roundNumber': roundNumber,
+    'seasonYear': seasonYear,
+    'humanOffers': [for (final offer in humanOffers) offer.toJson()],
+    'aiOffers': [for (final offer in aiOffers) offer.toJson()],
+    'resolutionOrder': [for (final id in resolutionOrder) id.value],
+    'outcomes': [for (final outcome in outcomes) outcome.toJson()],
+  };
+}
+
 final class FreeAgentMarketState {
   FreeAgentMarketState({
     required this.status,
@@ -300,10 +435,12 @@ final class FreeAgentMarketState {
     required this.nextResolutionIndex,
     required List<FreeAgentMarketOutcome> outcomes,
     required this.completedRounds,
+    List<FreeAgentMarketRoundRecord> roundHistory = const [],
   }) : humanOffers = List.unmodifiable(humanOffers),
        aiOffers = List.unmodifiable(aiOffers),
        resolutionOrder = List.unmodifiable(resolutionOrder),
-       outcomes = List.unmodifiable(outcomes) {
+       outcomes = List.unmodifiable(outcomes),
+       roundHistory = List.unmodifiable(roundHistory) {
     validate();
   }
 
@@ -318,6 +455,7 @@ final class FreeAgentMarketState {
         nextResolutionIndex: 0,
         outcomes: const [],
         completedRounds: 0,
+        roundHistory: const [],
       );
 
   factory FreeAgentMarketState.fromJson(Map<String, dynamic> json) {
@@ -330,6 +468,7 @@ final class FreeAgentMarketState {
     final nextResolutionIndex = json['nextResolutionIndex'];
     final rawOutcomes = json['outcomes'];
     final completedRounds = json['completedRounds'];
+    final rawRoundHistory = json['roundHistory'];
     if (status is! String ||
         roundNumber is! int ||
         seasonYear is! int ||
@@ -338,7 +477,8 @@ final class FreeAgentMarketState {
         rawOrder is! List ||
         nextResolutionIndex is! int ||
         rawOutcomes is! List ||
-        completedRounds is! int) {
+        completedRounds is! int ||
+        (rawRoundHistory != null && rawRoundHistory is! List)) {
       throw const FormatException('Malformed FreeAgentMarketState JSON');
     }
     return FreeAgentMarketState(
@@ -375,6 +515,15 @@ final class FreeAgentMarketState {
             throw const FormatException('Malformed market outcome'),
       ],
       completedRounds: completedRounds,
+      roundHistory: rawRoundHistory == null
+          ? const []
+          : [
+              for (final raw in rawRoundHistory)
+                if (raw is Map<String, dynamic>)
+                  FreeAgentMarketRoundRecord.fromJson(raw)
+                else
+                  throw const FormatException('Malformed round history'),
+            ],
     );
   }
 
@@ -387,6 +536,7 @@ final class FreeAgentMarketState {
   final int nextResolutionIndex;
   final List<FreeAgentMarketOutcome> outcomes;
   final int completedRounds;
+  final List<FreeAgentMarketRoundRecord> roundHistory;
 
   Iterable<FreeAgentMarketOffer> get allOffers => [...humanOffers, ...aiOffers];
 
@@ -530,9 +680,23 @@ final class FreeAgentMarketState {
         issues.add(_issue('outcomes', 'outcomes must match cursor'));
       }
     }
+    if (roundHistory.length > completedRounds) {
+      issues.add(_issue('roundHistory', 'history exceeds completed rounds'));
+    }
+    for (var i = 0; i < roundHistory.length; i++) {
+      if (roundHistory[i].roundNumber != i + 1 ||
+          roundHistory[i].seasonYear != seasonYear) {
+        issues.add(_issue('roundHistory', 'history rounds must be contiguous'));
+        break;
+      }
+    }
     for (final outcome in outcomes) {
       final resultIds = <String>{};
       var acceptedResult = 0;
+      final expectedOfferIds = {
+        for (final offer in allOffers)
+          if (offer.playerId == outcome.playerId) offer.offerId,
+      };
       for (final result in outcome.results) {
         if (!offerIds.contains(result.offerId)) {
           issues.add(
@@ -541,6 +705,16 @@ final class FreeAgentMarketState {
               'result references unknown offer ${result.offerId}',
             ),
           );
+        } else {
+          final offer = allOffers.firstWhere(
+            (candidate) => candidate.offerId == result.offerId,
+          );
+          if (offer.playerId != outcome.playerId ||
+              offer.teamId != result.teamId) {
+            issues.add(
+              _issue('outcomes', 'result player/team does not match offer'),
+            );
+          }
         }
         if (!resultIds.add(result.offerId)) {
           issues.add(
@@ -556,6 +730,12 @@ final class FreeAgentMarketState {
             );
           }
         }
+      }
+      if (resultIds.length != expectedOfferIds.length ||
+          !resultIds.containsAll(expectedOfferIds)) {
+        issues.add(
+          _issue('outcomes', 'every submitted offer needs exactly one outcome'),
+        );
       }
       if (acceptedResult > 1) {
         issues.add(_issue('outcomes', 'multiple accepted offers for a player'));
@@ -588,6 +768,7 @@ final class FreeAgentMarketState {
     int? nextResolutionIndex,
     List<FreeAgentMarketOutcome>? outcomes,
     int? completedRounds,
+    List<FreeAgentMarketRoundRecord>? roundHistory,
   }) => FreeAgentMarketState(
     status: status ?? this.status,
     roundNumber: roundNumber ?? this.roundNumber,
@@ -598,6 +779,7 @@ final class FreeAgentMarketState {
     nextResolutionIndex: nextResolutionIndex ?? this.nextResolutionIndex,
     outcomes: outcomes ?? this.outcomes,
     completedRounds: completedRounds ?? this.completedRounds,
+    roundHistory: roundHistory ?? this.roundHistory,
   );
 
   Map<String, Object?> toJson() => {
@@ -610,5 +792,6 @@ final class FreeAgentMarketState {
     'nextResolutionIndex': nextResolutionIndex,
     'outcomes': [for (final outcome in outcomes) outcome.toJson()],
     'completedRounds': completedRounds,
+    'roundHistory': [for (final record in roundHistory) record.toJson()],
   };
 }

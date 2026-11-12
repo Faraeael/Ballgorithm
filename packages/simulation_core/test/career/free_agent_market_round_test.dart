@@ -138,6 +138,22 @@ void main() {
         ),
         isTrue,
       );
+      final targets = career.freeAgentMarket.aiOffers
+          .map((offer) => offer.playerId.value)
+          .toSet();
+      final perTarget = <String, int>{};
+      for (final offer in career.freeAgentMarket.aiOffers) {
+        perTarget[offer.playerId.value] =
+            (perTarget[offer.playerId.value] ?? 0) + 1;
+      }
+      expect(targets.length, greaterThan(50));
+      expect(
+        perTarget.values.fold<int>(
+          0,
+          (max, value) => value > max ? value : max,
+        ),
+        lessThanOrEqualTo(10),
+      );
       expect(career.freeAgentPool.acquisitions, isEmpty);
       final encoded = GmCareerCodec.encode(career);
       final decoded = GmCareerCodec.decode(encoded);
@@ -370,6 +386,14 @@ void main() {
         FreeAgentMarketStatus.roundComplete,
       );
       expect(career.freeAgentMarket.completedRounds, 1);
+      expect(career.freeAgentMarket.roundHistory.length, 1);
+      final firstRoundOffers =
+          career.freeAgentMarket.roundHistory.single.humanOffers.length;
+      expect(firstRoundOffers, 1);
+      expect(
+        career.freeAgentMarket.roundHistory.single.outcomes.length,
+        career.freeAgentMarket.roundHistory.single.resolutionOrder.length,
+      );
 
       career = _marketService.startRound(career);
       expect(career.freeAgentMarket.roundNumber, 2);
@@ -384,7 +408,20 @@ void main() {
         FreeAgentMarketStatus.marketComplete,
       );
       expect(career.freeAgentMarket.completedRounds, 2);
+      expect(career.freeAgentMarket.roundHistory.length, 2);
       expect(career.currentYear, 1);
+      final encoded = GmCareerCodec.encode(career);
+      final roundTrip = GmCareerCodec.decode(encoded);
+      expect(
+        jsonEncode(
+          roundTrip.freeAgentMarket.roundHistory
+              .map((r) => r.toJson())
+              .toList(),
+        ),
+        jsonEncode(
+          career.freeAgentMarket.roundHistory.map((r) => r.toJson()).toList(),
+        ),
+      );
       final acquiredIds = career.freeAgentPool.acquisitions.entries.values
           .map((record) => record.playerId.value)
           .toList();
@@ -413,6 +450,55 @@ void main() {
       expect(
         jsonEncode(finalRoundTrip.freeAgentMarket.toJson()),
         jsonEncode(completed.freeAgentMarket.toJson()),
+      );
+    });
+
+    test('identical rejected offer is blocked in a later round', () {
+      final base = _career();
+      final player = base.freeAgentPool.entries.firstWhere(
+        (entry) => entry.player.attributes.overallRating >= 75,
+      );
+      var career = base.copyWith(
+        freeAgentMarket: _preparedState(
+          career: base,
+          playerId: player.id,
+          humanOffers: [
+            _offer(
+              teamId: base.userFranchiseId,
+              playerId: player.id,
+              salary: 400,
+              source: FreeAgentMarketOfferSource.human,
+            ),
+          ],
+          aiOffers: const [],
+        ),
+      );
+      career = _resolveAll(career);
+      expect(
+        career.freeAgentOffers.attemptsFor(
+          teamId: career.userFranchiseId,
+          playerId: player.id,
+          seasonYear: 1,
+        ),
+        isNotEmpty,
+      );
+      career = _marketService.startRound(career);
+      expect(
+        () => _marketService.stageHumanOffer(
+          career: career,
+          teamId: career.userFranchiseId,
+          playerId: player.id,
+          category: RosterCategory.standard,
+          durationYears: 1,
+          firstYearSalary: 400,
+        ),
+        throwsA(
+          isA<DomainValidationException>().having(
+            (error) => error.codes,
+            'codes',
+            contains(ValidationCode.freeAgentOfferDuplicate),
+          ),
+        ),
       );
     });
 
@@ -540,6 +626,92 @@ void main() {
       );
     });
 
+    test('malformed outcome sets are rejected', () {
+      final base = _career();
+      final player = base.freeAgentPool.entries.first;
+      final human = _offer(
+        teamId: base.userFranchiseId,
+        playerId: player.id,
+        salary: 1000,
+        source: FreeAgentMarketOfferSource.human,
+      );
+      final aiTeam = base.league.teams.firstWhere(
+        (team) => team.id != base.userFranchiseId,
+      );
+      final ai = _offer(
+        teamId: aiTeam.id,
+        playerId: player.id,
+        salary: 1000,
+        source: FreeAgentMarketOfferSource.ai,
+      );
+      FreeAgentMarketOutcome outcome(
+        List<FreeAgentMarketOfferResult> results,
+      ) => FreeAgentMarketOutcome(
+        playerId: player.id,
+        winningTeamId: null,
+        winningOfferId: null,
+        results: results,
+      );
+      final missing = outcome([
+        FreeAgentMarketOfferResult(
+          offerId: human.offerId,
+          teamId: human.teamId,
+          outcome: FreeAgentMarketOfferOutcome.outbid,
+          reasonCode: 'outbid',
+        ),
+      ]);
+      final duplicate = outcome([
+        FreeAgentMarketOfferResult(
+          offerId: human.offerId,
+          teamId: human.teamId,
+          outcome: FreeAgentMarketOfferOutcome.outbid,
+          reasonCode: 'outbid',
+        ),
+        FreeAgentMarketOfferResult(
+          offerId: human.offerId,
+          teamId: human.teamId,
+          outcome: FreeAgentMarketOfferOutcome.outbid,
+          reasonCode: 'outbid',
+        ),
+        FreeAgentMarketOfferResult(
+          offerId: ai.offerId,
+          teamId: ai.teamId,
+          outcome: FreeAgentMarketOfferOutcome.outbid,
+          reasonCode: 'outbid',
+        ),
+      ]);
+      final wrongTeam = outcome([
+        FreeAgentMarketOfferResult(
+          offerId: human.offerId,
+          teamId: ai.teamId,
+          outcome: FreeAgentMarketOfferOutcome.outbid,
+          reasonCode: 'outbid',
+        ),
+        FreeAgentMarketOfferResult(
+          offerId: ai.offerId,
+          teamId: ai.teamId,
+          outcome: FreeAgentMarketOfferOutcome.outbid,
+          reasonCode: 'outbid',
+        ),
+      ]);
+      for (final malformed in [missing, duplicate, wrongTeam]) {
+        expect(
+          () => FreeAgentMarketState(
+            status: FreeAgentMarketStatus.roundComplete,
+            roundNumber: 1,
+            seasonYear: 1,
+            humanOffers: [human],
+            aiOffers: [ai],
+            resolutionOrder: [player.id],
+            nextResolutionIndex: 1,
+            outcomes: [malformed],
+            completedRounds: 1,
+          ),
+          throwsA(isA<DomainValidationException>()),
+        );
+      }
+    });
+
     test('v10 historical signings survive market initialization', () {
       final base = _career();
       final player = base.freeAgentPool.entries.firstWhere(
@@ -560,14 +732,14 @@ void main() {
             ..['schemaVersion'] = 10
             ..remove('freeAgentMarket');
       final migrated = GmCareerCodec.decode(jsonEncode(json));
-      expect(migrated.schemaVersion, 11);
+      expect(migrated.schemaVersion, 12);
       expect(migrated.freeAgentMarket.status, FreeAgentMarketStatus.notStarted);
       expect(migrated.freeAgentPool.acquisitions.length, 1);
       expect(migrated.freeAgentOffers.length, 1);
       expect(migrated.freeAgentPool.length, 89);
     });
 
-    test('v1-v10 migrate to an empty market; v11 requires it', () {
+    test('v1-v11 migrate to an empty market; v12 requires it', () {
       final base =
           jsonDecode(GmCareerCodec.encode(_career())) as Map<String, dynamic>;
       for (var version = 1; version <= 10; version++) {
@@ -575,16 +747,33 @@ void main() {
           ..['schemaVersion'] = version
           ..remove('freeAgentMarket');
         final migrated = GmCareerCodec.decode(jsonEncode(older));
-        expect(migrated.schemaVersion, 11);
+        expect(migrated.schemaVersion, 12);
         expect(
           migrated.freeAgentMarket.status,
           FreeAgentMarketStatus.notStarted,
         );
       }
+      final legacyV11 = jsonDecode(jsonEncode(base)) as Map<String, dynamic>
+        ..['schemaVersion'] = 11;
+      ((legacyV11['freeAgentMarket'] as Map<String, dynamic>)).remove(
+        'roundHistory',
+      );
+      final legacy = GmCareerCodec.decode(jsonEncode(legacyV11));
+      expect(legacy.schemaVersion, 12);
+      expect(legacy.freeAgentMarket.roundHistory, isEmpty);
+
       final missing = Map<String, dynamic>.from(base)
         ..remove('freeAgentMarket');
       expect(
         () => GmCareerCodec.decode(jsonEncode(missing)),
+        throwsFormatException,
+      );
+      final missingHistory = Map<String, dynamic>.from(base);
+      ((missingHistory['freeAgentMarket'] as Map<String, dynamic>)).remove(
+        'roundHistory',
+      );
+      expect(
+        () => GmCareerCodec.decode(jsonEncode(missingHistory)),
         throwsFormatException,
       );
     });

@@ -151,7 +151,7 @@ void main() {
         jsonEncode(career.freeAgentPool.toJson()),
       );
       expect(GmCareerCodec.encode(decoded), encoded);
-      expect(decoded.schemaVersion, 11);
+      expect(decoded.schemaVersion, 12);
     });
 
     test('15. v6 saves migrate with a deterministic generated pool', () {
@@ -185,7 +185,7 @@ void main() {
       );
       final reencoded =
           jsonDecode(GmCareerCodec.encode(migrated)) as Map<String, dynamic>;
-      expect(reencoded['schemaVersion'], 11);
+      expect(reencoded['schemaVersion'], 12);
       expect(reencoded['freeAgentPool'], isNotNull);
     });
 

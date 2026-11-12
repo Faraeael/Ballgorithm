@@ -102,7 +102,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 11;
+  static const int currentSchemaVersion = 12;
 
   final String id;
   final int schemaVersion;
@@ -430,73 +430,94 @@ final class GmCareer {
       }
     }
     for (final outcome in freeAgentMarket.outcomes) {
-      for (final result in outcome.results) {
-        if (result.outcome == FreeAgentMarketOfferOutcome.accepted) {
-          final acquisition = freeAgentPool.acquisitions.forPlayer(
-            outcome.playerId,
+      _validateMarketOutcome(
+        outcome: outcome,
+        offers: freeAgentMarket.allOffers,
+        seasonYear: freeAgentMarket.seasonYear,
+      );
+    }
+    for (final round in freeAgentMarket.roundHistory) {
+      final offers = [...round.humanOffers, ...round.aiOffers];
+      for (final outcome in round.outcomes) {
+        _validateMarketOutcome(
+          outcome: outcome,
+          offers: offers,
+          seasonYear: round.seasonYear,
+        );
+      }
+    }
+  }
+
+  void _validateMarketOutcome({
+    required FreeAgentMarketOutcome outcome,
+    required Iterable<FreeAgentMarketOffer> offers,
+    required int seasonYear,
+  }) {
+    for (final result in outcome.results) {
+      if (result.outcome == FreeAgentMarketOfferOutcome.accepted) {
+        final acquisition = freeAgentPool.acquisitions.forPlayer(
+          outcome.playerId,
+        );
+        if (acquisition == null ||
+            outcome.winningTeamId != result.teamId ||
+            acquisition.teamId != result.teamId) {
+          throw FormatException(
+            'Market result ${result.offerId} lacks its acquisition',
           );
-          if (acquisition == null ||
-              outcome.winningTeamId != result.teamId ||
-              acquisition.teamId != result.teamId) {
-            throw FormatException(
-              'Market result ${result.offerId} lacks its acquisition',
-            );
-          }
-          final marketOffer = freeAgentMarket.allOffers.firstWhere(
-            (offer) => offer.offerId == result.offerId,
-            orElse: () => throw FormatException(
-              'Accepted market offer ${result.offerId} is missing',
-            ),
+        }
+        final marketOffer = offers.firstWhere(
+          (offer) => offer.offerId == result.offerId,
+          orElse: () => throw FormatException(
+            'Accepted market offer ${result.offerId} is missing',
+          ),
+        );
+        final contract = finances.contractForPlayer(outcome.playerId);
+        if (contract == null ||
+            contract.category != marketOffer.category ||
+            contract.durationYears != marketOffer.durationYears ||
+            contract.startYear != marketOffer.seasonYear ||
+            contract.source != ContractSource.freeAgent ||
+            finances.scheduleFor(contract.id)?.annualSalaries.first !=
+                marketOffer.firstYearSalary) {
+          throw FormatException(
+            'Accepted market offer ${result.offerId} does not match its '
+            'contract',
           );
-          final contract = finances.contractForPlayer(outcome.playerId);
-          if (contract == null ||
-              contract.category != marketOffer.category ||
-              contract.durationYears != marketOffer.durationYears ||
-              contract.startYear != marketOffer.seasonYear ||
-              contract.source != ContractSource.freeAgent ||
-              finances.scheduleFor(contract.id)?.annualSalaries.first !=
-                  marketOffer.firstYearSalary) {
-            throw FormatException(
-              'Accepted market offer ${result.offerId} does not match its '
-              'contract',
+        }
+        final acceptedAttempt = freeAgentOffers
+            .attemptsFor(
+              teamId: result.teamId,
+              playerId: outcome.playerId,
+              seasonYear: seasonYear,
+            )
+            .where(
+              (attempt) =>
+                  attempt.outcome.isAccepted &&
+                  attempt.acquisitionTransactionId == acquisition.transactionId,
             );
-          }
-          final acceptedAttempt = freeAgentOffers
-              .attemptsFor(
-                teamId: result.teamId,
-                playerId: outcome.playerId,
-                seasonYear: freeAgentMarket.seasonYear,
-              )
-              .where(
-                (attempt) =>
-                    attempt.outcome.isAccepted &&
-                    attempt.acquisitionTransactionId ==
-                        acquisition.transactionId,
-              );
-          if (acceptedAttempt.isEmpty) {
-            throw FormatException(
-              'Accepted market offer ${result.offerId} lacks a formal '
-              'accepted offer record',
-            );
-          }
-        } else if (result.outcome == FreeAgentMarketOfferOutcome.rejected) {
-          final attempts = freeAgentOffers.attemptsFor(
-            teamId: result.teamId,
-            playerId: outcome.playerId,
-            seasonYear: freeAgentMarket.seasonYear,
+        if (acceptedAttempt.isEmpty) {
+          throw FormatException(
+            'Accepted market offer ${result.offerId} lacks a formal '
+            'accepted offer record',
           );
-          final matching = attempts.where(
-            (attempt) =>
-                !attempt.outcome.isAccepted &&
-                attempt.attemptNumber <=
-                    FreeAgentOfferAttempt.maximumPlayerSideAttempts,
+        }
+      } else if (result.outcome == FreeAgentMarketOfferOutcome.rejected) {
+        final attempts = freeAgentOffers.attemptsFor(
+          teamId: result.teamId,
+          playerId: outcome.playerId,
+          seasonYear: seasonYear,
+        );
+        final matching = attempts.where(
+          (attempt) =>
+              !attempt.outcome.isAccepted &&
+              attempt.attemptNumber <=
+                  FreeAgentOfferAttempt.maximumPlayerSideAttempts,
+        );
+        if (matching.isEmpty) {
+          throw FormatException(
+            'Rejected market result ${result.offerId} lacks a formal '
+            'rejection record',
           );
-          if (matching.isEmpty) {
-            throw FormatException(
-              'Rejected market result ${result.offerId} lacks a formal '
-              'rejection record',
-            );
-          }
         }
       }
     }

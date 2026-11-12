@@ -19,25 +19,11 @@ final class CompetitiveOfferRanker {
     final view = entry.toPublicView();
     final ranked = [...offers]
       ..sort((a, b) {
-        final high = a.firstYearSalary > b.firstYearSalary
-            ? a.firstYearSalary
-            : b.firstYearSalary;
-        final threshold = (high * 1000) ~/ 10000;
-        final salaryDifference = (a.firstYearSalary - b.firstYearSalary).abs();
-        if (salaryDifference > threshold) {
-          return b.firstYearSalary.compareTo(a.firstYearSalary);
-        }
         final aTeam = career.league.teams.firstWhere((t) => t.id == a.teamId);
         final bTeam = career.league.teams.firstWhere((t) => t.id == b.teamId);
-        final aFit = _fit(aTeam, view);
-        final bFit = _fit(bTeam, view);
-        if (aFit != bFit) return bFit.compareTo(aFit);
-        final aDuration = (a.durationYears - _preferred(view)).abs();
-        final bDuration = (b.durationYears - _preferred(view)).abs();
-        if (aDuration != bDuration) return aDuration.compareTo(bDuration);
-        if (salaryDifference != 0) {
-          return b.firstYearSalary.compareTo(a.firstYearSalary);
-        }
+        final aScore = _utility(a, aTeam, view);
+        final bScore = _utility(b, bTeam, view);
+        if (aScore != bScore) return bScore.compareTo(aScore);
         final aKey = _fnv1a(
           '${a.playerId.value}:${a.teamId.value}:${a.roundNumber}',
         );
@@ -48,6 +34,18 @@ final class CompetitiveOfferRanker {
         return a.offerId.compareTo(b.offerId);
       });
     return ranked;
+  }
+
+  /// Additive, transitive utility. Salary is weighted at 10 CU per salary CU,
+  /// fit is at most +/-2,000 and duration at most -300, so salary stays the
+  /// dominant term while fit and duration can decide near-equal offers.
+  int _utility(
+    FreeAgentMarketOffer offer,
+    Team team,
+    PublicFreeAgentView view,
+  ) {
+    final durationGap = (offer.durationYears - _preferred(view)).abs();
+    return offer.firstYearSalary * 10 + _fit(team, view) - durationGap * 100;
   }
 
   int _preferred(PublicFreeAgentView view) {

@@ -102,6 +102,23 @@ final class FreeAgentMarketService {
         'No player-side offers remain for this player',
       );
     }
+    final priorAttempts = career.freeAgentOffers.attemptsFor(
+      teamId: teamId,
+      playerId: playerId,
+      seasonYear: career.currentYear,
+    );
+    if (priorAttempts.any(
+      (attempt) =>
+          !attempt.outcome.isAccepted &&
+          attempt.category == category &&
+          attempt.durationYears == durationYears &&
+          attempt.firstYearSalary == firstYearSalary,
+    )) {
+      _fail(
+        ValidationCode.freeAgentOfferDuplicate,
+        'An identical offer was already rejected',
+      );
+    }
     final decision = offerEvaluator.evaluate(
       career: career,
       teamId: teamId,
@@ -336,6 +353,7 @@ final class FreeAgentMarketService {
     );
     final nextIndex = market.nextResolutionIndex + 1;
     final complete = nextIndex >= market.resolutionOrder.length;
+    final outcomes = [...market.outcomes, outcome];
     final updatedState = market.copyWith(
       status: complete
           ? (market.roundNumber == 2
@@ -343,8 +361,11 @@ final class FreeAgentMarketService {
                 : FreeAgentMarketStatus.roundComplete)
           : FreeAgentMarketStatus.resolving,
       nextResolutionIndex: nextIndex,
-      outcomes: [...market.outcomes, outcome],
+      outcomes: outcomes,
       completedRounds: complete ? market.roundNumber : market.completedRounds,
+      roundHistory: complete
+          ? [...market.roundHistory, _roundRecord(market, outcomes)]
+          : market.roundHistory,
     );
     final base = won ?? career;
     return _replaceMarket(base.copyWith(freeAgentOffers: ledger), updatedState);
@@ -355,11 +376,32 @@ final class FreeAgentMarketService {
     final status = market.roundNumber == 2
         ? FreeAgentMarketStatus.marketComplete
         : FreeAgentMarketStatus.roundComplete;
+    final alreadyRecorded = market.roundHistory.any(
+      (record) => record.roundNumber == market.roundNumber,
+    );
     return _replaceMarket(
       career,
-      market.copyWith(status: status, completedRounds: market.roundNumber),
+      market.copyWith(
+        status: status,
+        completedRounds: market.roundNumber,
+        roundHistory: alreadyRecorded
+            ? market.roundHistory
+            : [...market.roundHistory, _roundRecord(market, market.outcomes)],
+      ),
     );
   }
+
+  FreeAgentMarketRoundRecord _roundRecord(
+    FreeAgentMarketState market,
+    List<FreeAgentMarketOutcome> outcomes,
+  ) => FreeAgentMarketRoundRecord(
+    roundNumber: market.roundNumber,
+    seasonYear: market.seasonYear,
+    humanOffers: market.humanOffers,
+    aiOffers: market.aiOffers,
+    resolutionOrder: market.resolutionOrder,
+    outcomes: outcomes,
+  );
 
   void _validateReservation({
     required GmCareer career,
@@ -442,7 +484,11 @@ final class FreeAgentMarketService {
       seasonYear: seasonYear,
     );
     if (attempts.length >= FreeAgentOfferAttempt.maximumPlayerSideAttempts) {
-      return ledger;
+      _fail(
+        ValidationCode.freeAgentOfferLimitReached,
+        'Player-side attempt limit reached for ${offer.teamId.value}/'
+        '${offer.playerId.value}',
+      );
     }
     final attempt = FreeAgentOfferAttempt(
       offerId: FreeAgentOfferAttempt.idFor(

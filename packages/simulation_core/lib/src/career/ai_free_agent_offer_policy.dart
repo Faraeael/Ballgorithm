@@ -24,13 +24,23 @@ final class AiFreeAgentOfferPolicy {
     required FreeAgentMarketState marketState,
   }) {
     final offers = <FreeAgentMarketOffer>[];
-    for (final team in career.league.teams) {
-      if (team.id == career.userFranchiseId) continue;
+    final targetCounts = <String, int>{};
+    final aiTeams =
+        career.league.teams
+            .where((team) => team.id != career.userFranchiseId)
+            .toList()
+          ..sort(
+            (a, b) => _fnv1a(
+              '${marketState.roundNumber}:${a.id.value}',
+            ).compareTo(_fnv1a('${marketState.roundNumber}:${b.id.value}')),
+          );
+    for (final team in aiTeams) {
       final standardNeed =
           FinancialRules.minimumStandardRoster - team.roster.standardCount;
       final twoWayNeed =
           FinancialRules.maximumTwoWayPlayers - team.roster.twoWayCount;
       if (standardNeed <= 0 && twoWayNeed <= 0) continue;
+      final twoWayLimit = twoWayNeed > 0 ? 1 : 0;
 
       final candidates = [
         for (final entry in career.freeAgentPool.entries)
@@ -41,7 +51,7 @@ final class AiFreeAgentOfferPolicy {
               ) >
               0)
             entry,
-      ]..sort((a, b) => _compareCandidates(a, b, team));
+      ]..sort((a, b) => _compareCandidates(a, b, team, targetCounts));
 
       var standardAdded = 0;
       var twoWayAdded = 0;
@@ -61,7 +71,7 @@ final class AiFreeAgentOfferPolicy {
 
       for (final entry in candidates) {
         final needStandard = standardNeed - standardAdded;
-        final needTwoWay = twoWayNeed - twoWayAdded;
+        final needTwoWay = twoWayLimit - twoWayAdded;
         if (needStandard <= 0 && needTwoWay <= 0) break;
         final view = entry.toPublicView();
         final valuation = market.estimate(view);
@@ -104,6 +114,20 @@ final class AiFreeAgentOfferPolicy {
           }
         }
         if (acceptedSalary == null) continue;
+        final priorAttempts = career.freeAgentOffers.attemptsFor(
+          teamId: team.id,
+          playerId: entry.id,
+          seasonYear: career.currentYear,
+        );
+        if (priorAttempts.any(
+          (attempt) =>
+              !attempt.outcome.isAccepted &&
+              attempt.category == category &&
+              attempt.durationYears == duration &&
+              attempt.firstYearSalary == acceptedSalary,
+        )) {
+          continue;
+        }
 
         final addedCap = category == RosterCategory.standard
             ? acceptedSalary
@@ -149,12 +173,18 @@ final class AiFreeAgentOfferPolicy {
         twoWayAdded += addedTwoWay;
         committedCap += addedCap;
         committedCash += acceptedSalary;
+        targetCounts[entry.id.value] = (targetCounts[entry.id.value] ?? 0) + 1;
       }
     }
     return offers;
   }
 
-  int _compareCandidates(FreeAgentEntry a, FreeAgentEntry b, Team team) {
+  int _compareCandidates(
+    FreeAgentEntry a,
+    FreeAgentEntry b,
+    Team team,
+    Map<String, int> targetCounts,
+  ) {
     final aView = a.toPublicView();
     final bView = b.toPublicView();
     final aPosition = team.players
@@ -164,6 +194,9 @@ final class AiFreeAgentOfferPolicy {
         .where((player) => player.position == bView.position)
         .length;
     if (aPosition != bPosition) return aPosition.compareTo(bPosition);
+    final aContested = targetCounts[a.id.value] ?? 0;
+    final bContested = targetCounts[b.id.value] ?? 0;
+    if (aContested != bContested) return aContested.compareTo(bContested);
     final situation = team.situation ?? FranchiseSituation.playIn;
     switch (situation) {
       case FranchiseSituation.tanking:

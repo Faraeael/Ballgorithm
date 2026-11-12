@@ -16,7 +16,6 @@ class GmCareerController extends ChangeNotifier {
   bool _draftRecoveryRequired = false;
   static const _draftService = DraftExecutionService();
   static const _signingService = RookieSigningService();
-  static const _offerService = FreeAgentOfferSubmissionService();
   static const _marketService = FreeAgentMarketService();
   static const _aiSigningService = RookieAiSigningService();
 
@@ -184,49 +183,6 @@ class GmCareerController extends ChangeNotifier {
       _career = next;
       notifyListeners();
     });
-  }
-
-  /// Submits one formal free-agent offer for the human franchise.
-  ///
-  /// The player decision and any acquisition are persisted before publication.
-  /// Rejected offers are durable; invalid/financially illegal offers consume no
-  /// attempt and are not saved. A failed write blocks further commands until
-  /// an explicit reload.
-  @Deprecated(
-    'Use stageFreeAgentOffer and the shared market round; retained for '
-    'historical T08F domain workflows and tests.',
-  )
-  Future<FreeAgentOfferSubmissionResult> submitFreeAgentOffer({
-    required PlayerId freeAgentId,
-    required RosterCategory category,
-    required int durationYears,
-    required int agreedFirstYearSalary,
-    String slot = 'default',
-  }) {
-    final submittedCareer = _career;
-    FreeAgentOfferSubmissionResult? result;
-    final command = _runCareerCommand(
-      action: 'submit free-agent offer',
-      () async {
-        final current = _requireCareer();
-        if (!identical(current, submittedCareer)) {
-          throw StateError('Career changed before the offer executed');
-        }
-        final submission = _offerService.submit(
-          career: current,
-          teamId: current.userFranchiseId,
-          freeAgentId: freeAgentId,
-          category: category,
-          durationYears: durationYears,
-          agreedFirstYearSalary: agreedFirstYearSalary,
-        );
-        result = submission;
-        if (submission.recorded) {
-          await _saveCareerState(submission.career, slot);
-        }
-      },
-    );
-    return command.then((_) => result!);
   }
 
   /// Starts or advances to the next free-agency market round.
