@@ -6,6 +6,7 @@ import 'career_storage.dart';
 import 'draft_board_screen.dart';
 import 'free_agents_screen.dart';
 import 'league_readiness_screen.dart';
+import 'offseason_clearance_screen.dart';
 import 'rookie_signing_screen.dart';
 import 'rookie_signing_status.dart';
 
@@ -476,6 +477,45 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
                       );
                     },
                     child: const Text('View Free Agents'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            key: const ValueKey('card-offseason-clearance'),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Offseason Clearance',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Round ${career.freeAgentMarket.roundNumber} • '
+                    '${career.freeAgentMarket.status.jsonValue} • '
+                    '${career.offseasonClearance.status.jsonValue}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.tonal(
+                    key: const ValueKey('btn-open-clearance'),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => GmOffseasonClearanceScreen(
+                            controller: controller,
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Text('Review Clearance'),
                   ),
                 ],
               ),

@@ -1,6 +1,7 @@
 import '../generation/draft_generator.dart';
 import '../generation/free_agent_generator.dart';
 import '../finance/career_finances.dart';
+import '../finance/financial_rules.dart';
 import '../finance/financial_migration.dart';
 import '../models/draft_execution_state.dart';
 import '../models/draft_order.dart';
@@ -10,6 +11,7 @@ import '../models/franchise_situation.dart';
 import '../models/free_agent.dart';
 import '../models/free_agent_market.dart';
 import '../models/free_agent_offer.dart';
+import '../models/offseason_clearance.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
 import '../models/player_career_profile.dart';
@@ -42,6 +44,7 @@ final class GmCareer {
     FreeAgentPool? freeAgentPool,
     FreeAgentOfferLedger? freeAgentOffers,
     FreeAgentMarketState? freeAgentMarket,
+    OffseasonClearanceState? offseasonClearance,
     CareerFinances? finances,
   }) : draftExecutionState =
            draftExecutionState ?? DraftExecutionState.initial(),
@@ -51,6 +54,9 @@ final class GmCareer {
        freeAgentMarket =
            freeAgentMarket ??
            FreeAgentMarketState.initial(seasonYear: currentYear),
+       offseasonClearance =
+           offseasonClearance ??
+           OffseasonClearanceState.initial(seasonYear: currentYear),
        finances =
            finances ??
            FinancialMigration.bootstrapFromCareerState(
@@ -102,7 +108,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 12;
+  static const int currentSchemaVersion = 13;
 
   final String id;
   final int schemaVersion;
@@ -130,6 +136,9 @@ final class GmCareer {
 
   /// Shared two-round free-agency market state.
   final FreeAgentMarketState freeAgentMarket;
+
+  /// Bounded post-market compliance pass.
+  final OffseasonClearanceState offseasonClearance;
 
   /// Authoritative contract, payroll, budget, staff and facility records.
   final CareerFinances finances;
@@ -263,6 +272,7 @@ final class GmCareer {
     _validateFreeAgentPool();
     _validateFreeAgentOffers();
     _validateFreeAgentMarket();
+    _validateOffseasonClearance();
     finances.validate(
       league: league,
       rookieSigningLedger: rookieSigningLedger,
@@ -502,6 +512,12 @@ final class GmCareer {
           );
         }
       } else if (result.outcome == FreeAgentMarketOfferOutcome.rejected) {
+        final marketOffer = offers.firstWhere(
+          (offer) => offer.offerId == result.offerId,
+          orElse: () => throw FormatException(
+            'Rejected market offer ${result.offerId} is missing',
+          ),
+        );
         final attempts = freeAgentOffers.attemptsFor(
           teamId: result.teamId,
           playerId: outcome.playerId,
@@ -510,15 +526,97 @@ final class GmCareer {
         final matching = attempts.where(
           (attempt) =>
               !attempt.outcome.isAccepted &&
+              attempt.category == marketOffer.category &&
+              attempt.durationYears == marketOffer.durationYears &&
+              attempt.firstYearSalary == marketOffer.firstYearSalary &&
+              attempt.reasonCode == result.reasonCode &&
               attempt.attemptNumber <=
                   FreeAgentOfferAttempt.maximumPlayerSideAttempts,
         );
         if (matching.isEmpty) {
           throw FormatException(
-            'Rejected market result ${result.offerId} lacks a formal '
+            'Rejected market result ${result.offerId} lacks its exact formal '
             'rejection record',
           );
         }
+      }
+    }
+  }
+
+  void _validateOffseasonClearance() {
+    final clearance = offseasonClearance;
+    clearance.validate();
+    if (clearance.seasonYear != currentYear) {
+      throw FormatException(
+        'Clearance season ${clearance.seasonYear} does not match career year '
+        '$currentYear',
+      );
+    }
+    final initialIds = {
+      for (final id in freeAgentPool.initialPlayerIds) id.value,
+    };
+    final teamById = {for (final team in league.teams) team.id.value: team};
+    for (final offer in clearance.allOffers) {
+      if (!initialIds.contains(offer.playerId.value) ||
+          !teamById.containsKey(offer.teamId.value)) {
+        throw FormatException('Clearance offer references unknown identity');
+      }
+      if (offer.source == FreeAgentMarketOfferSource.human &&
+          offer.teamId != userFranchiseId) {
+        throw FormatException('Human clearance offer targets another team');
+      }
+      if (offer.source == FreeAgentMarketOfferSource.ai &&
+          offer.teamId == userFranchiseId) {
+        throw FormatException('AI clearance offer targets the human team');
+      }
+    }
+    for (final outcome in clearance.outcomes) {
+      _validateMarketOutcome(
+        outcome: outcome,
+        offers: clearance.allOffers,
+        seasonYear: clearance.seasonYear,
+      );
+    }
+    final clearanceOfferCounts = <String, int>{};
+    for (final offer in clearance.allOffers) {
+      clearanceOfferCounts[offer.teamId.value] =
+          (clearanceOfferCounts[offer.teamId.value] ?? 0) + 1;
+    }
+    for (final entry in clearanceOfferCounts.entries) {
+      if (entry.value > FinancialRules.maximumReliefDeals) {
+        throw FormatException(
+          'Clearance exceeds two standard contracts for team ${entry.key}',
+        );
+      }
+    }
+    final exceptionTeams = <String>{};
+    for (final exception in clearance.capExceptions) {
+      exceptionTeams.add(exception.teamId.value);
+      final team = teamById[exception.teamId.value];
+      if (team == null) {
+        throw FormatException('Cap exception references unknown team');
+      }
+      final standard = team.roster.standardCount;
+      if (standard < 12 || standard > 15) {
+        throw FormatException('Cap exception requires a 12-15 standard roster');
+      }
+      final teamFinances = finances.financesFor(exception.teamId);
+      if (teamFinances.capException != exception.amount) {
+        throw FormatException('Cap exception does not match team finances');
+      }
+      final capPayroll = finances.capPayrollFor(exception.teamId, currentYear);
+      if (capPayroll > FinancialRules.salaryCap + exception.amount) {
+        throw FormatException(
+          'Team payroll exceeds its approved cap exception',
+        );
+      }
+    }
+    for (final finances in this.finances.teamFinances.values) {
+      if (finances.capException > 0 &&
+          !exceptionTeams.contains(finances.teamId.value)) {
+        throw FormatException(
+          'Team finances carry an unrecorded cap exception',
+        );
       }
     }
   }
@@ -749,6 +847,7 @@ final class GmCareer {
     FreeAgentPool? freeAgentPool,
     FreeAgentOfferLedger? freeAgentOffers,
     FreeAgentMarketState? freeAgentMarket,
+    OffseasonClearanceState? offseasonClearance,
     CareerFinances? finances,
   }) {
     return GmCareer(
@@ -770,6 +869,7 @@ final class GmCareer {
       freeAgentPool: freeAgentPool ?? this.freeAgentPool,
       freeAgentOffers: freeAgentOffers ?? this.freeAgentOffers,
       freeAgentMarket: freeAgentMarket ?? this.freeAgentMarket,
+      offseasonClearance: offseasonClearance ?? this.offseasonClearance,
       finances: finances ?? this.finances,
     );
   }

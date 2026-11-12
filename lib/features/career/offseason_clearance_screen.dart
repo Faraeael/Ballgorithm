@@ -1,0 +1,235 @@
+import 'package:flutter/material.dart';
+import 'package:simulation_core/simulation_core.dart';
+
+import 'career_controller.dart';
+
+const _gate = OffseasonReadinessGate();
+const _market = FreeAgentMarketValueService();
+
+class GmOffseasonClearanceScreen extends StatelessWidget {
+  const GmOffseasonClearanceScreen({super.key, required this.controller});
+
+  final GmCareerController controller;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: controller,
+    builder: (context, _) {
+      final career = controller.career;
+      if (career == null) {
+        return const Scaffold(body: Center(child: Text('No active career')));
+      }
+      final readiness = _gate.evaluate(
+        career,
+        recoveryRequired: controller.draftRecoveryRequired,
+      );
+      final clearance = career.offseasonClearance;
+      final theme = Theme.of(context);
+      return Scaffold(
+        key: const ValueKey('offseason-clearance'),
+        appBar: AppBar(title: const Text('Offseason Clearance')),
+        body: ListView(
+          padding: const EdgeInsets.all(12),
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      readiness.status.name,
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Ready ${readiness.readyCount}/30 • below 14 '
+                      '${readiness.belowMinimumCount} • shortage '
+                      '${readiness.totalShortage} • human shortage '
+                      '${readiness.humanShortage}',
+                    ),
+                    for (final reason in readiness.reasons)
+                      Text('• $reason', style: theme.textTheme.bodySmall),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (readiness.status ==
+                    OffseasonReadinessStatus.clearanceRequired &&
+                clearance.status == OffseasonClearanceStatus.notStarted)
+              FilledButton(
+                key: const ValueKey('start-clearance'),
+                onPressed: () =>
+                    _run(context, () => controller.startOffseasonClearance()),
+                child: const Text('Start Clearance Pass'),
+              ),
+            if (clearance.isCollecting) ...[
+              Text('Human clearance offers', style: theme.textTheme.titleSmall),
+              Text(
+                'Only standard 1-year minimum offers are offered here. '
+                'The human GM must confirm each offer.',
+              ),
+              for (final offer in clearance.humanOffers)
+                ListTile(
+                  dense: true,
+                  title: Text(
+                    '${_playerName(career, offer.playerId)} • '
+                    '${offer.firstYearSalary} CU',
+                  ),
+                ),
+              const SizedBox(height: 8),
+              FilledButton(
+                key: const ValueKey('prepare-clearance'),
+                onPressed: clearance.humanOffers.isEmpty
+                    ? null
+                    : () => _run(
+                        context,
+                        () => controller.prepareOffseasonClearance(),
+                      ),
+                child: const Text('Lock Clearance Offers'),
+              ),
+              const SizedBox(height: 8),
+              Text('Available players', style: theme.textTheme.titleSmall),
+              for (final entry in career.freeAgentPool.entries.take(20))
+                ListTile(
+                  dense: true,
+                  title: Text(
+                    '${entry.player.fullName} • '
+                    '${entry.player.position.shortName} • OVR '
+                    '${entry.player.attributes.overallRating} • est '
+                    '${_market.estimate(entry.toPublicView()).estimatedAnnualSalary} CU',
+                  ),
+                  trailing: TextButton(
+                    key: ValueKey('clearance-offer-${entry.id.value}'),
+                    onPressed: () => _confirmOffer(context, career, entry),
+                    child: const Text('Offer 400'),
+                  ),
+                ),
+            ],
+            if (clearance.isResolvable)
+              FilledButton(
+                key: const ValueKey('resolve-clearance'),
+                onPressed: () =>
+                    _run(context, () => controller.resolveOffseasonClearance()),
+                child: const Text('Resolve Clearance'),
+              ),
+            if (clearance.outcomes.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('Clearance outcomes', style: theme.textTheme.titleSmall),
+              for (final outcome in clearance.outcomes)
+                Text(
+                  '${_playerName(career, outcome.playerId)}: '
+                  '${outcome.winningTeamId == null ? 'no signing' : 'signed'}',
+                  style: theme.textTheme.bodySmall,
+                ),
+            ],
+            if (readiness.status ==
+                OffseasonReadinessStatus.readyForConfirmation) ...[
+              const SizedBox(height: 12),
+              FilledButton(
+                key: const ValueKey('mark-cleared'),
+                onPressed: () =>
+                    _run(context, () => controller.markOffseasonCleared()),
+                child: const Text('Confirm Offseason Cleared'),
+              ),
+            ],
+            if (readiness.status ==
+                OffseasonReadinessStatus.financialExceptionRequired) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'Cap relief is required for at least one franchise. '
+                'No exception is implemented without explicit owner approval.',
+              ),
+            ],
+          ],
+        ),
+      );
+    },
+  );
+
+  Future<void> _confirmOffer(
+    BuildContext context,
+    GmCareer career,
+    FreeAgentEntry entry,
+  ) async {
+    final salaryController = TextEditingController(text: '400');
+    final salary = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clearance Offer'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${entry.player.fullName}\nStandard • 1 year'),
+            const SizedBox(height: 8),
+            TextField(
+              key: const ValueKey('clearance-salary'),
+              controller: salaryController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'First-year salary (400–8000)',
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'This is a bounded compliance offer, not a third market round. '
+              'AI clubs may compete for the same player.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm-clearance-offer'),
+            onPressed: () {
+              final offered = int.tryParse(salaryController.text.trim());
+              if (offered == null) return;
+              Navigator.of(context).pop(offered);
+            },
+            child: const Text('Submit'),
+          ),
+        ],
+      ),
+    );
+    salaryController.dispose();
+    if (salary == null || !context.mounted) return;
+    await _run(
+      context,
+      () => controller.stageClearanceOffer(
+        freeAgentId: entry.id,
+        durationYears: 1,
+        firstYearSalary: salary,
+      ),
+    );
+  }
+
+  Future<void> _run(
+    BuildContext context,
+    Future<void> Function() action,
+  ) async {
+    try {
+      await action();
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$error')));
+    }
+  }
+
+  static String _playerName(GmCareer career, PlayerId id) {
+    final entry = career.freeAgentPool.byId(id);
+    if (entry != null) return entry.player.fullName;
+    for (final team in career.league.teams) {
+      for (final player in team.players) {
+        if (player.id == id) return player.fullName;
+      }
+    }
+    return id.value;
+  }
+}

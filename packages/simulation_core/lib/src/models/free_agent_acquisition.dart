@@ -4,7 +4,8 @@ import 'roster_category.dart';
 
 /// Where an acquired player came from. Only the initial pool is implemented.
 enum AcquisitionOrigin {
-  initialPool('initialPool');
+  initialPool('initialPool'),
+  clearance('clearance');
 
   const AcquisitionOrigin(this.jsonValue);
 

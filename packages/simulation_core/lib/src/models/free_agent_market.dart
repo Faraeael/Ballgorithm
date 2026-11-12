@@ -145,7 +145,7 @@ final class FreeAgentMarketOffer {
       issues.add(_issue('playerId', 'empty player'));
     }
     if (teamId.value.trim().isEmpty) issues.add(_issue('teamId', 'empty team'));
-    if (roundNumber < 1 || roundNumber > 2) {
+    if (roundNumber < 1 || roundNumber > 3) {
       issues.add(_issue('roundNumber', 'round must be 1 or 2'));
     }
     if (seasonYear < 1) issues.add(_issue('seasonYear', 'season must be >= 1'));

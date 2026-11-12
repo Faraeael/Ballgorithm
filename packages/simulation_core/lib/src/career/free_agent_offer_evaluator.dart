@@ -267,9 +267,14 @@ final class FreeAgentOfferEvaluator {
       team.id,
       career.currentYear,
     );
-    if (category == RosterCategory.standard &&
-        capPayroll + salaries.first > FinancialRules.salaryCap) {
-      return 'capBreach';
+    if (category == RosterCategory.standard) {
+      final exception = career.finances.financesFor(team.id).capException;
+      if (capPayroll + salaries.first > FinancialRules.salaryCap + exception) {
+        return 'capBreach';
+      }
+      if (exception > 0 && salaries.first != FinancialRules.minimumSalary) {
+        return 'capBreach';
+      }
     }
     final contract = PlayerContract(
       id: PlayerContract.idFor(entry.id, career.currentYear),

@@ -546,18 +546,8 @@ final class CareerFinances {
         );
       }
       final capPayroll = capPayrollFor(team.id, currentYear);
-      if (capPayroll > FinancialRules.salaryCap) {
-        if (!finances.capGrandfathered) {
-          issues.add(
-            ValidationIssue(
-              code: ValidationCode.capBreach,
-              path: 'finances.teamFinances',
-              message:
-                  'team ${team.id.value} cap payroll $capPayroll exceeds '
-                  '${FinancialRules.salaryCap}',
-            ),
-          );
-        } else if (capPayroll >
+      if (finances.capGrandfathered) {
+        if (capPayroll >
             finances.grandfatheredPayroll +
                 FinancialRules.maximumReliefOverage) {
           issues.add(
@@ -571,6 +561,18 @@ final class CareerFinances {
             ),
           );
         }
+      } else if (capPayroll >
+          FinancialRules.salaryCap + finances.capException) {
+        issues.add(
+          ValidationIssue(
+            code: ValidationCode.capBreach,
+            path: 'finances.teamFinances',
+            message:
+                'team ${team.id.value} cap payroll $capPayroll exceeds '
+                '${FinancialRules.salaryCap} plus approved exception '
+                '${finances.capException}',
+          ),
+        );
       }
       final twoWayPayroll = twoWayPayrollFor(team.id, currentYear);
       final cashPayroll = capPayroll + twoWayPayroll;

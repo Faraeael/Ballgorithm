@@ -13,6 +13,7 @@ final class TeamFinances {
     required this.season,
     this.capGrandfathered = false,
     this.grandfatheredPayroll = 0,
+    this.capException = 0,
   }) {
     requireValid();
   }
@@ -25,13 +26,15 @@ final class TeamFinances {
     final season = json['season'];
     final capGrandfathered = json['capGrandfathered'];
     final grandfatheredPayroll = json['grandfatheredPayroll'];
+    final capException = json['capException'];
     if (teamId is! String ||
         operatingBudget is! int ||
         cash is! int ||
         revenueBaseline is! int ||
         season is! int ||
         (capGrandfathered != null && capGrandfathered is! bool) ||
-        (grandfatheredPayroll != null && grandfatheredPayroll is! int)) {
+        (grandfatheredPayroll != null && grandfatheredPayroll is! int) ||
+        (capException != null && capException is! int)) {
       throw const FormatException('Malformed TeamFinances JSON');
     }
     return TeamFinances(
@@ -42,6 +45,7 @@ final class TeamFinances {
       season: season,
       capGrandfathered: capGrandfathered == true,
       grandfatheredPayroll: grandfatheredPayroll as int? ?? 0,
+      capException: capException as int? ?? 0,
     )..requireValid();
   }
 
@@ -57,6 +61,9 @@ final class TeamFinances {
   /// Payroll committed when grandfathering began. Stored payroll may not rise
   /// above this baseline plus the bounded relief overage.
   final int grandfatheredPayroll;
+
+  /// Owner-approved minimum-roster cap exception, 0..800.
+  final int capException;
 
   List<ValidationIssue> validationIssues() {
     final issues = <ValidationIssue>[];
@@ -111,6 +118,18 @@ final class TeamFinances {
         ),
       );
     }
+    if (capException < 0 ||
+        capException > FinancialRules.maximumReliefOverage) {
+      issues.add(
+        ValidationIssue(
+          code: ValidationCode.moneyInvalid,
+          path: 'finances.capException',
+          message:
+              'cap exception must be 0..${FinancialRules.maximumReliefOverage}, '
+              'got $capException',
+        ),
+      );
+    }
     if (capGrandfathered && grandfatheredPayroll <= FinancialRules.salaryCap) {
       issues.add(
         ValidationIssue(
@@ -137,5 +156,6 @@ final class TeamFinances {
     'season': season,
     'capGrandfathered': capGrandfathered,
     'grandfatheredPayroll': grandfatheredPayroll,
+    'capException': capException,
   };
 }

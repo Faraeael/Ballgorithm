@@ -25,6 +25,7 @@ final class FreeAgentAcquisitionService {
     required RosterCategory category,
     required int durationYears,
     required int agreedFirstYearSalary,
+    AcquisitionOrigin origin = AcquisitionOrigin.initialPool,
   }) {
     if (career.phase != CareerPhase.openingOffseason) {
       throw StateError('Free-agent acquisition requires the opening offseason');
@@ -122,11 +123,20 @@ final class FreeAgentAcquisitionService {
     final addedCapSalary = category == RosterCategory.standard
         ? salaries.first
         : 0;
-    if (capPayroll + addedCapSalary > FinancialRules.salaryCap) {
+    final capException = career.finances.financesFor(teamId).capException;
+    if (capPayroll + addedCapSalary > FinancialRules.salaryCap + capException) {
       _fail(
         ValidationCode.capBreach,
         'Cap payroll ${capPayroll + addedCapSalary} exceeds '
-        '${FinancialRules.salaryCap} CU',
+        '${FinancialRules.salaryCap + capException} CU',
+      );
+    }
+    if (capException > 0 &&
+        category == RosterCategory.standard &&
+        salaries.first != FinancialRules.minimumSalary) {
+      _fail(
+        ValidationCode.capBreach,
+        'Approved cap exception only funds 400 CU minimum deals',
       );
     }
 
@@ -162,6 +172,7 @@ final class FreeAgentAcquisitionService {
       contractId: contract.id,
       seasonYear: career.currentYear,
       category: category,
+      origin: origin,
     );
     final updatedPool = FreeAgentPool(
       entries: [

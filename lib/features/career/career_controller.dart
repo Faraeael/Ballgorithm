@@ -17,6 +17,7 @@ class GmCareerController extends ChangeNotifier {
   static const _draftService = DraftExecutionService();
   static const _signingService = RookieSigningService();
   static const _marketService = FreeAgentMarketService();
+  static const _clearanceService = OffseasonClearanceService();
   static const _aiSigningService = RookieAiSigningService();
 
   GmCareer? get career => _career;
@@ -246,6 +247,59 @@ class GmCareerController extends ChangeNotifier {
           await _saveCareerState(next, slot);
           current = next;
         }
+      });
+
+  Future<void> startOffseasonClearance({String slot = 'default'}) =>
+      _runCareerCommand(action: 'start clearance', () async {
+        await _saveCareerState(_clearanceService.start(_requireCareer()), slot);
+      });
+
+  Future<void> stageClearanceOffer({
+    required PlayerId freeAgentId,
+    required int durationYears,
+    required int firstYearSalary,
+    String slot = 'default',
+  }) => _runCareerCommand(action: 'stage clearance offer', () async {
+    final current = _requireCareer();
+    await _saveCareerState(
+      _clearanceService.stageHumanOffer(
+        career: current,
+        teamId: current.userFranchiseId,
+        playerId: freeAgentId,
+        durationYears: durationYears,
+        firstYearSalary: firstYearSalary,
+      ),
+      slot,
+    );
+  });
+
+  Future<void> prepareOffseasonClearance({String slot = 'default'}) =>
+      _runCareerCommand(action: 'prepare clearance', () async {
+        await _saveCareerState(
+          _clearanceService.prepare(_requireCareer()),
+          slot,
+        );
+      });
+
+  Future<void> resolveOffseasonClearance({String slot = 'default'}) =>
+      _runCareerCommand(action: 'resolve clearance', () async {
+        var current = _requireCareer();
+        if (!current.offseasonClearance.isResolvable) {
+          throw StateError('Clearance is not ready for resolution');
+        }
+        while (current.offseasonClearance.isResolvable) {
+          final next = _clearanceService.resolveNext(current);
+          await _saveCareerState(next, slot);
+          current = next;
+        }
+      });
+
+  Future<void> markOffseasonCleared({String slot = 'default'}) =>
+      _runCareerCommand(action: 'mark offseason cleared', () async {
+        await _saveCareerState(
+          _clearanceService.markCleared(_requireCareer()),
+          slot,
+        );
       });
 
   /// Applies deterministic AI rookie signing decisions for non-human franchises.
