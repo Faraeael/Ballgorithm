@@ -250,6 +250,17 @@ void main() {
           _codesContain(ValidationCode.contractInvalid),
         );
       }
+      expect(
+        () => _service.acquire(
+          career: career,
+          teamId: career.userFranchiseId,
+          freeAgentId: playerId,
+          category: RosterCategory.twoWay,
+          durationYears: 3,
+          agreedFirstYearSalary: 250,
+        ),
+        _codesContain(ValidationCode.contractInvalid),
+      );
       for (final salary in [399, 8001]) {
         expect(
           () => _service.acquire(

@@ -96,6 +96,11 @@ abstract final class FinancialRules {
       ? twoWaySalary
       : rookieSalaryForPick(overallPick);
 
+  /// New-contract duration limit by roster category. Existing signed
+  /// agreements are validated by their stored terms, not this rule.
+  static int maxDurationForCategory(RosterCategory category) =>
+      category == RosterCategory.twoWay ? 2 : 4;
+
   static int raiseStandardSalary(int salary) =>
       (salary * (10000 + annualRaiseBasisPoints)) ~/ 10000;
 

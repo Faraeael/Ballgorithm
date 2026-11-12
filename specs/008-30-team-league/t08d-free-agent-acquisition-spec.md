@@ -47,7 +47,8 @@ Preconditions:
 2. player exists in the available pool and lacks an acquisition record;
 3. franchise exists;
 4. category is standard or two-way;
-5. duration is 1–4;
+5. duration is 1–4 for standard, 1–2 for two-way (T08E shared rule; existing
+   signed longer two-way agreements remain valid);
 6. two-way salary is exactly 250; standard first-year salary is 400–8,000;
 7. every scheduled year remains ≤ 8,000;
 8. prospective roster passes `RosterRules.validateStructure`;

@@ -35,7 +35,8 @@ Branch: `feat/m008-t08d-free-agent-acquisition`.
 - Standard: explicit first-year salary 400–8,000; 5% annual raise; every
   scheduled year must remain ≤8,000.
 - Two-way: exactly 250 per year.
-- Duration 1–4.
+- Duration 1–4 standard, 1–2 two-way (T08E shared rule); existing longer
+  two-way agreements remain valid.
 - Cap: standard cap payroll + new salary ≤41,000; two-way does not consume cap.
 - Cash: current-year projection must stay ≥0.
 - Roster: standard ≤15, two-way ≤3, total ≤21 in the opening offseason.

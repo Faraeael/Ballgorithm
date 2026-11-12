@@ -58,13 +58,14 @@ final class FreeAgentAcquisitionService {
         'Free-agent contracts must be standard or two-way',
       );
     }
+    final maxDuration = FinancialRules.maxDurationForCategory(category);
     if (durationYears < PlayerContract.minDurationYears ||
-        durationYears > PlayerContract.maxDurationYears) {
+        durationYears > maxDuration) {
       _fail(
         ValidationCode.contractInvalid,
         'Contract duration must be '
-        '${PlayerContract.minDurationYears}..'
-        '${PlayerContract.maxDurationYears}, got $durationYears',
+        '${PlayerContract.minDurationYears}..$maxDuration for '
+        '${category.jsonValue}, got $durationYears',
       );
     }
 
