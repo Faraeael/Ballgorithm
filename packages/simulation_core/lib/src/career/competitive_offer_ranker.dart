@@ -1,6 +1,7 @@
 import '../models/free_agent.dart';
 import '../models/free_agent_market.dart';
 import '../models/franchise_situation.dart';
+import '../models/hardship_settlement.dart';
 import '../models/ids.dart';
 import '../models/team.dart';
 import 'gm_career.dart';
@@ -30,6 +31,35 @@ final class CompetitiveOfferRanker {
         final bKey = _fnv1a(
           '${b.playerId.value}:${b.teamId.value}:${b.roundNumber}',
         );
+        if (aKey != bKey) return aKey.compareTo(bKey);
+        return a.offerId.compareTo(b.offerId);
+      });
+    return ranked;
+  }
+
+  List<HardshipOffer> rankHardship({
+    required GmCareer career,
+    required PlayerId playerId,
+    required List<HardshipOffer> offers,
+  }) {
+    final entry = career.freeAgentPool.byId(playerId);
+    if (entry == null) return const [];
+    final view = entry.toPublicView();
+    final ranked = [...offers]
+      ..sort((a, b) {
+        final aTeam = career.league.teams.firstWhere((t) => t.id == a.teamId);
+        final bTeam = career.league.teams.firstWhere((t) => t.id == b.teamId);
+        final aScore =
+            a.firstYearSalary * 10 +
+            _fit(aTeam, view) -
+            (a.durationYears - _preferred(view)).abs() * 100;
+        final bScore =
+            b.firstYearSalary * 10 +
+            _fit(bTeam, view) -
+            (b.durationYears - _preferred(view)).abs() * 100;
+        if (aScore != bScore) return bScore.compareTo(aScore);
+        final aKey = _fnv1a('${a.playerId.value}:${a.teamId.value}:hardship');
+        final bKey = _fnv1a('${b.playerId.value}:${b.teamId.value}:hardship');
         if (aKey != bKey) return aKey.compareTo(bKey);
         return a.offerId.compareTo(b.offerId);
       });

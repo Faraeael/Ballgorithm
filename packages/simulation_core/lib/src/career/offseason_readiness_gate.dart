@@ -128,10 +128,16 @@ final class OffseasonReadinessGate {
     if (clearance.isResolvable) {
       reasons.add('Clearance offers are not resolved');
     }
-    if (reasons.isNotEmpty &&
-        !(clearance.isResolvable &&
-            reasons.length == 1 &&
-            reasons.single == 'Clearance offers are not resolved')) {
+    final hardship = career.hardshipSettlement;
+    if (hardship.isResolvable) {
+      reasons.add('Hardship settlement offers are not resolved');
+    }
+    final onlySettlementWork = reasons.every(
+      (reason) =>
+          reason == 'Clearance offers are not resolved' ||
+          reason == 'Hardship settlement offers are not resolved',
+    );
+    if (reasons.isNotEmpty && !onlySettlementWork) {
       return OffseasonReadinessResult(
         status: OffseasonReadinessStatus.offseasonInProgress,
         reasons: reasons,
@@ -187,7 +193,7 @@ final class OffseasonReadinessGate {
         );
       }
     }
-    if (clearance.isResolvable) {
+    if (clearance.isResolvable || hardship.isResolvable) {
       return OffseasonReadinessResult(
         status: OffseasonReadinessStatus.offseasonInProgress,
         reasons: reasons,
@@ -200,6 +206,24 @@ final class OffseasonReadinessGate {
     }
 
     if (ready == career.league.teams.length) {
+      if (![
+        OffseasonClearanceStatus.complete,
+        OffseasonClearanceStatus.cleared,
+      ].contains(clearance.status)) {
+        return OffseasonReadinessResult(
+          status: OffseasonReadinessStatus.clearanceRequired,
+          reasons: [
+            clearance.status == OffseasonClearanceStatus.notStarted
+                ? 'A bounded clearance pass is required'
+                : 'Original clearance has not completed',
+          ],
+          teams: needs,
+          readyCount: ready,
+          belowMinimumCount: below,
+          totalShortage: shortageTotal,
+          humanShortage: humanShortage,
+        );
+      }
       final cleared = clearance.status == OffseasonClearanceStatus.cleared;
       return OffseasonReadinessResult(
         status: cleared

@@ -5,6 +5,7 @@ import 'career_controller.dart';
 
 const _gate = OffseasonReadinessGate();
 const _market = FreeAgentMarketValueService();
+const _hardship = HardshipSettlementService();
 
 class GmOffseasonClearanceScreen extends StatelessWidget {
   const GmOffseasonClearanceScreen({super.key, required this.controller});
@@ -24,6 +25,15 @@ class GmOffseasonClearanceScreen extends StatelessWidget {
         recoveryRequired: controller.draftRecoveryRequired,
       );
       final clearance = career.offseasonClearance;
+      final hardship = career.hardshipSettlement;
+      final humanHardship = _hardship.assessTeam(
+        career,
+        career.userFranchiseId,
+      );
+      final canStartHardship =
+          clearance.status == OffseasonClearanceStatus.complete &&
+          hardship.status == HardshipSettlementStatus.notStarted &&
+          readiness.belowMinimumCount > 0;
       final theme = Theme.of(context);
       return Scaffold(
         key: const ValueKey('offseason-clearance'),
@@ -54,6 +64,17 @@ class GmOffseasonClearanceScreen extends StatelessWidget {
                 ),
               ),
             ),
+            if (controller.draftRecoveryRequired) ...[
+              const SizedBox(height: 8),
+              const Text('Reload saved career before continuing.'),
+              FilledButton(
+                key: const ValueKey('reload-after-save-failure'),
+                onPressed: controller.isLoading
+                    ? null
+                    : () => _run(context, () => controller.loadCareer()),
+                child: const Text('Reload Saved Career'),
+              ),
+            ],
             const SizedBox(height: 8),
             if (readiness.status ==
                     OffseasonReadinessStatus.clearanceRequired &&
@@ -81,12 +102,8 @@ class GmOffseasonClearanceScreen extends StatelessWidget {
               const SizedBox(height: 8),
               FilledButton(
                 key: const ValueKey('prepare-clearance'),
-                onPressed: clearance.humanOffers.isEmpty
-                    ? null
-                    : () => _run(
-                        context,
-                        () => controller.prepareOffseasonClearance(),
-                      ),
+                onPressed: () =>
+                    _run(context, () => controller.prepareOffseasonClearance()),
                 child: const Text('Lock Clearance Offers'),
               ),
               const SizedBox(height: 8),
@@ -124,6 +141,74 @@ class GmOffseasonClearanceScreen extends StatelessWidget {
                   style: theme.textTheme.bodySmall,
                 ),
             ],
+            if (hardship.isResolvable)
+              FilledButton(
+                key: const ValueKey('resolve-hardship'),
+                onPressed: () =>
+                    _run(context, () => controller.resolveHardshipSettlement()),
+                child: const Text('Resolve Hardship Settlement'),
+              ),
+            if (hardship.status == HardshipSettlementStatus.complete &&
+                hardship.offers.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('Hardship outcomes', style: theme.textTheme.titleSmall),
+              for (final outcome in hardship.outcomes)
+                Text(
+                  '${_playerName(career, outcome.playerId)}: '
+                  '${outcome.winningTeamId == null ? 'no signing' : 'signed'}',
+                  style: theme.textTheme.bodySmall,
+                ),
+            ],
+            if (canStartHardship) ...[
+              const SizedBox(height: 12),
+              Text(
+                'One-time roster hardship',
+                style: theme.textTheme.titleSmall,
+              ),
+              Text(
+                'Only mandatory vacancies qualify. Existing cap room and '
+                'ordinary minimum relief must be insufficient.',
+              ),
+              if (humanHardship.eligible) ...[
+                Text(
+                  '${humanHardship.missingPlayers} missing standard player(s) • '
+                  'payroll ${humanHardship.currentPayroll} CU • '
+                  'ordinary exception ${humanHardship.ordinaryRelief} CU',
+                ),
+                Text(
+                  'Additional authority ${humanHardship.additionalAuthority} CU • '
+                  'combined overage ${humanHardship.combinedOverage} CU • '
+                  'cash after offers ${humanHardship.projectedCashAfterOffers} CU',
+                ),
+                for (final offer in humanHardship.proposedOffers)
+                  _hardshipOfferTile(career, offer),
+                FilledButton(
+                  key: const ValueKey('confirm-human-hardship'),
+                  onPressed: controller.isLoading
+                      ? null
+                      : () => _confirmHardship(context, career, humanHardship),
+                  child: const Text('Review and Confirm Human Participation'),
+                ),
+              ] else ...[
+                Text(
+                  humanHardship.blockers.isEmpty
+                      ? 'Human franchise has no hardship offer.'
+                      : humanHardship.blockers.join('; '),
+                ),
+              ],
+              FilledButton(
+                key: const ValueKey('prepare-ai-hardship'),
+                onPressed: controller.isLoading
+                    ? null
+                    : () => _run(
+                        context,
+                        () => controller.prepareHardshipSettlement(
+                          humanParticipationConfirmed: false,
+                        ),
+                      ),
+                child: const Text('Prepare AI Hardship Decisions'),
+              ),
+            ],
             if (readiness.status ==
                 OffseasonReadinessStatus.readyForConfirmation) ...[
               const SizedBox(height: 12),
@@ -138,8 +223,8 @@ class GmOffseasonClearanceScreen extends StatelessWidget {
                 OffseasonReadinessStatus.financialExceptionRequired) ...[
               const SizedBox(height: 8),
               const Text(
-                'Cap relief is required for at least one franchise. '
-                'No exception is implemented without explicit owner approval.',
+                'Some franchises remain blocked by approved cap, cash, '
+                'player-acceptance, or roster rules.',
               ),
             ],
           ],
@@ -147,6 +232,79 @@ class GmOffseasonClearanceScreen extends StatelessWidget {
       );
     },
   );
+  Future<void> _confirmHardship(
+    BuildContext context,
+    GmCareer career,
+    HardshipTeamAssessment assessment,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm hardship participation'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${assessment.missingPlayers} mandatory roster spot(s). '
+                'Current payroll ${assessment.currentPayroll} CU.',
+              ),
+              Text(
+                'Existing exception ${assessment.ordinaryRelief} CU; '
+                'additional authority ${assessment.additionalAuthority} CU; '
+                'combined overage ${assessment.combinedOverage} CU.',
+              ),
+              Text(
+                'Projected cash after offers: '
+                '${assessment.projectedCashAfterOffers} CU.',
+              ),
+              for (final offer in assessment.proposedOffers)
+                _hardshipOfferTile(career, offer),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Decline'),
+          ),
+          FilledButton(
+            key: const ValueKey('approve-human-hardship'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    await _run(
+      context,
+      () => controller.prepareHardshipSettlement(
+        humanParticipationConfirmed: true,
+      ),
+    );
+  }
+
+  Widget _hardshipOfferTile(GmCareer career, HardshipOffer offer) {
+    final entry = career.freeAgentPool.byId(offer.playerId);
+    final player = entry?.player;
+    final name = player?.fullName ?? offer.playerId.value;
+    final publicDetails = entry == null
+        ? ''
+        : ' • ${player!.position.shortName} • age ${entry.profile.age} • '
+              'OVR ${player.attributes.overallRating}';
+    final future = offer.salarySchedule.skip(1).fold<int>(0, (a, b) => a + b);
+    return ListTile(
+      dense: true,
+      title: Text('$name$publicDetails'),
+      subtitle: Text(
+        '${offer.durationYears}-year contract • '
+        '${offer.salarySchedule.join(' / ')} CU per year • '
+        '$future CU future commitment',
+      ),
+    );
+  }
 
   Future<void> _confirmOffer(
     BuildContext context,

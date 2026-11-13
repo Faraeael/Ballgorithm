@@ -14,6 +14,7 @@ import '../models/free_agent.dart';
 import '../models/free_agent_market.dart';
 import '../models/free_agent_offer.dart';
 import '../models/offseason_clearance.dart';
+import '../models/hardship_settlement.dart';
 import '../models/roster.dart';
 import '../models/roster_category.dart';
 import '../models/roster_membership.dart';
@@ -27,7 +28,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 13;
+  static const int currentSchemaVersion = 14;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -52,6 +53,7 @@ final class GmCareerCodec {
       'freeAgentOffers': career.freeAgentOffers.toJson(),
       'freeAgentMarket': career.freeAgentMarket.toJson(),
       'offseasonClearance': career.offseasonClearance.toJson(),
+      'hardshipSettlement': career.hardshipSettlement.toJson(),
       'finances': career.finances.toJson(),
       'rosterMemberships': {
         for (final team in career.league.teams)
@@ -429,6 +431,18 @@ final class GmCareerCodec {
       );
     }
 
+    final HardshipSettlement hardshipSettlement;
+    final rawHardship = raw['hardshipSettlement'];
+    if (schemaVersion >= 14) {
+      if (rawHardship is! Map<String, dynamic>) {
+        throw const FormatException(
+          'Missing or invalid hardshipSettlement in career JSON v14',
+        );
+      }
+      hardshipSettlement = HardshipSettlement.fromJson(rawHardship);
+    } else {
+      hardshipSettlement = HardshipSettlement.initial(seasonYear: currentYear);
+    }
     final CareerFinances? finances;
     final rawFinances = raw['finances'];
     if (schemaVersion >= 8) {
@@ -462,6 +476,7 @@ final class GmCareerCodec {
       freeAgentOffers: freeAgentOffers,
       freeAgentMarket: freeAgentMarket,
       offseasonClearance: offseasonClearance,
+      hardshipSettlement: hardshipSettlement,
       finances: finances,
     );
     career.validate();

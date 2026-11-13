@@ -554,7 +554,7 @@ void main() {
         }
         if (version < 8) older.remove('finances');
         final migrated = GmCareerCodec.decode(jsonEncode(older));
-        expect(migrated.schemaVersion, 13, reason: 'from v$version');
+        expect(migrated.schemaVersion, 14, reason: 'from v$version');
         expect(migrated.freeAgentPool.length, 90);
         expect(migrated.freeAgentPool.initialPlayerIds.length, 90);
         expect(migrated.freeAgentPool.acquisitions.isEmpty, isTrue);

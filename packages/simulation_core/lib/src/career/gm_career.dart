@@ -13,6 +13,7 @@ import '../models/free_agent_acquisition.dart';
 import '../models/free_agent_market.dart';
 import '../models/free_agent_offer.dart';
 import '../models/offseason_clearance.dart';
+import '../models/hardship_settlement.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
 import '../models/player_career_profile.dart';
@@ -20,6 +21,7 @@ import '../models/rookie_draft_class.dart';
 import '../models/rookie_signing_ledger.dart';
 import '../models/player_contract.dart';
 import '../models/roster_category.dart';
+import '../models/roster_rules.dart';
 import '../models/team.dart';
 import 'career_phase.dart';
 import 'career_setup.dart';
@@ -46,6 +48,7 @@ final class GmCareer {
     FreeAgentOfferLedger? freeAgentOffers,
     FreeAgentMarketState? freeAgentMarket,
     OffseasonClearanceState? offseasonClearance,
+    HardshipSettlement? hardshipSettlement,
     CareerFinances? finances,
   }) : draftExecutionState =
            draftExecutionState ?? DraftExecutionState.initial(),
@@ -58,6 +61,9 @@ final class GmCareer {
        offseasonClearance =
            offseasonClearance ??
            OffseasonClearanceState.initial(seasonYear: currentYear),
+       hardshipSettlement =
+           hardshipSettlement ??
+           HardshipSettlement.initial(seasonYear: currentYear),
        finances =
            finances ??
            FinancialMigration.bootstrapFromCareerState(
@@ -109,7 +115,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 13;
+  static const int currentSchemaVersion = 14;
 
   final String id;
   final int schemaVersion;
@@ -140,6 +146,9 @@ final class GmCareer {
 
   /// Bounded post-market compliance pass.
   final OffseasonClearanceState offseasonClearance;
+
+  /// Separate one-time roster-completion settlement and authority.
+  final HardshipSettlement hardshipSettlement;
 
   /// Authoritative contract, payroll, budget, staff and facility records.
   final CareerFinances finances;
@@ -271,13 +280,15 @@ final class GmCareer {
     );
     _validateAiSigningDecisions();
     _validateFreeAgentPool();
-    _validateFreeAgentOffers();
     _validateFreeAgentMarket();
+    _validateFreeAgentOffers();
+    _validateHardshipSettlement();
     _validateOffseasonClearance();
     finances.validate(
       league: league,
       rookieSigningLedger: rookieSigningLedger,
       currentYear: currentYear,
+      hardshipCapReliefByTeam: _hardshipCapReliefByTeam,
     );
   }
 
@@ -608,18 +619,22 @@ final class GmCareer {
       if (team == null) {
         throw FormatException('Cap exception references unknown team');
       }
-      final clearanceAcquisitions = freeAgentPool.acquisitions.entries.values
+      final rosterCompletionAcquisitions = freeAgentPool
+          .acquisitions
+          .entries
+          .values
           .where(
             (acquisition) =>
                 acquisition.teamId == exception.teamId &&
-                acquisition.origin == AcquisitionOrigin.clearance,
+                (acquisition.origin == AcquisitionOrigin.clearance ||
+                    acquisition.origin == AcquisitionOrigin.hardship),
           )
           .toList();
       final initialStandard =
-          team.roster.standardCount - clearanceAcquisitions.length;
+          team.roster.standardCount - rosterCompletionAcquisitions.length;
       final initialPayroll =
           finances.capPayrollFor(exception.teamId, currentYear) -
-          clearanceAcquisitions.fold<int>(0, (sum, acquisition) {
+          rosterCompletionAcquisitions.fold<int>(0, (sum, acquisition) {
             final contract = finances.contractForPlayer(acquisition.playerId);
             return sum +
                 finances.scheduleFor(contract!.id)!.annualSalaries.first;
@@ -642,7 +657,10 @@ final class GmCareer {
         throw FormatException('Cap exception does not match team finances');
       }
       final capPayroll = finances.capPayrollFor(exception.teamId, currentYear);
-      if (capPayroll > FinancialRules.salaryCap + exception.amount) {
+      final hardshipRelief =
+          _hardshipCapReliefByTeam[exception.teamId.value] ?? 0;
+      if (capPayroll >
+          FinancialRules.salaryCap + exception.amount + hardshipRelief) {
         throw FormatException(
           'Team payroll exceeds its approved cap exception',
         );
@@ -676,6 +694,257 @@ final class GmCareer {
       }
     }
   }
+
+  void _validateHardshipSettlement() {
+    final settlement = hardshipSettlement;
+    settlement.validate();
+    final acquisitions = freeAgentPool.acquisitions.entries.values
+        .where((item) => item.origin == AcquisitionOrigin.hardship)
+        .toList();
+    if (settlement.status == HardshipSettlementStatus.notStarted) {
+      if (acquisitions.isNotEmpty) {
+        throw const FormatException(
+          'Hardship acquisition exists without a settlement',
+        );
+      }
+      return;
+    }
+    if (settlement.seasonYear > currentYear ||
+        (!settlement.isComplete && settlement.seasonYear != currentYear)) {
+      throw const FormatException('Hardship settlement season is invalid');
+    }
+    if (!settlement.isComplete &&
+        (phase != CareerPhase.openingOffseason ||
+            freeAgentMarket.status != FreeAgentMarketStatus.marketComplete ||
+            ![
+              OffseasonClearanceStatus.complete,
+              OffseasonClearanceStatus.cleared,
+            ].contains(offseasonClearance.status))) {
+      throw const FormatException(
+        'Hardship settlement is outside the authorized offseason phase',
+      );
+    }
+    final initialIds = {
+      for (final id in freeAgentPool.initialPlayerIds) id.value,
+    };
+    final teamsById = {for (final team in league.teams) team.id.value: team};
+    for (final offer in settlement.offers) {
+      if (!initialIds.contains(offer.playerId.value) ||
+          !teamsById.containsKey(offer.teamId.value) ||
+          offer.seasonYear != settlement.seasonYear ||
+          (offer.source == FreeAgentMarketOfferSource.human) !=
+              (offer.teamId == userFranchiseId) ||
+          (offer.source == FreeAgentMarketOfferSource.human &&
+              !settlement.humanParticipationConfirmed)) {
+        throw const FormatException('Hardship offer identity is invalid');
+      }
+    }
+    for (final acquisition in acquisitions) {
+      if (acquisition.seasonYear != settlement.seasonYear ||
+          acquisition.category != RosterCategory.standard) {
+        throw const FormatException(
+          'Hardship acquisition has invalid season or category',
+        );
+      }
+      final offer = settlement.offers
+          .where(
+            (candidate) =>
+                candidate.playerId == acquisition.playerId &&
+                candidate.teamId == acquisition.teamId &&
+                candidate.seasonYear == acquisition.seasonYear,
+          )
+          .firstOrNull;
+      if (offer == null) {
+        throw const FormatException(
+          'Hardship acquisition lacks an exact authorized offer',
+        );
+      }
+      final contract = finances.contractForPlayer(acquisition.playerId);
+      final schedule = contract == null
+          ? null
+          : finances.scheduleFor(contract.id);
+      if (contract == null ||
+          schedule == null ||
+          acquisition.contractId != contract.id ||
+          contract.id !=
+              PlayerContract.idFor(
+                acquisition.playerId,
+                settlement.seasonYear,
+              ) ||
+          contract.teamId != offer.teamId ||
+          contract.category != RosterCategory.standard ||
+          contract.durationYears != offer.durationYears ||
+          contract.startYear != offer.seasonYear ||
+          contract.source != ContractSource.freeAgent ||
+          schedule.annualSalaries.join(',') != offer.salarySchedule.join(',')) {
+        throw const FormatException(
+          'Hardship acquisition does not conserve contract identity',
+        );
+      }
+    }
+    final acquisitionIds = {
+      for (final item in acquisitions) item.transactionId,
+    };
+    for (final authorization in settlement.authorizations) {
+      final team = teamsById[authorization.teamId.value];
+      if (team == null ||
+          authorization.seasonYear != settlement.seasonYear ||
+          authorization.existingOrdinaryRelief !=
+              finances.financesFor(authorization.teamId).capException ||
+          finances.financesFor(authorization.teamId).capGrandfathered) {
+        throw const FormatException('Hardship authorization is not eligible');
+      }
+      final teamOffers = settlement.offers
+          .where((offer) => offer.teamId == authorization.teamId)
+          .toList();
+      final teamAcquisitions = acquisitions
+          .where((item) => item.teamId == authorization.teamId)
+          .toList();
+      final initialStandard =
+          team.roster.standardCount - teamAcquisitions.length;
+      final missing = RosterRules.minRegularSeasonStandard - initialStandard;
+      if (missing < 1 ||
+          missing > FinancialRules.maximumReliefDeals ||
+          authorization.missingPlayers != missing ||
+          teamOffers.length > missing) {
+        throw const FormatException('Hardship shortage authorization mismatch');
+      }
+      final acquisitionSalary = teamAcquisitions.fold<int>(0, (sum, item) {
+        final contract = finances.contractForPlayer(item.playerId)!;
+        return sum + finances.scheduleFor(contract.id)!.annualSalaries.first;
+      });
+      final initialPayroll =
+          finances.capPayrollFor(authorization.teamId, settlement.seasonYear) -
+          acquisitionSalary;
+      final proposedSalary = teamOffers.fold<int>(
+        0,
+        (sum, offer) => sum + offer.firstYearSalary,
+      );
+      final overage =
+          initialPayroll + proposedSalary - FinancialRules.salaryCap;
+      final requiredAdditional = overage > authorization.existingOrdinaryRelief
+          ? overage - authorization.existingOrdinaryRelief
+          : 0;
+      if (teamOffers.isEmpty ||
+          requiredAdditional < 1 ||
+          authorization.additionalAmount != requiredAdditional ||
+          authorization.additionalAmount +
+                  authorization.existingOrdinaryRelief >
+              FinancialRules.maximumCombinedHardshipOverage) {
+        throw const FormatException(
+          'Hardship authorization is not the exact permitted amount',
+        );
+      }
+      final actualOverage =
+          finances.capPayrollFor(authorization.teamId, settlement.seasonYear) -
+          FinancialRules.salaryCap -
+          authorization.existingOrdinaryRelief;
+      final actualUsed = actualOverage > 0 ? actualOverage : 0;
+      final teamTransactionIds = {
+        for (final item in teamAcquisitions) item.transactionId,
+      };
+      if (authorization.usedAmount != actualUsed ||
+          !teamTransactionIds.containsAll(authorization.transactionIds) ||
+          !authorization.transactionIds.toSet().containsAll(
+            teamTransactionIds,
+          ) ||
+          (teamAcquisitions.isEmpty) !=
+              (authorization.status == HardshipAuthorizationStatus.unused)) {
+        throw const FormatException(
+          'Hardship authorization use does not match acquisitions',
+        );
+      }
+      if (!acquisitionIds.containsAll(authorization.transactionIds)) {
+        throw const FormatException(
+          'Hardship authorization references an unknown transaction',
+        );
+      }
+    }
+    for (final acquisition in acquisitions) {
+      if (!settlement.authorizations.any(
+        (authorization) =>
+            authorization.teamId == acquisition.teamId &&
+            authorization.transactionIds.contains(acquisition.transactionId),
+      )) {
+        throw const FormatException(
+          'Hardship acquisition lacks consumed authority',
+        );
+      }
+    }
+    for (final outcome in settlement.outcomes) {
+      for (final result in outcome.results) {
+        final offer = settlement.offerById(result.offerId)!;
+        if (result.outcome == FreeAgentMarketOfferOutcome.accepted) {
+          final acquisition = freeAgentPool.acquisitions.forPlayer(
+            outcome.playerId,
+          );
+          final attempt = freeAgentOffers.entries[result.offerId];
+          if (acquisition == null ||
+              acquisition.origin != AcquisitionOrigin.hardship ||
+              acquisition.teamId != result.teamId ||
+              outcome.winningOfferId != result.offerId ||
+              attempt == null ||
+              !attempt.outcome.isAccepted ||
+              attempt.playerId != offer.playerId ||
+              attempt.teamId != offer.teamId ||
+              attempt.seasonYear != offer.seasonYear ||
+              attempt.durationYears != offer.durationYears ||
+              attempt.firstYearSalary != offer.firstYearSalary ||
+              attempt.acquisitionTransactionId != acquisition.transactionId) {
+            throw const FormatException(
+              'Accepted hardship result lacks its exact transaction record',
+            );
+          }
+        } else if (result.outcome == FreeAgentMarketOfferOutcome.rejected) {
+          final attempt = freeAgentOffers.entries[result.offerId];
+          final expectedRejection = switch (result.reasonCode) {
+            'salaryBelowExpectation' => FreeAgentOfferOutcome.salaryTooLow,
+            'veteranDuration' ||
+            'durationCompensation' => FreeAgentOfferOutcome.unfavorableDuration,
+            'roleOrFranchiseFit' => FreeAgentOfferOutcome.poorFit,
+            _ => null,
+          };
+          if (attempt == null ||
+              expectedRejection == null ||
+              attempt.outcome != expectedRejection ||
+              attempt.playerId != offer.playerId ||
+              attempt.teamId != offer.teamId ||
+              attempt.seasonYear != offer.seasonYear ||
+              attempt.category != offer.category ||
+              attempt.durationYears != offer.durationYears ||
+              attempt.firstYearSalary != offer.firstYearSalary ||
+              attempt.reasonCode != result.reasonCode) {
+            throw const FormatException(
+              'Rejected hardship result lacks its exact formal attempt',
+            );
+          }
+        }
+      }
+    }
+    for (final acquisition in acquisitions) {
+      final accepted = settlement.outcomes.any(
+        (outcome) =>
+            outcome.playerId == acquisition.playerId &&
+            outcome.results.any(
+              (result) =>
+                  result.teamId == acquisition.teamId &&
+                  result.outcome == FreeAgentMarketOfferOutcome.accepted,
+            ),
+      );
+      if (!accepted) {
+        throw const FormatException(
+          'Hardship acquisition lacks an accepted settlement result',
+        );
+      }
+    }
+  }
+
+  Map<String, int> get _hardshipCapReliefByTeam => {
+    for (final authorization in hardshipSettlement.authorizations)
+      if (hardshipSettlement.seasonYear == currentYear &&
+          authorization.status == HardshipAuthorizationStatus.consumed)
+        authorization.teamId.value: authorization.additionalAmount,
+  };
 
   void _validateFreeAgentOffers() {
     freeAgentOffers.validate();
@@ -904,6 +1173,7 @@ final class GmCareer {
     FreeAgentOfferLedger? freeAgentOffers,
     FreeAgentMarketState? freeAgentMarket,
     OffseasonClearanceState? offseasonClearance,
+    HardshipSettlement? hardshipSettlement,
     CareerFinances? finances,
   }) {
     return GmCareer(
@@ -926,6 +1196,7 @@ final class GmCareer {
       freeAgentOffers: freeAgentOffers ?? this.freeAgentOffers,
       freeAgentMarket: freeAgentMarket ?? this.freeAgentMarket,
       offseasonClearance: offseasonClearance ?? this.offseasonClearance,
+      hardshipSettlement: hardshipSettlement ?? this.hardshipSettlement,
       finances: finances ?? this.finances,
     );
   }

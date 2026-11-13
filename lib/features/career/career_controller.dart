@@ -19,6 +19,7 @@ class GmCareerController extends ChangeNotifier {
   static const _marketService = FreeAgentMarketService();
   static const _clearanceService = OffseasonClearanceService();
   static const _aiSigningService = RookieAiSigningService();
+  static const _hardshipService = HardshipSettlementService();
 
   GmCareer? get career => _career;
   bool get hasCareer => _career != null;
@@ -289,6 +290,31 @@ class GmCareerController extends ChangeNotifier {
         }
         while (current.offseasonClearance.isResolvable) {
           final next = _clearanceService.resolveNext(current);
+          await _saveCareerState(next, slot);
+          current = next;
+        }
+      });
+  Future<void> prepareHardshipSettlement({
+    required bool humanParticipationConfirmed,
+    String slot = 'default',
+  }) => _runCareerCommand(action: 'prepare hardship settlement', () async {
+    await _saveCareerState(
+      _hardshipService.prepare(
+        _requireCareer(),
+        humanParticipationConfirmed: humanParticipationConfirmed,
+      ),
+      slot,
+    );
+  });
+
+  Future<void> resolveHardshipSettlement({String slot = 'default'}) =>
+      _runCareerCommand(action: 'resolve hardship settlement', () async {
+        var current = _requireCareer();
+        if (!current.hardshipSettlement.isResolvable) {
+          throw StateError('Hardship settlement is not ready for resolution');
+        }
+        while (current.hardshipSettlement.isResolvable) {
+          final next = _hardshipService.resolveNext(current);
           await _saveCareerState(next, slot);
           current = next;
         }

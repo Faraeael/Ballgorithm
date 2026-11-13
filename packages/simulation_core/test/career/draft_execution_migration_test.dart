@@ -25,7 +25,7 @@ void main() {
       prospectId: older.draftClass.rankedFirst.id,
     );
     final encoded = GmCareerCodec.encode(selected);
-    expect(jsonDecode(encoded)['schemaVersion'], 13);
+    expect(jsonDecode(encoded)['schemaVersion'], 14);
     expect(
       GmCareerCodec.decode(
         encoded,

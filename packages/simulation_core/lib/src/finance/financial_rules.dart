@@ -20,6 +20,9 @@ abstract final class FinancialRules {
   static const int maximumReliefDeals = 2;
   static const int maximumReliefOverage = 800;
 
+  /// Combined ordinary and hardship cap overage ceiling for T08H-P2.
+  static const int maximumCombinedHardshipOverage = 1000;
+
   /// Overage the minimum-roster exception may permit, or null when the
   /// franchise is not eligible. T08C records this rule only; it executes no
   /// relief transaction.

@@ -7,6 +7,7 @@ import '../models/player_contract.dart';
 import '../models/roster_category.dart';
 import '../models/offseason_clearance.dart';
 import '../models/free_agent_market.dart';
+import '../models/hardship_settlement.dart';
 import '../models/team.dart';
 import 'career_phase.dart';
 import 'free_agent_market_value_service.dart';
@@ -87,6 +88,7 @@ final class FreeAgentOfferEvaluator {
     required int durationYears,
     required int agreedFirstYearSalary,
     bool clearanceOffer = false,
+    String? hardshipOfferId,
   }) {
     final entry = career.freeAgentPool.byId(freeAgentId);
     if (entry == null) {
@@ -152,6 +154,7 @@ final class FreeAgentOfferEvaluator {
       durationYears: durationYears,
       salaries: salaries,
       clearanceOffer: clearanceOffer,
+      hardshipOfferId: hardshipOfferId,
     );
     if (legality != null) {
       return FreeAgentOfferDecision(
@@ -348,6 +351,7 @@ final class FreeAgentOfferEvaluator {
     required int durationYears,
     required List<int> salaries,
     required bool clearanceOffer,
+    required String? hardshipOfferId,
   }) {
     if (career.phase != CareerPhase.openingOffseason) {
       return 'wrongPhase';
@@ -363,18 +367,41 @@ final class FreeAgentOfferEvaluator {
       team.id,
       career.currentYear,
     );
+    if (clearanceOffer && hardshipOfferId != null) {
+      return 'conflictingFinancialAuthority';
+    }
     if (category == RosterCategory.standard) {
-      final exception = clearanceOffer
+      final ordinaryException = clearanceOffer
           ? _authorizedClearanceException(career, team)
           : 0;
+      final hardshipException = hardshipOfferId == null
+          ? 0
+          : _authorizedHardshipRelief(
+              career,
+              team,
+              entry.id,
+              durationYears,
+              salaries.first,
+              hardshipOfferId,
+            );
+      if (hardshipOfferId != null && hardshipException == 0) {
+        return 'hardshipNotAuthorized';
+      }
       final payrollAfter = capPayroll + salaries.first;
-      if (payrollAfter > FinancialRules.salaryCap + exception) {
+      final allowedRelief = hardshipOfferId == null
+          ? ordinaryException
+          : career.finances.financesFor(team.id).capException +
+                hardshipException;
+      if (payrollAfter > FinancialRules.salaryCap + allowedRelief) {
         return 'capBreach';
       }
       if (payrollAfter > FinancialRules.salaryCap &&
-          salaries.first != FinancialRules.minimumSalary) {
+          salaries.first != FinancialRules.minimumSalary &&
+          hardshipOfferId == null) {
         return 'capBreach';
       }
+    } else if (clearanceOffer || hardshipOfferId != null) {
+      return 'hardshipCategoryInvalid';
     }
     final contract = PlayerContract(
       id: PlayerContract.idFor(entry.id, career.currentYear),
@@ -417,6 +444,50 @@ final class FreeAgentOfferEvaluator {
       return 0;
     }
     return exception.amount;
+  }
+
+  int _authorizedHardshipRelief(
+    GmCareer career,
+    Team team,
+    PlayerId playerId,
+    int durationYears,
+    int salary,
+    String offerId,
+  ) {
+    final settlement = career.hardshipSettlement;
+    final authorization = settlement.authorizationFor(team.id);
+    final offer = settlement.offerById(offerId);
+    if (career.phase != CareerPhase.openingOffseason ||
+        career.freeAgentMarket.status != FreeAgentMarketStatus.marketComplete ||
+        career.offseasonClearance.status != OffseasonClearanceStatus.complete ||
+        !settlement.isResolvable ||
+        settlement.seasonYear != career.currentYear ||
+        settlement.nextResolutionIndex >= settlement.resolutionOrder.length ||
+        settlement.resolutionOrder[settlement.nextResolutionIndex] !=
+            playerId ||
+        team.roster.standardCount >= FinancialRules.minimumStandardRoster ||
+        offer == null ||
+        offer.teamId != team.id ||
+        offer.playerId != playerId ||
+        offer.seasonYear != career.currentYear ||
+        offer.durationYears != durationYears ||
+        offer.firstYearSalary != salary ||
+        authorization == null ||
+        authorization.status != HardshipAuthorizationStatus.unused &&
+            authorization.status != HardshipAuthorizationStatus.consumed ||
+        !authorization.authorizedOfferIds.contains(offerId) ||
+        authorization.seasonYear != career.currentYear ||
+        authorization.existingOrdinaryRelief !=
+            career.finances.financesFor(team.id).capException ||
+        authorization.additionalAmount < 1 ||
+        authorization.existingOrdinaryRelief + authorization.additionalAmount >
+            FinancialRules.maximumCombinedHardshipOverage ||
+        authorization.maximumCombinedOverage !=
+            FinancialRules.maximumCombinedHardshipOverage ||
+        authorization.usedAmount > authorization.additionalAmount) {
+      return 0;
+    }
+    return authorization.additionalAmount;
   }
 
   MarketValuation _emptyValuation() => const MarketValuation(

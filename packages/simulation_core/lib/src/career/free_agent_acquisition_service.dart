@@ -1,8 +1,11 @@
 import '../models/free_agent.dart';
 import '../models/free_agent_acquisition.dart';
 import '../models/free_agent_market.dart';
+import '../models/free_agent_offer.dart';
+import '../models/hardship_settlement.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
+import '../models/offseason_clearance.dart';
 import '../models/player_career_profile.dart';
 import '../models/player_contract.dart';
 import '../models/roster_category.dart';
@@ -28,6 +31,9 @@ final class FreeAgentAcquisitionService {
     required int durationYears,
     required int agreedFirstYearSalary,
     AcquisitionOrigin origin = AcquisitionOrigin.initialPool,
+    String? hardshipOfferId,
+    HardshipSettlement? hardshipSettlementAfterAcquisition,
+    FreeAgentOfferLedger? freeAgentOffersAfterAcquisition,
   }) {
     if (career.phase != CareerPhase.openingOffseason) {
       throw StateError('Free-agent acquisition requires the opening offseason');
@@ -126,6 +132,14 @@ final class FreeAgentAcquisitionService {
         ? salaries.first
         : 0;
     if (origin == AcquisitionOrigin.clearance) {
+      if (hardshipOfferId != null ||
+          hardshipSettlementAfterAcquisition != null ||
+          freeAgentOffersAfterAcquisition != null) {
+        _fail(
+          ValidationCode.freeAgentAcquisitionInvalid,
+          'Clearance acquisition cannot carry hardship authorization',
+        );
+      }
       _validateClearanceAuthorization(
         career: career,
         teamId: teamId,
@@ -134,14 +148,49 @@ final class FreeAgentAcquisitionService {
         durationYears: durationYears,
         salary: agreedFirstYearSalary,
       );
+    } else if (origin == AcquisitionOrigin.hardship) {
+      if (hardshipOfferId == null ||
+          hardshipSettlementAfterAcquisition == null ||
+          freeAgentOffersAfterAcquisition == null) {
+        _fail(
+          ValidationCode.freeAgentAcquisitionInvalid,
+          'Hardship acquisition requires one authorized settlement commit',
+        );
+      }
+      _validateHardshipAuthorization(
+        career: career,
+        teamId: teamId,
+        freeAgentId: freeAgentId,
+        category: category,
+        durationYears: durationYears,
+        salary: agreedFirstYearSalary,
+        offerId: hardshipOfferId,
+        settlementAfterAcquisition: hardshipSettlementAfterAcquisition,
+        offersAfterAcquisition: freeAgentOffersAfterAcquisition,
+      );
+    } else if (hardshipOfferId != null ||
+        hardshipSettlementAfterAcquisition != null ||
+        freeAgentOffersAfterAcquisition != null) {
+      _fail(
+        ValidationCode.freeAgentAcquisitionInvalid,
+        'Ordinary acquisition cannot carry hardship authorization',
+      );
     }
-    final capException = origin == AcquisitionOrigin.clearance
-        ? career.finances.financesFor(teamId).capException
-        : 0;
+    final capException = switch (origin) {
+      AcquisitionOrigin.clearance =>
+        career.finances.financesFor(teamId).capException,
+      AcquisitionOrigin.hardship =>
+        career.finances.financesFor(teamId).capException +
+            career.hardshipSettlement
+                .authorizationFor(teamId)!
+                .additionalAmount,
+      AcquisitionOrigin.initialPool => 0,
+    };
     final payrollAfter = capPayroll + addedCapSalary;
     if (payrollAfter > FinancialRules.salaryCap + capException ||
         (payrollAfter > FinancialRules.salaryCap &&
-            agreedFirstYearSalary != FinancialRules.minimumSalary)) {
+            agreedFirstYearSalary != FinancialRules.minimumSalary &&
+            origin != AcquisitionOrigin.hardship)) {
       _fail(
         ValidationCode.capBreach,
         'Cap payroll $payrollAfter exceeds its authorized limit',
@@ -214,6 +263,8 @@ final class FreeAgentAcquisitionService {
       careerProfiles: updatedProfiles,
       freeAgentPool: updatedPool,
       finances: updatedFinances,
+      hardshipSettlement: hardshipSettlementAfterAcquisition,
+      freeAgentOffers: freeAgentOffersAfterAcquisition,
     );
   }
 
@@ -286,6 +337,112 @@ final class FreeAgentAcquisitionService {
         ValidationCode.freeAgentOfferInvalid,
         'Clearance transaction is not an acceptable offer: '
         '${decision.reasonCode}',
+      );
+    }
+  }
+
+  void _validateHardshipAuthorization({
+    required GmCareer career,
+    required TeamId teamId,
+    required PlayerId freeAgentId,
+    required RosterCategory category,
+    required int durationYears,
+    required int salary,
+    required String offerId,
+    required HardshipSettlement? settlementAfterAcquisition,
+    required FreeAgentOfferLedger? offersAfterAcquisition,
+  }) {
+    final settlement = career.hardshipSettlement;
+    final authorization = settlement.authorizationFor(teamId);
+    final offer = settlement.offerById(offerId);
+    final team = career.league.teams.firstWhere(
+      (candidate) => candidate.id == teamId,
+    );
+    if (category != RosterCategory.standard ||
+        !settlement.isResolvable ||
+        settlement.seasonYear != career.currentYear ||
+        career.freeAgentMarket.status != FreeAgentMarketStatus.marketComplete ||
+        career.offseasonClearance.status != OffseasonClearanceStatus.complete ||
+        settlement.nextResolutionIndex >= settlement.resolutionOrder.length ||
+        settlement.resolutionOrder[settlement.nextResolutionIndex] !=
+            freeAgentId ||
+        team.roster.standardCount >= FinancialRules.minimumStandardRoster ||
+        offer == null ||
+        offer.teamId != teamId ||
+        offer.playerId != freeAgentId ||
+        offer.seasonYear != career.currentYear ||
+        offer.durationYears != durationYears ||
+        offer.firstYearSalary != salary ||
+        authorization == null ||
+        !authorization.authorizedOfferIds.contains(offerId) ||
+        authorization.existingOrdinaryRelief !=
+            career.finances.financesFor(teamId).capException) {
+      _fail(
+        ValidationCode.freeAgentAcquisitionInvalid,
+        'Hardship acquisition has no exact active authorization',
+      );
+    }
+    if (career.freeAgentOffers.remainingAttempts(
+          teamId: teamId,
+          playerId: freeAgentId,
+          seasonYear: career.currentYear,
+        ) <=
+        0) {
+      _fail(
+        ValidationCode.freeAgentOfferLimitReached,
+        'Hardship offer has no player-side attempt remaining',
+      );
+    }
+    career.validate();
+    final decision = const FreeAgentOfferEvaluator().evaluate(
+      career: career,
+      teamId: teamId,
+      freeAgentId: freeAgentId,
+      category: category,
+      durationYears: durationYears,
+      agreedFirstYearSalary: salary,
+      hardshipOfferId: offerId,
+    );
+    if (!decision.isAcceptable) {
+      _fail(
+        ValidationCode.freeAgentOfferInvalid,
+        'Hardship transaction is not acceptable: ${decision.reasonCode}',
+      );
+    }
+    final transactionId = FreeAgentAcquisition.idFor(
+      freeAgentId,
+      career.currentYear,
+    );
+    final committedOffer = settlementAfterAcquisition?.offerById(offerId);
+    final committedOutcome = settlementAfterAcquisition?.outcomes
+        .where((outcome) => outcome.playerId == freeAgentId)
+        .firstOrNull;
+    final committedAuthorization = settlementAfterAcquisition?.authorizationFor(
+      teamId,
+    );
+    final committedAttempt = offersAfterAcquisition?.entries[offerId];
+    if (committedOffer == null ||
+        committedOutcome?.winningOfferId != offerId ||
+        committedOutcome?.winningTeamId != teamId ||
+        !committedOutcome!.results.any(
+          (result) =>
+              result.offerId == offerId &&
+              result.outcome == FreeAgentMarketOfferOutcome.accepted,
+        ) ||
+        committedAuthorization == null ||
+        committedAuthorization.status != HardshipAuthorizationStatus.consumed ||
+        !committedAuthorization.transactionIds.contains(transactionId) ||
+        committedAttempt == null ||
+        !committedAttempt.outcome.isAccepted ||
+        committedAttempt.playerId != freeAgentId ||
+        committedAttempt.teamId != teamId ||
+        committedAttempt.seasonYear != career.currentYear ||
+        committedAttempt.durationYears != durationYears ||
+        committedAttempt.firstYearSalary != salary ||
+        committedAttempt.acquisitionTransactionId != transactionId) {
+      _fail(
+        ValidationCode.freeAgentAcquisitionInvalid,
+        'Hardship acquisition lacks one atomic recorded settlement result',
       );
     }
   }

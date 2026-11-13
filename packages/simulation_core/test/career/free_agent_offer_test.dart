@@ -379,7 +379,7 @@ void main() {
           ..['schemaVersion'] = version
           ..remove('freeAgentOffers');
         final migrated = GmCareerCodec.decode(jsonEncode(older));
-        expect(migrated.schemaVersion, 13);
+        expect(migrated.schemaVersion, 14);
         expect(migrated.freeAgentOffers.isEmpty, isTrue);
       }
       final missing = Map<String, dynamic>.from(base)

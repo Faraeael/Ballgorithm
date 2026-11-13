@@ -274,7 +274,7 @@ void main() {
         ..['schemaVersion'] = 12
         ..remove('offseasonClearance');
       final migrated = GmCareerCodec.decode(jsonEncode(v12));
-      expect(migrated.schemaVersion, 13);
+      expect(migrated.schemaVersion, 14);
       expect(
         migrated.offseasonClearance.status,
         OffseasonClearanceStatus.notStarted,

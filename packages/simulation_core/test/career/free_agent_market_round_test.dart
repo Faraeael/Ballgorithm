@@ -732,7 +732,7 @@ void main() {
             ..['schemaVersion'] = 10
             ..remove('freeAgentMarket');
       final migrated = GmCareerCodec.decode(jsonEncode(json));
-      expect(migrated.schemaVersion, 13);
+      expect(migrated.schemaVersion, 14);
       expect(migrated.freeAgentMarket.status, FreeAgentMarketStatus.notStarted);
       expect(migrated.freeAgentPool.acquisitions.length, 1);
       expect(migrated.freeAgentOffers.length, 1);
@@ -747,7 +747,7 @@ void main() {
           ..['schemaVersion'] = version
           ..remove('freeAgentMarket');
         final migrated = GmCareerCodec.decode(jsonEncode(older));
-        expect(migrated.schemaVersion, 13);
+        expect(migrated.schemaVersion, 14);
         expect(
           migrated.freeAgentMarket.status,
           FreeAgentMarketStatus.notStarted,
@@ -759,7 +759,7 @@ void main() {
         'roundHistory',
       );
       final legacy = GmCareerCodec.decode(jsonEncode(legacyV11));
-      expect(legacy.schemaVersion, 13);
+      expect(legacy.schemaVersion, 14);
       expect(legacy.freeAgentMarket.roundHistory, isEmpty);
 
       final missing = Map<String, dynamic>.from(base)

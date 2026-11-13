@@ -242,9 +242,23 @@ final class CareerFinances {
     required League league,
     required RookieSigningLedger rookieSigningLedger,
     required int currentYear,
+    Map<String, int> hardshipCapReliefByTeam = const {},
   }) {
     final issues = <ValidationIssue>[];
     final teamsById = {for (final team in league.teams) team.id.value: team};
+    for (final entry in hardshipCapReliefByTeam.entries) {
+      if (!teamsById.containsKey(entry.key) ||
+          entry.value < 1 ||
+          entry.value > FinancialRules.maximumCombinedHardshipOverage) {
+        issues.add(
+          ValidationIssue(
+            code: ValidationCode.financialTeamInvalid,
+            path: 'finances.hardshipCapRelief',
+            message: 'invalid hardship relief for team ${entry.key}',
+          ),
+        );
+      }
+    }
 
     void checkRecord(Iterable<ValidationIssue> recordIssues) =>
         issues.addAll(recordIssues);
@@ -546,6 +560,26 @@ final class CareerFinances {
         );
       }
       final capPayroll = capPayrollFor(team.id, currentYear);
+      final hardshipRelief = hardshipCapReliefByTeam[team.id.value] ?? 0;
+      if (finances.capGrandfathered && hardshipRelief > 0) {
+        issues.add(
+          ValidationIssue(
+            code: ValidationCode.capBreach,
+            path: 'finances.hardshipCapRelief',
+            message: 'grandfathered teams cannot use hardship relief',
+          ),
+        );
+      }
+      if (finances.capException + hardshipRelief >
+          FinancialRules.maximumCombinedHardshipOverage) {
+        issues.add(
+          ValidationIssue(
+            code: ValidationCode.capBreach,
+            path: 'finances.hardshipCapRelief',
+            message: 'combined cap overage exceeds 1000 CU',
+          ),
+        );
+      }
       if (finances.capGrandfathered) {
         if (capPayroll >
             finances.grandfatheredPayroll +
@@ -562,15 +596,14 @@ final class CareerFinances {
           );
         }
       } else if (capPayroll >
-          FinancialRules.salaryCap + finances.capException) {
+          FinancialRules.salaryCap + finances.capException + hardshipRelief) {
         issues.add(
           ValidationIssue(
             code: ValidationCode.capBreach,
             path: 'finances.teamFinances',
             message:
                 'team ${team.id.value} cap payroll $capPayroll exceeds '
-                '${FinancialRules.salaryCap} plus approved exception '
-                '${finances.capException}',
+                '${FinancialRules.salaryCap} plus approved cap relief',
           ),
         );
       }
