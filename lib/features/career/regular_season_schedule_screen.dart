@@ -32,6 +32,13 @@ class RegularSeasonScheduleScreen extends StatelessWidget {
           final atHome = fixture.homeTeamId == team.id;
           final opponentId = atHome ? fixture.awayTeamId : fixture.homeTeamId;
           final opponent = teamsById[opponentId.value];
+          final result = career.regularSeasonState!.gameResults[fixture.id];
+          final ownHome = fixture.homeTeamId == team.id;
+          final score = result == null
+              ? 'Scheduled'
+              : ownHome
+              ? 'Final ${result.summary.homeScore}–${result.summary.awayScore}'
+              : 'Final ${result.summary.awayScore}–${result.summary.homeScore}';
           return Card(
             key: ValueKey('schedule-fixture-${fixture.id}'),
             child: ListTile(
@@ -39,7 +46,7 @@ class RegularSeasonScheduleScreen extends StatelessWidget {
               subtitle: Text(
                 'Round ${fixture.roundNumber} • ${atHome ? 'Home' : 'Away'}',
               ),
-              trailing: Text(fixture.status.jsonValue),
+              trailing: Text(score),
             ),
           );
         },

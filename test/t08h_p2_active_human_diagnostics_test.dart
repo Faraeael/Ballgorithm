@@ -6,6 +6,7 @@ import 'package:basketball_manager/features/season/season_storage.dart';
 import 'package:basketball_manager/features/career/career_controller.dart';
 import 'package:basketball_manager/features/career/career_storage.dart';
 import 'package:basketball_manager/features/career/offseason_clearance_screen.dart';
+import 'package:basketball_manager/features/career/regular_season_overview_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simulation_core/simulation_core.dart';
@@ -88,440 +89,53 @@ void main() {
     tester.view.resetDevicePixelRatio();
   });
 
-  testWidgets(
-    'M009-T02 generates ready schedules and recovers schedule writes',
-    (tester) async {
-      tester.view.physicalSize = const Size(393, 852);
-      tester.view.devicePixelRatio = 1;
-      const readyCases = [
-        (20261028, FranchiseSituation.playIn),
-        (20261028, FranchiseSituation.playoff),
-        (20261028, FranchiseSituation.contender),
-        (987654321, FranchiseSituation.tanking),
-        (987654321, FranchiseSituation.playIn),
-        (987654321, FranchiseSituation.playoff),
-      ];
-      const blockedCases = [
-        (271828182, FranchiseSituation.tanking),
-        (8675309, FranchiseSituation.contender),
-      ];
-      GmCareer? firstCleared;
-      String? firstClearedSave;
+  testWidgets('M009-T03 simulates ready careers and recovers game saves', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    const readyCases = [
+      (20261028, FranchiseSituation.playIn),
+      (20261028, FranchiseSituation.playoff),
+      (20261028, FranchiseSituation.contender),
+      (987654321, FranchiseSituation.tanking),
+      (987654321, FranchiseSituation.playIn),
+      (987654321, FranchiseSituation.playoff),
+    ];
+    const blockedCases = [
+      (271828182, FranchiseSituation.tanking),
+      (8675309, FranchiseSituation.contender),
+    ];
+    GmCareer? firstCleared;
+    String? firstClearedSave;
 
-      String? scheduleFingerprint;
-      for (final (seed, situation) in readyCases) {
-        final active = await _runActiveCohort(tester, seed, situation);
-        expect(
-          active.readiness.status,
-          OffseasonReadinessStatus.readyForConfirmation,
-          reason: '$seed/${situation.jsonValue}',
-        );
-        final storage = InMemoryGmCareerStorage({
-          'default': GmCareerCodec.encode(active.career),
-        });
-        final controller = GmCareerController(storage: storage);
-        await controller.loadCareer();
-        await controller.markOffseasonCleared();
-        final cleared = controller.career!;
-        expect(
-          _gate.evaluate(cleared).status,
-          OffseasonReadinessStatus.cleared,
-        );
-        if (firstCleared == null) {
-          firstCleared = cleared;
-          firstClearedSave = await storage.read();
-          final seasonStorage = InMemorySeasonStorage();
-          await tester.pumpWidget(
-            BasketballManagerApp(
-              league: cleared.league,
-              storage: seasonStorage,
-              careerStorage: storage,
-              careerController: controller,
-              seasonMode: true,
-            ),
-          );
-          await tester.pumpAndSettle();
-          await tester.scrollUntilVisible(
-            find.byKey(const ValueKey('btn-start-regular-season')),
-            220,
-            scrollable: find
-                .descendant(
-                  of: find.byKey(const ValueKey('offseason-overview-scroll')),
-                  matching: find.byType(Scrollable),
-                )
-                .first,
-          );
-          await tester.pumpAndSettle();
-          await tester.tap(
-            find.byKey(const ValueKey('btn-start-regular-season')),
-          );
-          await tester.pumpAndSettle();
-          expect(
-            find.byKey(const ValueKey('confirm-start-regular-season')),
-            findsOneWidget,
-          );
-          expect(controller.career!.phase, CareerPhase.openingOffseason);
-          await tester.tap(
-            find.byKey(const ValueKey('cancel-start-regular-season')),
-          );
-          await tester.pumpAndSettle();
-          expect(await storage.read(), firstClearedSave);
-          expect(controller.career!.phase, CareerPhase.openingOffseason);
-          await expectLater(
-            controller.startRegularSeason(confirmed: false),
-            throwsStateError,
-          );
-          expect(controller.career!.phase, CareerPhase.openingOffseason);
-          expect(await storage.read(), firstClearedSave);
-
-          await tester.tap(
-            find.byKey(const ValueKey('btn-start-regular-season')),
-          );
-          await tester.pumpAndSettle();
-          await tester.tap(
-            find.byKey(const ValueKey('confirm-start-regular-season')),
-          );
-          await tester.pumpAndSettle();
-          final entered = controller.career!;
-          expect(entered.phase, CareerPhase.regularSeason);
-          expect(entered.regularSeasonState!.gameResults, isEmpty);
-          expect(entered.currentYear, cleared.currentYear);
-          expect(
-            GmCareerCodec.encode(entered),
-            GmCareerCodec.encode(
-              const RegularSeasonEntryService().start(cleared),
-            ),
-          );
-          expect(find.text('Regular Season'), findsOneWidget);
-          expect(find.text('Record: 0–0'), findsOneWidget);
-          expect(find.text('Schedule not generated'), findsOneWidget);
-          for (final size in const [Size(360, 640), Size(393, 852)]) {
-            tester.view.physicalSize = size;
-            await tester.pumpAndSettle();
-            expect(tester.takeException(), isNull, reason: '$size overview');
-          }
-
-          final migratedV15 =
-              jsonDecode(GmCareerCodec.encode(entered)) as Map<String, dynamic>
-                ..['schemaVersion'] = 15;
-          (migratedV15['regularSeasonState'] as Map<String, dynamic>).remove(
-            'schedule',
-          );
-          final migratedCareer = GmCareerCodec.decode(jsonEncode(migratedV15));
-          expect(migratedCareer.phase, CareerPhase.regularSeason);
-          expect(migratedCareer.regularSeasonState!.schedule, isNull);
-
-          await tester.tap(find.byKey(const ValueKey('btn-generate-schedule')));
-          await tester.pumpAndSettle();
-          final scheduledCareer = controller.career!;
-          final schedule = scheduledCareer.regularSeasonState!.schedule!;
-          scheduleFingerprint = schedule.fingerprint;
-          final scheduleFreeCareerJson =
-              jsonDecode(GmCareerCodec.encode(scheduledCareer))
-                  as Map<String, dynamic>;
-          (scheduleFreeCareerJson['regularSeasonState']
-                  as Map<String, dynamic>)['schedule'] =
-              null;
-          expect(
-            scheduleFreeCareerJson,
-            jsonDecode(GmCareerCodec.encode(entered)),
-          );
-          expect(schedule.rounds, hasLength(82));
-          expect(schedule.totalFixtures, 1230);
-          expect(
-            schedule.fixturesForTeam(entered.userFranchiseId),
-            hasLength(82),
-          );
-          expect(schedule.remainingGamesForTeam(entered.userFranchiseId), 82);
-          expect(schedule.completedGamesCount, 0);
-          expect(scheduledCareer.regularSeasonState!.gameResults, isEmpty);
-          expect(scheduledCareer.currentYear, entered.currentYear);
-          expect(find.text('Games scheduled: 82'), findsOneWidget);
-          expect(find.text('Upcoming five'), findsOneWidget);
-          expect(find.textContaining('Next opponent:'), findsOneWidget);
-          expect(
-            find.byKey(const ValueKey('btn-view-full-schedule')),
-            findsOneWidget,
-          );
-          final scheduledSave = await storage.read();
-          expect(
-            GmCareerCodec.decode(
-              scheduledSave!,
-            ).regularSeasonState!.schedule!.fingerprint,
-            schedule.fingerprint,
-          );
-          final encodeTimer = Stopwatch()..start();
-          final careerSave = GmCareerCodec.encode(scheduledCareer);
-          encodeTimer.stop();
-          final decodeTimer = Stopwatch()..start();
-          final reloadedCareer = GmCareerCodec.decode(careerSave);
-          decodeTimer.stop();
-          expect(
-            reloadedCareer.regularSeasonState!.schedule!.fingerprint,
-            schedule.fingerprint,
-          );
-          expect(careerSave, scheduledSave);
-          debugPrint(
-            'M009-T02 PERSIST careerBytes=${utf8.encode(careerSave).length} '
-            'encodeUs=${encodeTimer.elapsedMicroseconds} '
-            'decodeUs=${decodeTimer.elapsedMicroseconds}',
-          );
-
-          final corruptedSave =
-              jsonDecode(scheduledSave) as Map<String, dynamic>;
-          final regularSeasonJson =
-              corruptedSave['regularSeasonState'] as Map<String, dynamic>;
-          final scheduleJson =
-              regularSeasonJson['schedule'] as Map<String, dynamic>;
-          final rounds = scheduleJson['rounds'] as List<dynamic>;
-          final firstRound = rounds.first as Map<String, dynamic>;
-          final firstFixture =
-              (firstRound['fixtures'] as List<dynamic>).first
-                  as Map<String, dynamic>;
-          firstFixture['gameSeed'] = (firstFixture['gameSeed'] as int) + 1;
-          expect(
-            () => GmCareerCodec.decode(jsonEncode(corruptedSave)),
-            throwsFormatException,
-          );
-
-          await tester.dragUntilVisible(
-            find.byKey(const ValueKey('btn-view-full-schedule')),
-            find.byType(ListView).last,
-            const Offset(0, -200),
-          );
-          await tester.tap(
-            find.byKey(const ValueKey('btn-view-full-schedule')),
-          );
-          await tester.pumpAndSettle();
-          expect(find.text('Team Schedule'), findsOneWidget);
-          final lastFixture = schedule
-              .fixturesForTeam(entered.userFranchiseId)
-              .last;
-          final lastFixtureFinder = find.byKey(
-            ValueKey('schedule-fixture-${lastFixture.id}'),
-          );
-          await tester.scrollUntilVisible(
-            lastFixtureFinder,
-            350,
-            scrollable: find.byType(Scrollable).last,
-          );
-          expect(lastFixtureFinder, findsOneWidget);
-          expect(find.text('Play Game'), findsNothing);
-          for (final size in const [Size(360, 640), Size(393, 852)]) {
-            tester.view.physicalSize = size;
-            await tester.pumpAndSettle();
-            expect(tester.takeException(), isNull, reason: '$size schedule');
-          }
-          await tester.pageBack();
-          await tester.pumpAndSettle();
-
-          await expectLater(
-            controller.startRegularSeason(confirmed: true),
-            throwsStateError,
-          );
-          await expectLater(
-            controller.generateRegularSeasonSchedule(),
-            throwsStateError,
-          );
-          expect(controller.career!.phase, CareerPhase.regularSeason);
-          expect(await storage.read(), scheduledSave);
-          expect(await seasonStorage.read(), isNull);
-          await tester.pumpWidget(const SizedBox.shrink());
-          controller.dispose();
-
-          final failureSeasonStorage = InMemorySeasonStorage();
-          final failureStorage = _CommitThenFailCareerStorage(
-            InMemoryGmCareerStorage({'default': firstClearedSave}),
-          )..failNextWrite = true;
-          final failureController = GmCareerController(storage: failureStorage);
-          await failureController.loadCareer();
-          await tester.pumpWidget(
-            BasketballManagerApp(
-              league: cleared.league,
-              storage: failureSeasonStorage,
-              careerStorage: failureStorage,
-              careerController: failureController,
-              seasonMode: true,
-            ),
-          );
-          await tester.pumpAndSettle();
-          await tester.scrollUntilVisible(
-            find.byKey(const ValueKey('btn-start-regular-season')),
-            220,
-            scrollable: find
-                .descendant(
-                  of: find.byKey(const ValueKey('offseason-overview-scroll')),
-                  matching: find.byType(Scrollable),
-                )
-                .first,
-          );
-          await tester.pumpAndSettle();
-          await tester.tap(
-            find.byKey(const ValueKey('btn-start-regular-season')),
-          );
-          await tester.pumpAndSettle();
-          await tester.tap(
-            find.byKey(const ValueKey('confirm-start-regular-season')),
-          );
-          await tester.pumpAndSettle();
-          expect(failureController.career!.phase, CareerPhase.openingOffseason);
-          expect(failureController.draftRecoveryRequired, isTrue);
-          final promotedSave = await failureStorage.read();
-          expect(
-            GmCareerCodec.decode(promotedSave!).phase,
-            CareerPhase.regularSeason,
-          );
-          await tester.scrollUntilVisible(
-            find.byKey(const ValueKey('btn-season-entry-reload')),
-            220,
-            scrollable: find
-                .descendant(
-                  of: find.byKey(const ValueKey('offseason-overview-scroll')),
-                  matching: find.byType(Scrollable),
-                )
-                .first,
-          );
-          await tester.pumpAndSettle();
-          await tester.tap(
-            find.byKey(const ValueKey('btn-season-entry-reload')),
-          );
-          await tester.pumpAndSettle();
-          expect(failureController.career!.phase, CareerPhase.regularSeason);
-          expect(failureController.draftRecoveryRequired, isFalse);
-          expect(
-            failureController.career!.regularSeasonState!.seasonId,
-            entered.regularSeasonState!.seasonId,
-          );
-          expect(
-            failureController.career!.freeAgentPool.acquisitions.entries.length,
-            cleared.freeAgentPool.acquisitions.entries.length,
-          );
-          expect(
-            failureController.career!.finances.contracts.keys.toSet(),
-            cleared.finances.contracts.keys.toSet(),
-          );
-          expect(await failureSeasonStorage.read(), isNull);
-          expect(GmCareerCodec.encode(failureController.career!), promotedSave);
-          await expectLater(
-            failureController.startRegularSeason(confirmed: true),
-            throwsStateError,
-          );
-          expect(await failureStorage.read(), promotedSave);
-          failureStorage.failBeforePromotionNextWrite = true;
-          await tester.tap(find.byKey(const ValueKey('btn-generate-schedule')));
-          await tester.pumpAndSettle();
-          expect(
-            failureController.career!.regularSeasonState!.schedule,
-            isNull,
-          );
-          expect(failureController.draftRecoveryRequired, isTrue);
-          expect(await failureStorage.read(), promotedSave);
-          await tester.tap(find.byKey(const ValueKey('btn-schedule-reload')));
-          await tester.pumpAndSettle();
-          expect(failureController.draftRecoveryRequired, isFalse);
-          expect(
-            failureController.career!.regularSeasonState!.schedule,
-            isNull,
-          );
-
-          failureStorage.failNextWrite = true;
-          await tester.tap(find.byKey(const ValueKey('btn-generate-schedule')));
-          await tester.pumpAndSettle();
-          expect(
-            failureController.career!.regularSeasonState!.schedule,
-            isNull,
-          );
-          expect(failureController.draftRecoveryRequired, isTrue);
-          final promotedScheduleSave = await failureStorage.read();
-          final persistedSchedule = GmCareerCodec.decode(
-            promotedScheduleSave!,
-          ).regularSeasonState!.schedule!;
-          await tester.tap(find.byKey(const ValueKey('btn-schedule-reload')));
-          await tester.pumpAndSettle();
-          final recoveredCareer = failureController.career!;
-          expect(failureController.draftRecoveryRequired, isFalse);
-          expect(
-            recoveredCareer.regularSeasonState!.schedule!.fingerprint,
-            persistedSchedule.fingerprint,
-          );
-          expect(GmCareerCodec.encode(recoveredCareer), promotedScheduleSave);
-          expect(
-            GmCareerCodec.encode(recoveredCareer),
-            GmCareerCodec.encode(
-              const RegularSeasonScheduleService().generate(entered),
-            ),
-          );
-          expect(recoveredCareer.currentYear, entered.currentYear);
-          expect(recoveredCareer.regularSeasonState!.gameResults, isEmpty);
-          final writesBeforeDuplicate = failureStorage.writes;
-          await expectLater(
-            failureController.generateRegularSeasonSchedule(),
-            throwsStateError,
-          );
-          expect(failureStorage.writes, writesBeforeDuplicate);
-          expect(await failureStorage.read(), promotedScheduleSave);
-          expect(await failureSeasonStorage.read(), isNull);
-          await tester.pumpWidget(const SizedBox.shrink());
-          failureController.dispose();
-        } else {
-          await controller.startRegularSeason(confirmed: true);
-          final entered = controller.career!;
-          expect(entered.phase, CareerPhase.regularSeason);
-          expect(entered.regularSeasonState!.gameResults, isEmpty);
-          expect(entered.regularSeasonState!.scheduleSeed, seed);
-          expect(
-            GmCareerCodec.encode(entered),
-            GmCareerCodec.encode(
-              const RegularSeasonEntryService().start(cleared),
-            ),
-          );
-          await controller.generateRegularSeasonSchedule();
-          final schedule = controller.career!.regularSeasonState!.schedule!;
-          scheduleFingerprint = schedule.fingerprint;
-          expect(schedule.rounds, hasLength(82));
-          expect(schedule.totalFixtures, 1230);
-          expect(
-            schedule.fixturesForTeam(entered.userFranchiseId),
-            hasLength(82),
-          );
-          expect(
-            GmCareerCodec.decode(
-              (await storage.read())!,
-            ).regularSeasonState!.schedule!.fingerprint,
-            schedule.fingerprint,
-          );
-          controller.dispose();
-        }
-        debugPrint(
-          'M009-T02 READY seed=$seed situation=${situation.jsonValue} '
-          'phase=regularSeason scheduleSeed=$seed rounds=82 fixtures=1230 '
-          'fingerprint=$scheduleFingerprint games=0',
-        );
-      }
-
-      for (final (seed, situation) in blockedCases) {
-        final active = await _runActiveCohort(tester, seed, situation);
-        expect(active.readiness.readyCount, lessThan(30));
-        expect(
-          () => const RegularSeasonEntryService().start(active.career),
-          throwsA(isA<RegularSeasonEntryBlocked>()),
-        );
-        final blockedStorage = InMemoryGmCareerStorage({
-          'default': GmCareerCodec.encode(active.career),
-        });
-        final blockedController = GmCareerController(storage: blockedStorage);
-        await blockedController.loadCareer();
-        final blockedSave = await blockedStorage.read();
-        await expectLater(
-          blockedController.generateRegularSeasonSchedule(),
-          throwsStateError,
-        );
-        expect(await blockedStorage.read(), blockedSave);
-        expect(blockedController.career!.regularSeasonState, isNull);
-        await blockedController.loadCareer();
+    String? scheduleFingerprint;
+    for (final (seed, situation) in readyCases) {
+      final active = await _runActiveCohort(tester, seed, situation);
+      expect(
+        active.readiness.status,
+        OffseasonReadinessStatus.readyForConfirmation,
+        reason: '$seed/${situation.jsonValue}',
+      );
+      final storage = InMemoryGmCareerStorage({
+        'default': GmCareerCodec.encode(active.career),
+      });
+      final controller = GmCareerController(storage: storage);
+      await controller.loadCareer();
+      await controller.markOffseasonCleared();
+      final cleared = controller.career!;
+      expect(_gate.evaluate(cleared).status, OffseasonReadinessStatus.cleared);
+      if (firstCleared == null) {
+        firstCleared = cleared;
+        firstClearedSave = await storage.read();
+        final seasonStorage = InMemorySeasonStorage();
         await tester.pumpWidget(
-          MaterialApp(
-            home: GmOffseasonOverviewScreen(controller: blockedController),
+          BasketballManagerApp(
+            league: cleared.league,
+            storage: seasonStorage,
+            careerStorage: storage,
+            careerController: controller,
+            seasonMode: true,
           ),
         );
         await tester.pumpAndSettle();
@@ -535,31 +149,818 @@ void main() {
               )
               .first,
         );
-        expect(find.text('Season Start Blocked'), findsOneWidget);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('btn-start-regular-season')),
+        );
+        await tester.pumpAndSettle();
         expect(
-          tester
-              .widget<FilledButton>(
-                find.byKey(const ValueKey('btn-start-regular-season')),
-              )
-              .onPressed,
-          isNull,
+          find.byKey(const ValueKey('confirm-start-regular-season')),
+          findsOneWidget,
         );
-        expect(blockedController.career!.phase, CareerPhase.openingOffseason);
-        await tester.pumpWidget(const SizedBox.shrink());
-        blockedController.dispose();
+        expect(controller.career!.phase, CareerPhase.openingOffseason);
+        await tester.tap(
+          find.byKey(const ValueKey('cancel-start-regular-season')),
+        );
+        await tester.pumpAndSettle();
+        expect(await storage.read(), firstClearedSave);
+        expect(controller.career!.phase, CareerPhase.openingOffseason);
+        await expectLater(
+          controller.startRegularSeason(confirmed: false),
+          throwsStateError,
+        );
+        expect(controller.career!.phase, CareerPhase.openingOffseason);
+        expect(await storage.read(), firstClearedSave);
+
+        await tester.tap(
+          find.byKey(const ValueKey('btn-start-regular-season')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('confirm-start-regular-season')),
+        );
+        await tester.pumpAndSettle();
+        final entered = controller.career!;
+        expect(entered.phase, CareerPhase.regularSeason);
+        expect(entered.regularSeasonState!.gameResults, isEmpty);
+        expect(entered.currentYear, cleared.currentYear);
+        expect(
+          GmCareerCodec.encode(entered),
+          GmCareerCodec.encode(
+            const RegularSeasonEntryService().start(cleared),
+          ),
+        );
+        expect(find.text('Regular Season'), findsOneWidget);
+        expect(find.textContaining('Record: 0–0'), findsOneWidget);
+        expect(find.text('Schedule not generated'), findsOneWidget);
+        for (final size in const [Size(360, 640), Size(393, 852)]) {
+          tester.view.physicalSize = size;
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: '$size overview');
+        }
+
+        final migratedV15 =
+            jsonDecode(GmCareerCodec.encode(entered)) as Map<String, dynamic>
+              ..['schemaVersion'] = 15;
+        (migratedV15['regularSeasonState'] as Map<String, dynamic>).remove(
+          'schedule',
+        );
+        final migratedCareer = GmCareerCodec.decode(jsonEncode(migratedV15));
+        expect(migratedCareer.phase, CareerPhase.regularSeason);
+        expect(migratedCareer.regularSeasonState!.schedule, isNull);
+
+        await tester.tap(find.byKey(const ValueKey('btn-generate-schedule')));
+        await tester.pumpAndSettle();
+        final scheduledCareer = controller.career!;
+        final schedule = scheduledCareer.regularSeasonState!.schedule!;
+        final saveBeforeCancel = await storage.read();
+        expect(saveBeforeCancel, isNotNull);
+        scheduleFingerprint = schedule.fingerprint;
+        final scheduleFreeCareerJson =
+            jsonDecode(GmCareerCodec.encode(scheduledCareer))
+                as Map<String, dynamic>;
+        (scheduleFreeCareerJson['regularSeasonState']
+                as Map<String, dynamic>)['schedule'] =
+            null;
+        expect(
+          scheduleFreeCareerJson,
+          jsonDecode(GmCareerCodec.encode(entered)),
+        );
+        expect(schedule.rounds, hasLength(82));
+        expect(schedule.totalFixtures, 1230);
+        expect(
+          schedule.fixturesForTeam(entered.userFranchiseId),
+          hasLength(82),
+        );
+        expect(schedule.remainingGamesForTeam(entered.userFranchiseId), 82);
+        expect(schedule.completedGamesCount, 0);
+        expect(scheduledCareer.regularSeasonState!.gameResults, isEmpty);
+        expect(scheduledCareer.currentYear, entered.currentYear);
+        expect(find.text('Games scheduled: 82'), findsOneWidget);
+        expect(find.text('Upcoming five'), findsOneWidget);
+        expect(find.textContaining('Next opponent:'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('btn-view-full-schedule')),
+          findsOneWidget,
+        );
+        await tester.scrollUntilVisible(
+          find.text('Simulate Next Round'),
+          220,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.ensureVisible(find.text('Simulate Next Round'));
+        await tester.tap(find.text('Simulate Next Round'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+        expect(await storage.read(), saveBeforeCancel);
+        expect(controller.career!.regularSeasonState!.gameResults, isEmpty);
+        await expectLater(
+          controller.simulateNextRegularSeasonRound(
+            expectedRoundNumber: 1,
+            confirmed: false,
+          ),
+          throwsStateError,
+        );
+        expect(await storage.read(), saveBeforeCancel);
+        final scheduledSave = await storage.read();
+        expect(
+          GmCareerCodec.decode(
+            scheduledSave!,
+          ).regularSeasonState!.schedule!.fingerprint,
+          schedule.fingerprint,
+        );
+        final scheduledV16 = Map<String, dynamic>.from(
+          jsonDecode(scheduledSave),
+        )..['schemaVersion'] = 16;
+        final migratedV16 = GmCareerCodec.decode(jsonEncode(scheduledV16));
+        final migratedSeason = migratedV16.regularSeasonState!;
+        expect(migratedV16.schemaVersion, GmCareer.currentSchemaVersion);
+        expect(
+          migratedSeason.seasonId,
+          scheduledCareer.regularSeasonState!.seasonId,
+        );
+        expect(migratedSeason.seasonYear, scheduledCareer.currentYear);
+        expect(migratedSeason.scheduleSeed, schedule.scheduleSeed);
+        expect(migratedSeason.schedule!.fingerprint, schedule.fingerprint);
+        expect(
+          migratedSeason.openingTeams.map((team) => team.toJson()).toList(),
+          scheduledCareer.regularSeasonState!.openingTeams
+              .map((team) => team.toJson())
+              .toList(),
+        );
+        expect(migratedSeason.gameResults, isEmpty);
+        expect(migratedSeason.completedGames, 0);
+        final encodeTimer = Stopwatch()..start();
+        final careerSave = GmCareerCodec.encode(scheduledCareer);
+        encodeTimer.stop();
+        final decodeTimer = Stopwatch()..start();
+        final reloadedCareer = GmCareerCodec.decode(careerSave);
+        decodeTimer.stop();
+        expect(
+          reloadedCareer.regularSeasonState!.schedule!.fingerprint,
+          schedule.fingerprint,
+        );
+        expect(careerSave, scheduledSave);
         debugPrint(
-          'M009-T01 BLOCKED seed=$seed situation=${situation.jsonValue} '
-          'ready=${active.readiness.readyCount}/30 '
-          'vacancies=${active.readiness.totalShortage}',
+          'M009-T02 PERSIST careerBytes=${utf8.encode(careerSave).length} '
+          'encodeUs=${encodeTimer.elapsedMicroseconds} '
+          'decodeUs=${decodeTimer.elapsedMicroseconds}',
         );
+
+        final corruptedSave = jsonDecode(scheduledSave) as Map<String, dynamic>;
+        final regularSeasonJson =
+            corruptedSave['regularSeasonState'] as Map<String, dynamic>;
+        final scheduleJson =
+            regularSeasonJson['schedule'] as Map<String, dynamic>;
+        final rounds = scheduleJson['rounds'] as List<dynamic>;
+        final firstRound = rounds.first as Map<String, dynamic>;
+        final firstFixture =
+            (firstRound['fixtures'] as List<dynamic>).first
+                as Map<String, dynamic>;
+        firstFixture['gameSeed'] = (firstFixture['gameSeed'] as int) + 1;
+        expect(
+          () => GmCareerCodec.decode(jsonEncode(corruptedSave)),
+          throwsFormatException,
+        );
+
+        await tester.dragUntilVisible(
+          find.byKey(const ValueKey('btn-view-full-schedule')),
+          find.byType(ListView).last,
+          const Offset(0, -200),
+        );
+        await tester.tap(find.byKey(const ValueKey('btn-view-full-schedule')));
+        await tester.pumpAndSettle();
+        expect(find.text('Team Schedule'), findsOneWidget);
+        final lastFixture = schedule
+            .fixturesForTeam(entered.userFranchiseId)
+            .last;
+        final lastFixtureFinder = find.byKey(
+          ValueKey('schedule-fixture-${lastFixture.id}'),
+        );
+        await tester.scrollUntilVisible(
+          lastFixtureFinder,
+          350,
+          scrollable: find.byType(Scrollable).last,
+        );
+        expect(lastFixtureFinder, findsOneWidget);
+        expect(find.text('Play Game'), findsNothing);
+        for (final size in const [Size(360, 640), Size(393, 852)]) {
+          tester.view.physicalSize = size;
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: '$size schedule');
+        }
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+
+        await expectLater(
+          controller.startRegularSeason(confirmed: true),
+          throwsStateError,
+        );
+        await expectLater(
+          controller.generateRegularSeasonSchedule(),
+          throwsStateError,
+        );
+        expect(controller.career!.phase, CareerPhase.regularSeason);
+        expect(await storage.read(), scheduledSave);
+        expect(await seasonStorage.read(), isNull);
+        final gameplayStorage = InMemoryGmCareerStorage({
+          'default': scheduledSave,
+        });
+        final gameplayController = GmCareerController(storage: gameplayStorage);
+        await gameplayController.loadCareer();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RegularSeasonOverviewScreen(controller: gameplayController),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          gameplayController.career!.regularSeasonState!.schedule,
+          isNotNull,
+        );
+        await tester.scrollUntilVisible(
+          find.byKey(const ValueKey('btn-view-next-round')),
+          220,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.tap(find.text('View Round 1'));
+        await tester.pumpAndSettle();
+        expect(find.text('Round 1'), findsOneWidget);
+        expect(find.text('Scheduled'), findsWidgets);
+        for (final size in const [Size(360, 640), Size(393, 852)]) {
+          tester.view.physicalSize = size;
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: '$size round preview');
+        }
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.text('Simulate Next Round'),
+          220,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.tap(find.text('Simulate Next Round'));
+        await tester.pumpAndSettle();
+        expect(find.text('Simulate Round 1?'), findsOneWidget);
+        final confirmedRoundTimer = Stopwatch()..start();
+        await tester.tap(find.text('Simulate Next Round').last);
+        await tester.pumpAndSettle();
+        for (
+          var attempt = 0;
+          attempt < 600 && gameplayController.isLoading;
+          attempt++
+        ) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 50)),
+          );
+          await tester.pump();
+        }
+        expect(gameplayController.isLoading, isFalse);
+        await tester.pumpAndSettle();
+        expect(gameplayController.errorMessage, isNull);
+        confirmedRoundTimer.stop();
+        expect(
+          gameplayController.career!.regularSeasonState!.gameResults,
+          hasLength(15),
+        );
+        final engineTimer = Stopwatch()..start();
+        final engineRound = const RegularSeasonRoundService().simulateNextRound(
+          scheduledCareer,
+          expectedRoundNumber: 1,
+        );
+        engineTimer.stop();
+        expect(
+          GmCareerCodec.encode(gameplayController.career!),
+          GmCareerCodec.encode(engineRound),
+        );
+        final playedSave = await gameplayStorage.read();
+        final tamperedResultSave =
+            jsonDecode(playedSave!) as Map<String, dynamic>;
+        final tamperedSeason =
+            tamperedResultSave['regularSeasonState'] as Map<String, dynamic>;
+        final resultRecords =
+            tamperedSeason['gameResults'] as Map<String, dynamic>;
+        final firstResult = resultRecords.values.first as Map<String, dynamic>;
+        final firstSummary = firstResult['summary'] as Map<String, dynamic>;
+        firstSummary['homeScore'] = (firstSummary['homeScore'] as int) + 1;
+        expect(
+          () => GmCareerCodec.decode(jsonEncode(tamperedResultSave)),
+          throwsFormatException,
+        );
+        final tamperedFingerprintSave =
+            jsonDecode(playedSave) as Map<String, dynamic>;
+        final fingerprintSeason =
+            tamperedFingerprintSave['regularSeasonState']
+                as Map<String, dynamic>;
+        final fingerprintResults =
+            fingerprintSeason['gameResults'] as Map<String, dynamic>;
+        final fingerprintResult =
+            fingerprintResults.values.first as Map<String, dynamic>;
+        fingerprintResult['inputFingerprint'] = List.filled(64, '0').join();
+        expect(
+          () => GmCareerCodec.decode(jsonEncode(tamperedFingerprintSave)),
+          throwsFormatException,
+        );
+        await expectLater(
+          gameplayController.simulateNextRegularSeasonRound(
+            expectedRoundNumber: 1,
+            confirmed: true,
+          ),
+          throwsStateError,
+        );
+        expect(await gameplayStorage.read(), playedSave);
+        await gameplayController.loadCareer();
+        expect(
+          gameplayController.career!.regularSeasonState!.gameResults,
+          hasLength(15),
+        );
+        final roundOneState = gameplayController.career!.regularSeasonState!;
+        expect(roundOneState.completedRounds, 1);
+        expect(roundOneState.remainingGames, 1215);
+        expect(roundOneState.nextUnfinishedRoundNumber, 2);
+        expect(GmCareerCodec.encode(gameplayController.career!), playedSave);
+        _logRoundMetrics(
+          seed,
+          roundOneState,
+          entered.userFranchiseId,
+          confirmedRoundTimer.elapsedMilliseconds,
+          engineTimer.elapsedMilliseconds,
+        );
+        final postPromotionStorage = _CommitThenFailCareerStorage(
+          InMemoryGmCareerStorage({'default': playedSave}),
+        )..failNextWrite = true;
+        final postPromotionController = GmCareerController(
+          storage: postPromotionStorage,
+        );
+        await postPromotionController.loadCareer();
+        await expectLater(
+          _pumpCommand(
+            tester,
+            postPromotionController.simulateNextRegularSeasonRound(
+              expectedRoundNumber: 2,
+              confirmed: true,
+            ),
+          ),
+          throwsA(isA<GmCareerStorageException>()),
+        );
+        expect(postPromotionController.draftRecoveryRequired, isTrue);
+        expect(
+          postPromotionController.career!.regularSeasonState!.gameResults,
+          hasLength(15),
+        );
+        await postPromotionController.loadCareer();
+        expect(
+          postPromotionController.career!.regularSeasonState!.gameResults,
+          hasLength(30),
+        );
+        final recoveredPostPromotionSave = await postPromotionStorage.read();
+        expect(
+          GmCareerCodec.encode(postPromotionController.career!),
+          recoveredPostPromotionSave,
+        );
+        postPromotionController.dispose();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RegularSeasonOverviewScreen(controller: gameplayController),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.drag(find.byType(Scrollable).first, const Offset(0, 1000));
+        await tester.pumpAndSettle();
+        expect(find.byType(RegularSeasonOverviewScreen), findsOneWidget);
+        expect(find.text('Regular Season'), findsOneWidget);
+        final humanStanding = gameplayController
+            .career!
+            .regularSeasonState!
+            .standings
+            .table[entered.userFranchiseId.value]!;
+        final recordText =
+            'Record: ${humanStanding.wins}–${humanStanding.losses}';
+        final renderedRecordTexts = tester
+            .widgetList<Text>(find.byType(Text))
+            .map((widget) => widget.data)
+            .where((text) => text?.startsWith('Record:') ?? false)
+            .toList();
+        expect(
+          renderedRecordTexts,
+          [recordText],
+          reason: 'Rendered record labels: $renderedRecordTexts',
+        );
+        await tester.scrollUntilVisible(
+          find.text('Last game'),
+          220,
+          scrollable: find.byType(Scrollable).first,
+        );
+        expect(find.text('Last game'), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.text('View Box Score'),
+          220,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.ensureVisible(find.text('View Box Score'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('View Box Score'));
+        for (final size in const [Size(360, 640), Size(393, 852)]) {
+          tester.view.physicalSize = size;
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: '$size box score');
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('Box Score'), findsOneWidget);
+        expect(find.textContaining('PTS'), findsWidgets);
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('View League Results'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('View League Results'));
+        await tester.pumpAndSettle();
+        expect(find.text('League Results'), findsOneWidget);
+        for (final size in const [Size(360, 640), Size(393, 852)]) {
+          tester.view.physicalSize = size;
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: '$size results');
+        }
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('View Standings'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('View Standings'));
+        await tester.pumpAndSettle();
+        expect(find.text('Standings'), findsOneWidget);
+        expect(find.textContaining('GP '), findsWidgets);
+        for (final size in const [Size(360, 640), Size(393, 852)]) {
+          tester.view.physicalSize = size;
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: '$size standings');
+        }
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.byKey(const ValueKey('btn-view-full-schedule')),
+          220,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('btn-view-full-schedule')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('btn-view-full-schedule')));
+        await tester.pumpAndSettle();
+        final humanFixture = schedule.rounds.first.fixtures.firstWhere(
+          (fixture) =>
+              fixture.homeTeamId == entered.userFranchiseId ||
+              fixture.awayTeamId == entered.userFranchiseId,
+        );
+        final humanGame = gameplayController
+            .career!
+            .regularSeasonState!
+            .gameResults[humanFixture.id]!;
+        final ownScore = humanFixture.homeTeamId == entered.userFranchiseId
+            ? humanGame.summary.homeScore
+            : humanGame.summary.awayScore;
+        final opponentScore = humanFixture.homeTeamId == entered.userFranchiseId
+            ? humanGame.summary.awayScore
+            : humanGame.summary.homeScore;
+        expect(find.text('Final $ownScore–$opponentScore'), findsOneWidget);
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        final concurrent = await _pumpCommand(
+          tester,
+          Future.wait<Object?>([
+            gameplayController
+                .simulateNextRegularSeasonRound(
+                  expectedRoundNumber: 2,
+                  confirmed: true,
+                )
+                .then<Object?>((_) => null, onError: (Object error) => error),
+            gameplayController
+                .simulateNextRegularSeasonRound(
+                  expectedRoundNumber: 2,
+                  confirmed: true,
+                )
+                .then<Object?>((_) => null, onError: (Object error) => error),
+          ]),
+        );
+        expect(concurrent.whereType<StateError>(), hasLength(1));
+        expect(
+          gameplayController.career!.regularSeasonState!.gameResults,
+          hasLength(30),
+        );
+        expect(gameplayController.career!.currentYear, entered.currentYear);
+        gameplayStorage.shouldThrowOnWrite = true;
+        await expectLater(
+          _pumpCommand(
+            tester,
+            gameplayController.simulateNextRegularSeasonRound(
+              expectedRoundNumber: 3,
+              confirmed: true,
+            ),
+          ),
+          throwsA(isA<GmCareerStorageException>()),
+        );
+        expect(gameplayController.draftRecoveryRequired, isTrue);
+        expect(
+          gameplayController.career!.regularSeasonState!.gameResults,
+          hasLength(30),
+        );
+        gameplayStorage.shouldThrowOnWrite = false;
+        await gameplayController.loadCareer();
+        expect(gameplayController.draftRecoveryRequired, isFalse);
+        expect(
+          gameplayController.career!.regularSeasonState!.gameResults,
+          hasLength(30),
+        );
+        final thirdRoundTimer = Stopwatch()..start();
+        await _pumpCommand(
+          tester,
+          gameplayController.simulateNextRegularSeasonRound(
+            expectedRoundNumber: 3,
+            confirmed: true,
+          ),
+        );
+        thirdRoundTimer.stop();
+        final threeRoundCareer = gameplayController.career!;
+        expect(threeRoundCareer.regularSeasonState!.gameResults, hasLength(45));
+        expect(threeRoundCareer.currentYear, entered.currentYear);
+        debugPrint(
+          'T03 seed=$seed rounds=3 games=45 '
+          'round3Ms=${thirdRoundTimer.elapsedMilliseconds} '
+          'record=${threeRoundCareer.regularSeasonState!.standings.table[entered.userFranchiseId.value]!.wins}-'
+          '${threeRoundCareer.regularSeasonState!.standings.table[entered.userFranchiseId.value]!.losses}',
+        );
+        gameplayController.dispose();
+        await tester.pumpWidget(const SizedBox.shrink());
+        controller.dispose();
+
+        final failureSeasonStorage = InMemorySeasonStorage();
+        final failureStorage = _CommitThenFailCareerStorage(
+          InMemoryGmCareerStorage({'default': firstClearedSave}),
+        )..failNextWrite = true;
+        final failureController = GmCareerController(storage: failureStorage);
+        await failureController.loadCareer();
+        await tester.pumpWidget(
+          BasketballManagerApp(
+            league: cleared.league,
+            storage: failureSeasonStorage,
+            careerStorage: failureStorage,
+            careerController: failureController,
+            seasonMode: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.byKey(const ValueKey('btn-start-regular-season')),
+          220,
+          scrollable: find
+              .descendant(
+                of: find.byKey(const ValueKey('offseason-overview-scroll')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('btn-start-regular-season')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('confirm-start-regular-season')),
+        );
+        await tester.pumpAndSettle();
+        expect(failureController.career!.phase, CareerPhase.openingOffseason);
+        expect(failureController.draftRecoveryRequired, isTrue);
+        final promotedSave = await failureStorage.read();
+        expect(
+          GmCareerCodec.decode(promotedSave!).phase,
+          CareerPhase.regularSeason,
+        );
+        await tester.scrollUntilVisible(
+          find.byKey(const ValueKey('btn-season-entry-reload')),
+          220,
+          scrollable: find
+              .descendant(
+                of: find.byKey(const ValueKey('offseason-overview-scroll')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('btn-season-entry-reload')));
+        await tester.pumpAndSettle();
+        expect(failureController.career!.phase, CareerPhase.regularSeason);
+        expect(failureController.draftRecoveryRequired, isFalse);
+        expect(
+          failureController.career!.regularSeasonState!.seasonId,
+          entered.regularSeasonState!.seasonId,
+        );
+        expect(
+          failureController.career!.freeAgentPool.acquisitions.entries.length,
+          cleared.freeAgentPool.acquisitions.entries.length,
+        );
+        expect(
+          failureController.career!.finances.contracts.keys.toSet(),
+          cleared.finances.contracts.keys.toSet(),
+        );
+        expect(await failureSeasonStorage.read(), isNull);
+        expect(GmCareerCodec.encode(failureController.career!), promotedSave);
+        await expectLater(
+          failureController.startRegularSeason(confirmed: true),
+          throwsStateError,
+        );
+        expect(await failureStorage.read(), promotedSave);
+        failureStorage.failBeforePromotionNextWrite = true;
+        await tester.tap(find.byKey(const ValueKey('btn-generate-schedule')));
+        await tester.pumpAndSettle();
+        expect(failureController.career!.regularSeasonState!.schedule, isNull);
+        expect(failureController.draftRecoveryRequired, isTrue);
+        expect(await failureStorage.read(), promotedSave);
+        await tester.tap(find.byKey(const ValueKey('btn-schedule-reload')));
+        await tester.pumpAndSettle();
+        expect(failureController.draftRecoveryRequired, isFalse);
+        expect(failureController.career!.regularSeasonState!.schedule, isNull);
+
+        failureStorage.failNextWrite = true;
+        await tester.tap(find.byKey(const ValueKey('btn-generate-schedule')));
+        await tester.pumpAndSettle();
+        expect(failureController.career!.regularSeasonState!.schedule, isNull);
+        expect(failureController.draftRecoveryRequired, isTrue);
+        final promotedScheduleSave = await failureStorage.read();
+        final persistedSchedule = GmCareerCodec.decode(
+          promotedScheduleSave!,
+        ).regularSeasonState!.schedule!;
+        await tester.tap(find.byKey(const ValueKey('btn-schedule-reload')));
+        await tester.pumpAndSettle();
+        final recoveredCareer = failureController.career!;
+        expect(failureController.draftRecoveryRequired, isFalse);
+        expect(
+          recoveredCareer.regularSeasonState!.schedule!.fingerprint,
+          persistedSchedule.fingerprint,
+        );
+        expect(GmCareerCodec.encode(recoveredCareer), promotedScheduleSave);
+        expect(
+          GmCareerCodec.encode(recoveredCareer),
+          GmCareerCodec.encode(
+            const RegularSeasonScheduleService().generate(entered),
+          ),
+        );
+        expect(recoveredCareer.currentYear, entered.currentYear);
+        expect(recoveredCareer.regularSeasonState!.gameResults, isEmpty);
+        final writesBeforeDuplicate = failureStorage.writes;
+        await expectLater(
+          failureController.generateRegularSeasonSchedule(),
+          throwsStateError,
+        );
+        expect(failureStorage.writes, writesBeforeDuplicate);
+        expect(await failureStorage.read(), promotedScheduleSave);
+        expect(await failureSeasonStorage.read(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        failureController.dispose();
+      } else {
+        await controller.startRegularSeason(confirmed: true);
+        final entered = controller.career!;
+        expect(entered.phase, CareerPhase.regularSeason);
+        expect(entered.regularSeasonState!.gameResults, isEmpty);
+        expect(entered.regularSeasonState!.scheduleSeed, seed);
+        expect(
+          GmCareerCodec.encode(entered),
+          GmCareerCodec.encode(
+            const RegularSeasonEntryService().start(cleared),
+          ),
+        );
+        await controller.generateRegularSeasonSchedule();
+        final schedule = controller.career!.regularSeasonState!.schedule!;
+        scheduleFingerprint = schedule.fingerprint;
+        expect(schedule.rounds, hasLength(82));
+        expect(schedule.totalFixtures, 1230);
+        expect(
+          schedule.fixturesForTeam(entered.userFranchiseId),
+          hasLength(82),
+        );
+        expect(
+          GmCareerCodec.decode(
+            (await storage.read())!,
+          ).regularSeasonState!.schedule!.fingerprint,
+          schedule.fingerprint,
+        );
+        final scheduledCareer = controller.career!;
+        final roundTimer = Stopwatch()..start();
+        await _pumpCommand(
+          tester,
+          controller.simulateNextRegularSeasonRound(
+            expectedRoundNumber: 1,
+            confirmed: true,
+          ),
+        );
+        roundTimer.stop();
+        await controller.loadCareer();
+        final roundState = controller.career!.regularSeasonState!;
+        expect(roundState.gameResults, hasLength(15));
+        expect(roundState.completedRounds, 1);
+        expect(roundState.remainingGames, 1215);
+        expect(roundState.nextUnfinishedRoundNumber, 2);
+        expect(controller.career!.currentYear, entered.currentYear);
+        final engineTimer = Stopwatch()..start();
+        final engineRound = const RegularSeasonRoundService().simulateNextRound(
+          scheduledCareer,
+          expectedRoundNumber: 1,
+        );
+        engineTimer.stop();
+        expect(
+          GmCareerCodec.encode(controller.career!),
+          GmCareerCodec.encode(engineRound),
+        );
+        _logRoundMetrics(
+          seed,
+          roundState,
+          entered.userFranchiseId,
+          roundTimer.elapsedMilliseconds,
+          engineTimer.elapsedMilliseconds,
+        );
+        final humanRow =
+            roundState.standings.table[entered.userFranchiseId.value]!;
+        debugPrint(
+          'T03 seed=$seed situation=${situation.jsonValue} '
+          'human=${humanRow.wins}-${humanRow.losses} '
+          'reloadResults=${roundState.gameResults.length}',
+        );
+        controller.dispose();
       }
-      expect(firstCleared, isNotNull);
-      expect(firstClearedSave, isNotNull);
+      debugPrint(
+        'M009-T02 READY seed=$seed situation=${situation.jsonValue} '
+        'phase=regularSeason scheduleSeed=$seed rounds=82 fixtures=1230 '
+        'fingerprint=$scheduleFingerprint gameplay=round-1-verified',
+      );
+    }
+
+    for (final (seed, situation) in blockedCases) {
+      final active = await _runActiveCohort(tester, seed, situation);
+      expect(active.readiness.readyCount, lessThan(30));
+      expect(
+        () => const RegularSeasonEntryService().start(active.career),
+        throwsA(isA<RegularSeasonEntryBlocked>()),
+      );
+      final blockedStorage = InMemoryGmCareerStorage({
+        'default': GmCareerCodec.encode(active.career),
+      });
+      final blockedController = GmCareerController(storage: blockedStorage);
+      await blockedController.loadCareer();
+      final blockedSave = await blockedStorage.read();
+      await expectLater(
+        blockedController.generateRegularSeasonSchedule(),
+        throwsStateError,
+      );
+      expect(await blockedStorage.read(), blockedSave);
+      expect(blockedController.career!.regularSeasonState, isNull);
+      await expectLater(
+        blockedController.simulateNextRegularSeasonRound(
+          expectedRoundNumber: 1,
+          confirmed: true,
+        ),
+        throwsStateError,
+      );
+      expect(await blockedStorage.read(), blockedSave);
+      await blockedController.loadCareer();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GmOffseasonOverviewScreen(controller: blockedController),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('btn-start-regular-season')),
+        220,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const ValueKey('offseason-overview-scroll')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(find.text('Season Start Blocked'), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const ValueKey('btn-start-regular-season')),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(blockedController.career!.phase, CareerPhase.openingOffseason);
       await tester.pumpWidget(const SizedBox.shrink());
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    },
-  );
+      blockedController.dispose();
+      debugPrint(
+        'M009-T01 BLOCKED seed=$seed situation=${situation.jsonValue} '
+        'ready=${active.readiness.readyCount}/30 '
+        'vacancies=${active.readiness.totalShortage}',
+      );
+    }
+    expect(firstCleared, isNotNull);
+    expect(firstClearedSave, isNotNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    tester.view.resetPhysicalSize();
+    tester.view.resetDevicePixelRatio();
+  });
 }
 
 Future<_ActiveResult> _runActiveCohort(
@@ -1058,4 +1459,110 @@ final class _CommitThenFailCareerStorage implements GmCareerStorage {
   @override
   Future<bool> hasSave({String slot = 'default'}) =>
       delegate.hasSave(slot: slot);
+}
+
+void _logRoundMetrics(
+  int seed,
+  RegularSeasonState state,
+  TeamId humanTeamId,
+  int roundTransactionMilliseconds,
+  int engineMilliseconds,
+) {
+  final games = state.gameResults.values.toList();
+  final lines = games
+      .expand((game) => game.summary.playerLines.values)
+      .toList();
+  int total(int Function(SeasonPlayerGameLine line) select) =>
+      lines.fold(0, (sum, line) => sum + select(line));
+  double percentage(int made, int attempted) =>
+      attempted == 0 ? 0 : 100 * made / attempted;
+  final teamScores = [
+    for (final game in games) game.summary.homeScore,
+    for (final game in games) game.summary.awayScore,
+  ];
+  final gameTotals = [
+    for (final game in games) game.summary.homeScore + game.summary.awayScore,
+  ];
+  final humanFixture = state.schedule!
+      .fixturesForRound(1)
+      .firstWhere(
+        (fixture) =>
+            fixture.homeTeamId == humanTeamId ||
+            fixture.awayTeamId == humanTeamId,
+      );
+  final humanResult = state.gameResults[humanFixture.id]!;
+  final humanAtHome = humanFixture.homeTeamId == humanTeamId;
+  final humanScore = humanAtHome
+      ? humanResult.summary.homeScore
+      : humanResult.summary.awayScore;
+  final opponentScore = humanAtHome
+      ? humanResult.summary.awayScore
+      : humanResult.summary.homeScore;
+  final opponentId = humanAtHome
+      ? humanFixture.awayTeamId
+      : humanFixture.homeTeamId;
+  final humanLine = humanResult.summary.playerLines.values.firstWhere(
+    (line) => line.teamId == humanTeamId.value,
+  );
+  final standings = state.standings.table.values;
+  final leagueWins = standings.fold(0, (sum, team) => sum + team.wins);
+  final leagueLosses = standings.fold(0, (sum, team) => sum + team.losses);
+  debugPrint(
+    'T03 seed=$seed games=${games.length} remaining=${state.remainingGames} '
+    'leagueW-L=$leagueWins-$leagueLosses '
+    'teamScoreRange=${teamScores.reduce((a, b) => a < b ? a : b)}-'
+    '${teamScores.reduce((a, b) => a > b ? a : b)} '
+    'meanTeamScore=${(teamScores.fold<int>(0, (sum, score) => sum + score) / teamScores.length).toStringAsFixed(1)} '
+    'gameTotalRange=${gameTotals.reduce((a, b) => a < b ? a : b)}-'
+    '${gameTotals.reduce((a, b) => a > b ? a : b)} '
+    'FG%=${percentage(total((line) => line.fgm), total((line) => line.fga)).toStringAsFixed(1)} '
+    '3P%=${percentage(total((line) => line.threePm), total((line) => line.threePa)).toStringAsFixed(1)} '
+    'FT%=${percentage(total((line) => line.ftm), total((line) => line.fta)).toStringAsFixed(1)} '
+    'REB=${total((line) => line.rebounds)} TO=${total((line) => line.turnovers)} '
+    'PF=${total((line) => line.personalFouls)} '
+    'minutes=${total((line) => line.secondsPlayed) ~/ 60} '
+    'OT=${games.where((game) => game.periodsPlayed > 4).length} '
+    'homeWins=${games.where((game) => game.summary.winnerTeamId == game.homeTeamId).length} '
+    'roundTransactionMs=$roundTransactionMilliseconds engineMs=$engineMilliseconds',
+  );
+  debugPrint(
+    'T03 human=${humanTeamId.value} opponent=${opponentId.value} '
+    'site=${humanAtHome ? 'home' : 'away'} score=$humanScore-$opponentScore '
+    'boxSample=${humanLine.playerId}:${humanLine.points}PTS/'
+    '${humanLine.rebounds}REB/${humanLine.assists}AST '
+    'firstFingerprint=${games.first.inputFingerprint}',
+  );
+}
+
+Future<T> _pumpCommand<T>(WidgetTester tester, Future<T> command) async {
+  var completed = false;
+  T? value;
+  Object? failure;
+  StackTrace? failureStack;
+  command.then(
+    (result) {
+      value = result;
+      completed = true;
+    },
+    onError: (Object error, StackTrace stack) {
+      failure = error;
+      failureStack = stack;
+      completed = true;
+    },
+  );
+  for (var attempt = 0; attempt < 600 && !completed; attempt++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump();
+  }
+  expect(
+    completed,
+    isTrue,
+    reason: 'Career command did not complete within 30 seconds',
+  );
+  if (failure != null) {
+    Error.throwWithStackTrace(failure!, failureStack!);
+  }
+  return value as T;
 }

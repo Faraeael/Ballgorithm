@@ -27,6 +27,8 @@ import 'career_phase.dart';
 import 'career_setup.dart';
 import 'regular_season_state.dart';
 import 'regular_season_schedule_generator.dart';
+import '../simulation/game_fingerprint.dart';
+import 'regular_season_game_adapter.dart';
 
 /// The authoritative, persistent root state of a GM Career.
 final class GmCareer {
@@ -118,7 +120,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 16;
+  static const int currentSchemaVersion = 17;
 
   final String id;
   final int schemaVersion;
@@ -319,6 +321,11 @@ final class GmCareer {
         'Scheduled regular-season career requires schema v16',
       );
     }
+    if (schemaVersion < 17 && state.gameResults.isNotEmpty) {
+      throw const FormatException(
+        'Pre-v17 regular-season results are not supported',
+      );
+    }
     state.validate();
     if (state.seasonYear != currentYear ||
         state.scheduleSeed != generationSeed ||
@@ -349,6 +356,51 @@ final class GmCareer {
         schedule: schedule,
         openingTeams: state.openingTeams,
       );
+    }
+    if (schedule != null && state.gameResults.isNotEmpty) {
+      final adapter = const RegularSeasonGameAdapter();
+      final simulationLeague = adapter.simulationLeagueFor(this);
+      final fixturesById = {
+        for (final fixture in schedule.allFixtures) fixture.id: fixture,
+      };
+      for (final entry in state.gameResults.entries) {
+        final fixture = fixturesById[entry.key]!;
+        final participating = {
+          fixture.homeTeamId.value,
+          fixture.awayTeamId.value,
+        };
+        final standardPlayers = <String>{};
+        final playerTeams = <String, String>{};
+        for (final team in league.teams) {
+          if (!participating.contains(team.id.value)) continue;
+          for (final player in team.players) {
+            if (team.roster.categoryOf(player.id) == RosterCategory.standard) {
+              standardPlayers.add(player.id.value);
+              playerTeams[player.id.value] = team.id.value;
+            }
+          }
+        }
+        final result = entry.value;
+        result.validateFor(
+          fixture: fixture,
+          expectedSeasonId: state.seasonId,
+          expectedSeasonYear: state.seasonYear,
+          standardPlayers: standardPlayers,
+          playerTeams: playerTeams,
+        );
+        if (GameFingerprint.of(
+              adapter.createInput(
+                this,
+                fixture,
+                simulationLeague: simulationLeague,
+              ),
+            ) !=
+            result.inputFingerprint) {
+          throw const FormatException(
+            'Regular-season result input fingerprint mismatch',
+          );
+        }
+      }
     }
   }
 

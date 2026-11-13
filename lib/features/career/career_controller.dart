@@ -343,6 +343,41 @@ class GmCareerController extends ChangeNotifier {
       slot,
     );
   });
+
+  /// Simulates and persists exactly the confirmed next regular-season round.
+  Future<void> simulateNextRegularSeasonRound({
+    required int expectedRoundNumber,
+    required bool confirmed,
+    String slot = 'default',
+  }) => _runCareerCommand(action: 'simulate regular-season round', () async {
+    if (!confirmed) {
+      throw StateError('Explicit human confirmation is required');
+    }
+    final current = _requireCareer();
+    final state = current.regularSeasonState;
+    if (state == null) throw StateError('Regular season is not active');
+    final schedule = state.schedule;
+    if (schedule == null) {
+      throw StateError('Regular-season schedule is missing');
+    }
+    final unfinished = schedule.rounds.where(
+      (round) => round.fixtures.any(
+        (fixture) => !state.gameResults.containsKey(fixture.id),
+      ),
+    );
+    final nextRound = unfinished.isEmpty ? null : unfinished.first.roundNumber;
+    if (nextRound != expectedRoundNumber) {
+      throw StateError(
+        'Stale round: expected $expectedRoundNumber, current round is $nextRound',
+      );
+    }
+    final next = await compute(
+      _simulateRegularSeasonRound,
+      _RoundSimulationRequest(current, expectedRoundNumber),
+    );
+    await _saveCareerState(next, slot);
+  });
+
   Future<void> generateRegularSeasonSchedule({String slot = 'default'}) =>
       _runCareerCommand(action: 'generate regular-season schedule', () async {
         await _saveCareerState(
@@ -443,4 +478,17 @@ class GmCareerController extends ChangeNotifier {
   Future<bool> hasSavedCareer({String slot = 'default'}) async {
     return await storage.hasSave(slot: slot);
   }
+}
+
+GmCareer _simulateRegularSeasonRound(_RoundSimulationRequest request) =>
+    const RegularSeasonRoundService().simulateNextRound(
+      request.career,
+      expectedRoundNumber: request.expectedRoundNumber,
+    );
+
+final class _RoundSimulationRequest {
+  const _RoundSimulationRequest(this.career, this.expectedRoundNumber);
+
+  final GmCareer career;
+  final int expectedRoundNumber;
 }

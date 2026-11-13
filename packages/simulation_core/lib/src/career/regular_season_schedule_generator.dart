@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../generation/deterministic_random.dart';
 import '../models/ids.dart';
 import '../season/season_seed.dart';
@@ -187,7 +189,15 @@ final class RegularSeasonScheduleGenerator {
       scheduleSeed: schedule.scheduleSeed,
       openingTeams: openingTeams,
     );
-    if (schedule.canonicalJson != expected.canonicalJson) {
+    final normalized = schedule.toJson();
+    final rounds = normalized['rounds'] as List<Map<String, Object?>>;
+    for (final round in rounds) {
+      final fixtures = round['fixtures'] as List<Map<String, Object?>>;
+      for (final fixture in fixtures) {
+        fixture['status'] = RegularSeasonFixtureStatus.scheduled.jsonValue;
+      }
+    }
+    if (jsonEncode(normalized) != expected.canonicalJson) {
       throw const FormatException(
         'Persisted regular-season schedule differs from seeded generation',
       );

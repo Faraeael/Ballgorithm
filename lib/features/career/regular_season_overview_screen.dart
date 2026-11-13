@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
-
 import 'career_controller.dart';
+import 'regular_season_results_screen.dart';
+import 'regular_season_round_screen.dart';
 import 'regular_season_schedule_screen.dart';
 
 class RegularSeasonOverviewScreen extends StatelessWidget {
@@ -56,7 +57,26 @@ class RegularSeasonOverviewScreen extends StatelessWidget {
                     '${team.roster.twoWayCount} two-way players',
                   ),
                   const SizedBox(height: 8),
-                  const Text('Record: 0–0'),
+                  Builder(
+                    builder: (context) {
+                      final state = career.regularSeasonState;
+                      final standings = state?.standings.ranked;
+                      final row = standings?.firstWhere(
+                        (standing) => standing.teamId == team.id,
+                      );
+                      final rank = standings == null
+                          ? null
+                          : standings.indexOf(row!) + 1;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Record: ${row?.wins ?? 0}–${row?.losses ?? 0}'),
+                          if (rank != null)
+                            Text('League position: $rank of 30'),
+                        ],
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
@@ -113,6 +133,9 @@ class RegularSeasonOverviewScreen extends StatelessWidget {
                     ],
                   ] else ...[
                     Text('Games scheduled: ${teamFixtures.length}'),
+                    Text(
+                      'Completed rounds: ${career.regularSeasonState!.completedRounds} of 82',
+                    ),
                     if (nextGame != null && nextOpponentId != null) ...[
                       const SizedBox(height: 8),
                       Text(
@@ -129,8 +152,23 @@ class RegularSeasonOverviewScreen extends StatelessWidget {
                       'Upcoming five',
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
-                    for (final fixture in teamFixtures.take(5))
-                      Text(_fixtureLabel(fixture, team.id, teamsById)),
+                    for (final fixture
+                        in teamFixtures
+                            .where(
+                              (fixture) => !career
+                                  .regularSeasonState!
+                                  .gameResults
+                                  .containsKey(fixture.id),
+                            )
+                            .take(5))
+                      Text(
+                        _fixtureLabel(
+                          fixture,
+                          team.id,
+                          teamsById,
+                          career.regularSeasonState!.gameResults[fixture.id],
+                        ),
+                      ),
                     const SizedBox(height: 12),
                     OutlinedButton(
                       key: const ValueKey('btn-view-full-schedule'),
@@ -157,6 +195,7 @@ class RegularSeasonOverviewScreen extends StatelessWidget {
               ),
             ),
           ),
+          if (schedule != null) ...[_roundActions(context, career, controller)],
           const SizedBox(height: 8),
           Card(
             child: Padding(
@@ -181,16 +220,159 @@ class RegularSeasonOverviewScreen extends StatelessWidget {
     );
   }
 
+  Widget _roundActions(
+    BuildContext context,
+    GmCareer career,
+    GmCareerController controller,
+  ) {
+    final state = career.regularSeasonState!;
+    final schedule = state.schedule!;
+    final lastHuman = schedule.rounds.reversed
+        .expand((round) => round.fixtures.reversed)
+        .where(
+          (fixture) =>
+              fixture.homeTeamId == career.userFranchiseId ||
+              fixture.awayTeamId == career.userFranchiseId,
+        )
+        .map((fixture) => state.gameResults[fixture.id])
+        .whereType<RegularSeasonGameResult>()
+        .firstOrNull;
+    final next = schedule.rounds
+        .where(
+          (r) => r.fixtures.any((f) => !state.gameResults.containsKey(f.id)),
+        )
+        .firstOrNull;
+    return Column(
+      children: [
+        if (lastHuman != null)
+          Card(
+            child: ListTile(
+              title: Text(
+                '${career.league.teams.firstWhere((t) => t.id == lastHuman.homeTeamId).name} '
+                '${lastHuman.summary.homeScore} – ${lastHuman.summary.awayScore} '
+                '${career.league.teams.firstWhere((t) => t.id == lastHuman.awayTeamId).name}',
+              ),
+              subtitle: const Text('Last game'),
+              trailing: TextButton(
+                onPressed: () => Navigator.push<void>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => RegularSeasonBoxScoreScreen(
+                      career: career,
+                      fixtureId: lastHuman.fixtureId,
+                    ),
+                  ),
+                ),
+                child: const Text('View Box Score'),
+              ),
+            ),
+          ),
+        if (state.gameResults.isNotEmpty) ...[
+          TextButton(
+            onPressed: () => Navigator.push<void>(
+              context,
+              MaterialPageRoute(
+                builder: (_) => RegularSeasonResultsScreen(career: career),
+              ),
+            ),
+            child: const Text('View League Results'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.push<void>(
+              context,
+              MaterialPageRoute(
+                builder: (_) => RegularSeasonStandingsScreen(career: career),
+              ),
+            ),
+            child: const Text('View Standings'),
+          ),
+        ],
+        if (next != null)
+          TextButton(
+            key: const ValueKey('btn-view-next-round'),
+            onPressed: () => Navigator.push<void>(
+              context,
+              MaterialPageRoute(
+                builder: (_) => RegularSeasonRoundScreen(
+                  career: career,
+                  roundNumber: next.roundNumber,
+                ),
+              ),
+            ),
+            child: Text('View Round ${next.roundNumber}'),
+          ),
+        if (next == null)
+          const Card(child: ListTile(title: Text('Regular Season Complete')))
+        else
+          FilledButton(
+            onPressed: controller.isLoading || controller.draftRecoveryRequired
+                ? null
+                : () async {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (dialogContext) => AlertDialog(
+                        title: Text('Simulate Round ${next.roundNumber}?'),
+                        content: const Text('Simulate and save all 15 games?'),
+                        actions: [
+                          TextButton(
+                            onPressed: () =>
+                                Navigator.pop(dialogContext, false),
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(dialogContext, true),
+                            child: const Text('Simulate Next Round'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirmed == true && context.mounted) {
+                      try {
+                        await controller.simulateNextRegularSeasonRound(
+                          expectedRoundNumber: next.roundNumber,
+                          confirmed: true,
+                        );
+                      } catch (_) {}
+                    }
+                  },
+            child: Text(
+              state.gameResults.isEmpty
+                  ? 'Simulate Next Round'
+                  : 'Continue to Next Round',
+            ),
+          ),
+        if (controller.draftRecoveryRequired)
+          TextButton(
+            onPressed: controller.isLoading
+                ? null
+                : () => controller.loadCareer(),
+            child: const Text('Reload Saved Career'),
+          ),
+        if (controller.errorMessage != null)
+          Text(
+            controller.errorMessage!,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+      ],
+    );
+  }
+
   String _fixtureLabel(
     RegularSeasonFixture fixture,
     TeamId teamId,
     Map<String, Team> teamsById,
+    RegularSeasonGameResult? result,
   ) {
     final atHome = fixture.homeTeamId == teamId;
     final opponentId = atHome ? fixture.awayTeamId : fixture.homeTeamId;
     final opponentName = teamsById[opponentId.value]?.name ?? opponentId.value;
+    final score = result == null
+        ? 'Scheduled'
+        : atHome
+        ? 'Final ${result.summary.homeScore}–${result.summary.awayScore}'
+        : 'Final ${result.summary.awayScore}–${result.summary.homeScore}';
     return 'Round ${fixture.roundNumber} • '
-        '${atHome ? 'Home vs' : 'Away at'} $opponentName • Scheduled';
+        '${atHome ? 'Home vs' : 'Away at'} $opponentName • $score';
   }
 
   Future<void> _generateSchedule(BuildContext context) async {

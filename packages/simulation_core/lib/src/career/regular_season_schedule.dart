@@ -299,6 +299,7 @@ final class RegularSeasonSchedule {
     final fixtureIds = <String>{};
     Set<(String, String)> previousRoundPairings = {};
     var fixtureCount = 0;
+    var scheduledRoundSeen = false;
 
     for (var roundIndex = 0; roundIndex < rounds.length; roundIndex++) {
       final round = rounds[roundIndex];
@@ -319,7 +320,8 @@ final class RegularSeasonSchedule {
             fixture.fixturePosition != position ||
             fixture.id != _fixtureId(seasonId, roundNumber, position) ||
             !fixtureIds.add(fixture.id) ||
-            fixture.status != RegularSeasonFixtureStatus.scheduled ||
+            fixture.status != RegularSeasonFixtureStatus.scheduled &&
+                fixture.status != RegularSeasonFixtureStatus.completed ||
             homeId == awayId ||
             !teamIdSet.contains(homeId) ||
             !teamIdSet.contains(awayId) ||
@@ -358,6 +360,20 @@ final class RegularSeasonSchedule {
         awayCounts[awayId] = awayCounts[awayId]! + 1;
         fixtureCount++;
       }
+      final completedCount = round.fixtures
+          .where(
+            (fixture) => fixture.status == RegularSeasonFixtureStatus.completed,
+          )
+          .length;
+      if (completedCount != 0 && completedCount != _fixturesPerRound) {
+        throw const FormatException('Partial regular-season round');
+      }
+      if (completedCount == _fixturesPerRound && scheduledRoundSeen) {
+        throw const FormatException(
+          'Noncontiguous completed regular-season rounds',
+        );
+      }
+      if (completedCount == 0) scheduledRoundSeen = true;
       if (teamsThisRound.length != _regularSeasonTeamCount) {
         throw const FormatException(
           'Franchise missing from regular-season round',

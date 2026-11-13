@@ -1,6 +1,7 @@
 import '../models/ids.dart';
 import '../models/team.dart';
-import '../season/season_fixture.dart';
+import '../season/season_standing.dart';
+import 'regular_season_game_result.dart';
 import 'regular_season_schedule.dart';
 
 final class RegularSeasonTeamIdentity {
@@ -42,14 +43,14 @@ final class RegularSeasonTeamIdentity {
   };
 }
 
-/// Minimal persisted entry state; T01 creates no fixtures or game results.
+/// Persisted regular-season identity, schedule, and sole result authority.
 final class RegularSeasonState {
   RegularSeasonState({
     required this.seasonId,
     required this.seasonYear,
     required this.scheduleSeed,
     required List<RegularSeasonTeamIdentity> openingTeams,
-    required Map<String, SeasonGameSummary> gameResults,
+    required Map<String, RegularSeasonGameResult> gameResults,
     this.schedule,
   }) : openingTeams = List.unmodifiable(openingTeams),
        gameResults = Map.unmodifiable(gameResults) {
@@ -93,12 +94,17 @@ final class RegularSeasonState {
       }
       schedule = null;
     }
-    final parsedResults = <String, SeasonGameSummary>{};
+    if (schemaVersion < 17 && rawResults.isNotEmpty) {
+      throw const FormatException(
+        'Pre-v17 regular-season results are not supported',
+      );
+    }
+    final parsed = <String, RegularSeasonGameResult>{};
     for (final entry in rawResults.entries) {
       if (entry.value is! Map<String, dynamic>) {
         throw const FormatException('Malformed regular-season game result');
       }
-      parsedResults[entry.key] = SeasonGameSummary.fromJson(
+      parsed[entry.key] = RegularSeasonGameResult.fromJson(
         entry.value as Map<String, dynamic>,
       );
     }
@@ -113,7 +119,7 @@ final class RegularSeasonState {
           else
             throw const FormatException('Malformed opening team identity'),
       ],
-      gameResults: parsedResults,
+      gameResults: parsed,
       schedule: schedule,
     );
   }
@@ -122,30 +128,71 @@ final class RegularSeasonState {
   final int seasonYear;
   final int scheduleSeed;
   final List<RegularSeasonTeamIdentity> openingTeams;
-  final Map<String, SeasonGameSummary> gameResults;
+  final Map<String, RegularSeasonGameResult> gameResults;
   final RegularSeasonSchedule? schedule;
   static String seasonIdFor(String careerId, int seasonYear) =>
       '$careerId-season-$seasonYear';
 
   int get completedGames => gameResults.length;
-  RegularSeasonState copyWith({RegularSeasonSchedule? schedule}) =>
-      RegularSeasonState(
-        seasonId: seasonId,
-        seasonYear: seasonYear,
-        scheduleSeed: scheduleSeed,
-        openingTeams: openingTeams,
-        gameResults: gameResults,
-        schedule: schedule ?? this.schedule,
-      );
+  int get remainingGames => (schedule?.totalFixtures ?? 0) - completedGames;
+  int get completedRounds =>
+      schedule?.rounds
+          .takeWhile(
+            (round) => round.fixtures.every(
+              (fixture) =>
+                  fixture.status == RegularSeasonFixtureStatus.completed,
+            ),
+          )
+          .length ??
+      0;
+  int? get nextUnfinishedRoundNumber =>
+      completedRounds < (schedule?.rounds.length ?? 0)
+      ? completedRounds + 1
+      : null;
+  int? get nextUnfinishedRound => nextUnfinishedRoundNumber;
+  int gamesPlayedForTeam(TeamId teamId) =>
+      schedule?.completedGamesForTeam(teamId) ?? 0;
+
+  RegularSeasonState copyWith({
+    RegularSeasonSchedule? schedule,
+    Map<String, RegularSeasonGameResult>? gameResults,
+  }) => RegularSeasonState(
+    seasonId: seasonId,
+    seasonYear: seasonYear,
+    scheduleSeed: scheduleSeed,
+    openingTeams: openingTeams,
+    gameResults: gameResults ?? this.gameResults,
+    schedule: schedule ?? this.schedule,
+  );
+
+  LeagueStandings get standings {
+    var result = LeagueStandings(
+      table: {
+        for (final team in openingTeams)
+          team.teamId.value: SeasonStanding.initial(team.teamId),
+      },
+    );
+    final source = schedule;
+    if (source != null) {
+      for (final fixture in source.allFixtures) {
+        final game = gameResults[fixture.id];
+        if (game == null) continue;
+        result = result.applyGame(
+          homeId: fixture.homeTeamId,
+          awayId: fixture.awayTeamId,
+          homeScore: game.summary.homeScore,
+          awayScore: game.summary.awayScore,
+        );
+      }
+    }
+    return result;
+  }
 
   void validate() {
-    if (seasonId.trim().isEmpty || seasonYear < 1) {
+    if (seasonId.trim().isEmpty ||
+        seasonYear < 1 ||
+        openingTeams.length != 30) {
       throw const FormatException('Invalid regular-season identity');
-    }
-    if (openingTeams.length != 30) {
-      throw FormatException(
-        'Regular-season state requires 30 opening teams, found ${openingTeams.length}',
-      );
     }
     final teamIds = <String>{};
     for (final team in openingTeams) {
@@ -156,19 +203,53 @@ final class RegularSeasonState {
         throw const FormatException('Invalid opening team identity snapshot');
       }
     }
-    if (gameResults.isNotEmpty) {
-      throw const FormatException(
-        'T01 regular-season entry must begin with an empty game ledger',
-      );
-    }
     final generatedSchedule = schedule;
-    if (generatedSchedule != null) {
-      generatedSchedule.validateAgainst(
-        expectedSeasonId: seasonId,
-        expectedSeasonYear: seasonYear,
-        expectedScheduleSeed: scheduleSeed,
-        openingTeamIds: openingTeams.map((team) => team.teamId),
+    if (generatedSchedule == null) {
+      if (gameResults.isNotEmpty) {
+        throw const FormatException(
+          'Results require a regular-season schedule',
+        );
+      }
+      return;
+    }
+    generatedSchedule.validateAgainst(
+      expectedSeasonId: seasonId,
+      expectedSeasonYear: seasonYear,
+      expectedScheduleSeed: scheduleSeed,
+      openingTeamIds: openingTeams.map((team) => team.teamId),
+    );
+    final fixtures = {
+      for (final fixture in generatedSchedule.allFixtures) fixture.id: fixture,
+    };
+    if (gameResults.keys.any((id) => !fixtures.containsKey(id))) {
+      throw const FormatException('Unknown regular-season result fixture');
+    }
+    var scheduledSeen = false;
+    for (final round in generatedSchedule.rounds) {
+      final complete = round.fixtures.every(
+        (fixture) => fixture.status == RegularSeasonFixtureStatus.completed,
       );
+      final scheduled = round.fixtures.every(
+        (fixture) => fixture.status == RegularSeasonFixtureStatus.scheduled,
+      );
+      if (!complete && !scheduled) {
+        throw const FormatException('Partial regular-season round');
+      }
+      if (complete && scheduledSeen) {
+        throw const FormatException(
+          'Noncontiguous completed regular-season rounds',
+        );
+      }
+      if (scheduled) scheduledSeen = true;
+      for (final fixture in round.fixtures) {
+        final hasResult = gameResults.containsKey(fixture.id);
+        if (hasResult !=
+            (fixture.status == RegularSeasonFixtureStatus.completed)) {
+          throw const FormatException(
+            'Schedule status and result ledger disagree',
+          );
+        }
+      }
     }
   }
 
