@@ -154,7 +154,7 @@ class _BasketballManagerAppState extends State<BasketballManagerApp> {
         if (_careerController!.hasCareer && !_showFranchiseSelect) {
           final career = _careerController!.career!;
           if (career.phase == CareerPhase.regularSeason) {
-            return RegularSeasonOverviewScreen(career: career);
+            return RegularSeasonOverviewScreen(controller: _careerController!);
           }
           return GmOffseasonOverviewScreen(
             controller: _careerController!,

@@ -26,6 +26,7 @@ import '../models/team.dart';
 import 'career_phase.dart';
 import 'career_setup.dart';
 import 'regular_season_state.dart';
+import 'regular_season_schedule_generator.dart';
 
 /// The authoritative, persistent root state of a GM Career.
 final class GmCareer {
@@ -117,7 +118,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 15;
+  static const int currentSchemaVersion = 16;
 
   final String id;
   final int schemaVersion;
@@ -313,6 +314,11 @@ final class GmCareer {
         'Regular-season career requires schema v15 regular-season state',
       );
     }
+    if (state.schedule != null && schemaVersion < 16) {
+      throw const FormatException(
+        'Scheduled regular-season career requires schema v16',
+      );
+    }
     state.validate();
     if (state.seasonYear != currentYear ||
         state.scheduleSeed != generationSeed ||
@@ -336,6 +342,13 @@ final class GmCareer {
           'Regular-season opening team identity changed',
         );
       }
+    }
+    final schedule = state.schedule;
+    if (schedule != null) {
+      RegularSeasonScheduleGenerator.validateCanonical(
+        schedule: schedule,
+        openingTeams: state.openingTeams,
+      );
     }
   }
 

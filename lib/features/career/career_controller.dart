@@ -21,6 +21,7 @@ class GmCareerController extends ChangeNotifier {
   static const _aiSigningService = RookieAiSigningService();
   static const _hardshipService = HardshipSettlementService();
   static const _regularSeasonEntryService = RegularSeasonEntryService();
+  static const _regularSeasonScheduleService = RegularSeasonScheduleService();
 
   GmCareer? get career => _career;
   bool get hasCareer => _career != null;
@@ -342,6 +343,13 @@ class GmCareerController extends ChangeNotifier {
       slot,
     );
   });
+  Future<void> generateRegularSeasonSchedule({String slot = 'default'}) =>
+      _runCareerCommand(action: 'generate regular-season schedule', () async {
+        await _saveCareerState(
+          _regularSeasonScheduleService.generate(_requireCareer()),
+          slot,
+        );
+      });
 
   /// Applies deterministic AI rookie signing decisions for non-human franchises.
   ///

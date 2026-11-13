@@ -1,6 +1,7 @@
 import '../models/ids.dart';
 import '../models/team.dart';
 import '../season/season_fixture.dart';
+import 'regular_season_schedule.dart';
 
 final class RegularSeasonTeamIdentity {
   const RegularSeasonTeamIdentity({
@@ -49,12 +50,16 @@ final class RegularSeasonState {
     required this.scheduleSeed,
     required List<RegularSeasonTeamIdentity> openingTeams,
     required Map<String, SeasonGameSummary> gameResults,
+    this.schedule,
   }) : openingTeams = List.unmodifiable(openingTeams),
        gameResults = Map.unmodifiable(gameResults) {
     validate();
   }
 
-  factory RegularSeasonState.fromJson(Map<String, dynamic> json) {
+  factory RegularSeasonState.fromJson(
+    Map<String, dynamic> json, {
+    int schemaVersion = 15,
+  }) {
     final seasonId = json['seasonId'];
     final seasonYear = json['seasonYear'];
     final scheduleSeed = json['scheduleSeed'];
@@ -66,6 +71,27 @@ final class RegularSeasonState {
         rawTeams is! List ||
         rawResults is! Map<String, dynamic>) {
       throw const FormatException('Malformed regular-season state');
+    }
+    final RegularSeasonSchedule? schedule;
+    if (schemaVersion >= 16) {
+      if (!json.containsKey('schedule')) {
+        throw const FormatException('Missing schedule in regular-season state');
+      }
+      final rawSchedule = json['schedule'];
+      if (rawSchedule == null) {
+        schedule = null;
+      } else if (rawSchedule is Map<String, dynamic>) {
+        schedule = RegularSeasonSchedule.fromJson(rawSchedule);
+      } else {
+        throw const FormatException('Malformed regular-season schedule');
+      }
+    } else {
+      if (json.containsKey('schedule')) {
+        throw const FormatException(
+          'Schedule is not supported in regular-season state v15',
+        );
+      }
+      schedule = null;
     }
     final parsedResults = <String, SeasonGameSummary>{};
     for (final entry in rawResults.entries) {
@@ -88,6 +114,7 @@ final class RegularSeasonState {
             throw const FormatException('Malformed opening team identity'),
       ],
       gameResults: parsedResults,
+      schedule: schedule,
     );
   }
 
@@ -96,10 +123,20 @@ final class RegularSeasonState {
   final int scheduleSeed;
   final List<RegularSeasonTeamIdentity> openingTeams;
   final Map<String, SeasonGameSummary> gameResults;
+  final RegularSeasonSchedule? schedule;
   static String seasonIdFor(String careerId, int seasonYear) =>
       '$careerId-season-$seasonYear';
 
   int get completedGames => gameResults.length;
+  RegularSeasonState copyWith({RegularSeasonSchedule? schedule}) =>
+      RegularSeasonState(
+        seasonId: seasonId,
+        seasonYear: seasonYear,
+        scheduleSeed: scheduleSeed,
+        openingTeams: openingTeams,
+        gameResults: gameResults,
+        schedule: schedule ?? this.schedule,
+      );
 
   void validate() {
     if (seasonId.trim().isEmpty || seasonYear < 1) {
@@ -124,6 +161,15 @@ final class RegularSeasonState {
         'T01 regular-season entry must begin with an empty game ledger',
       );
     }
+    final generatedSchedule = schedule;
+    if (generatedSchedule != null) {
+      generatedSchedule.validateAgainst(
+        expectedSeasonId: seasonId,
+        expectedSeasonYear: seasonYear,
+        expectedScheduleSeed: scheduleSeed,
+        openingTeamIds: openingTeams.map((team) => team.teamId),
+      );
+    }
   }
 
   Map<String, Object?> toJson() => {
@@ -134,5 +180,6 @@ final class RegularSeasonState {
     'gameResults': {
       for (final entry in gameResults.entries) entry.key: entry.value.toJson(),
     },
+    'schedule': schedule?.toJson(),
   };
 }

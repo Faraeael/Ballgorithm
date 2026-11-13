@@ -30,7 +30,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 15;
+  static const int currentSchemaVersion = 16;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -457,7 +457,10 @@ final class GmCareerCodec {
       if (rawRegularSeasonState == null) {
         regularSeasonState = null;
       } else if (rawRegularSeasonState is Map<String, dynamic>) {
-        regularSeasonState = RegularSeasonState.fromJson(rawRegularSeasonState);
+        regularSeasonState = RegularSeasonState.fromJson(
+          rawRegularSeasonState,
+          schemaVersion: schemaVersion,
+        );
       } else {
         throw const FormatException(
           'Invalid regularSeasonState in career JSON v15',
