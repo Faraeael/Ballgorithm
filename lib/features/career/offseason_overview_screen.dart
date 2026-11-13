@@ -75,6 +75,10 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
         .where((selection) => isSignedRookie(career, selection.prospectId))
         .length;
     final readiness = LeagueReadinessReport.fromCareer(career);
+    final seasonReadiness = const OffseasonReadinessGate().evaluate(
+      career,
+      recoveryRequired: controller.draftRecoveryRequired,
+    );
     final draftSummary = switch (draft.status) {
       DraftExecutionStatus.notStarted =>
         '${ownedPicks.map((pick) => 'Round ${pick.round}: #${pick.overallPick}').join(' • ')}\n'
@@ -653,6 +657,75 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
               ),
             ),
           ),
+          Card(
+            key: const ValueKey('card-season-entry'),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    seasonReadiness.status == OffseasonReadinessStatus.cleared
+                        ? 'Regular Season Ready'
+                        : 'Season Start Blocked',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (seasonReadiness.status ==
+                      OffseasonReadinessStatus.cleared)
+                    const Text(
+                      'All 30 franchises pass the offseason readiness gate.',
+                    )
+                  else ...[
+                    if (seasonReadiness.reasons.isEmpty)
+                      const Text(
+                        'Explicit offseason clearance confirmation is still required.',
+                      ),
+                    for (final reason in seasonReadiness.reasons) Text(reason),
+                    for (final need in seasonReadiness.teams)
+                      if (need.requiredPlayers > 0)
+                        Text(
+                          '${need.abbreviation}: ${need.requiredPlayers} '
+                          'standard player(s) missing'
+                          '${need.blockers.isEmpty ? '' : ' — ${need.blockers.join('; ')}'}',
+                        ),
+                  ],
+                  if (controller.draftRecoveryRequired) ...[
+                    const SizedBox(height: 8),
+                    FilledButton(
+                      key: const ValueKey('btn-season-entry-reload'),
+                      onPressed: controller.isLoading
+                          ? null
+                          : () => controller.loadCareer(),
+                      child: const Text('Reload Saved Career'),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    key: const ValueKey('btn-start-regular-season'),
+                    onPressed:
+                        seasonReadiness.status !=
+                                OffseasonReadinessStatus.cleared ||
+                            controller.isLoading ||
+                            controller.draftRecoveryRequired
+                        ? null
+                        : () => _confirmStartRegularSeason(context),
+                    child: const Text('Start Regular Season'),
+                  ),
+                  if (controller.errorMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        controller.errorMessage!,
+                        style: TextStyle(color: theme.colorScheme.error),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
           const SizedBox(height: 20),
 
           // Future Operations / In Development Section
@@ -751,6 +824,43 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _confirmStartRegularSeason(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        scrollable: true,
+        title: const Text('Start Regular Season?'),
+        content: Text(
+          'Enter season ${controller.career!.currentYear}. '
+          'Approved format: 82 games per franchise, 41 home and 41 away. '
+          'All 30 franchises passed offseason readiness. '
+          'T01 creates no fixtures or results; M009-T02 owns schedule generation.',
+        ),
+        actions: [
+          TextButton(
+            key: const ValueKey('cancel-start-regular-season'),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm-start-regular-season'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Start Season'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      await controller.startRegularSeason(confirmed: true);
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
   }
 
   Future<void> _confirmResolveLeagueSignings(

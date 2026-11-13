@@ -69,7 +69,7 @@ void main() {
   group('T08C financial foundation', () {
     test('every initial player has one contract and one schedule', () {
       final career = _career();
-      expect(career.schemaVersion, 14);
+      expect(career.schemaVersion, GmCareer.currentSchemaVersion);
       expect(career.finances.contracts.length, 360);
       expect(career.finances.schedules.length, 360);
       expect(career.finances.teamFinances.length, 30);
@@ -290,13 +290,17 @@ void main() {
           ..['schemaVersion'] = version
           ..remove('finances');
         final migrated = GmCareerCodec.decode(jsonEncode(older));
-        expect(migrated.schemaVersion, 14, reason: 'from v$version');
+        expect(
+          migrated.schemaVersion,
+          GmCareer.currentSchemaVersion,
+          reason: 'from v$version',
+        );
         expect(migrated.finances.contracts.length, 360);
         expect(migrated.finances.schedules.length, 360);
         migrated.validate();
         final reencoded =
             jsonDecode(GmCareerCodec.encode(migrated)) as Map<String, dynamic>;
-        expect(reencoded['schemaVersion'], 14);
+        expect(reencoded['schemaVersion'], GmCareerCodec.currentSchemaVersion);
         expect(reencoded['finances'], isNotNull);
       }
     });

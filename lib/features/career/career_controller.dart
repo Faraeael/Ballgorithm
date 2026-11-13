@@ -20,6 +20,7 @@ class GmCareerController extends ChangeNotifier {
   static const _clearanceService = OffseasonClearanceService();
   static const _aiSigningService = RookieAiSigningService();
   static const _hardshipService = HardshipSettlementService();
+  static const _regularSeasonEntryService = RegularSeasonEntryService();
 
   GmCareer? get career => _career;
   bool get hasCareer => _career != null;
@@ -327,6 +328,20 @@ class GmCareerController extends ChangeNotifier {
           slot,
         );
       });
+
+  /// Starts regular season after explicit human confirmation and a fresh gate.
+  Future<void> startRegularSeason({
+    required bool confirmed,
+    String slot = 'default',
+  }) => _runCareerCommand(action: 'start regular season', () async {
+    if (!confirmed) {
+      throw StateError('Explicit human confirmation is required');
+    }
+    await _saveCareerState(
+      _regularSeasonEntryService.start(_requireCareer()),
+      slot,
+    );
+  });
 
   /// Applies deterministic AI rookie signing decisions for non-human franchises.
   ///

@@ -54,6 +54,8 @@ export 'src/career/career_setup.dart';
 export 'src/career/career_phase.dart';
 export 'src/career/gm_career.dart';
 export 'src/career/gm_career_codec.dart';
+export 'src/career/regular_season_state.dart';
+export 'src/career/regular_season_entry_service.dart';
 export 'src/career/league_readiness.dart';
 export 'src/models/draft_pick.dart';
 export 'src/models/draft_order.dart';

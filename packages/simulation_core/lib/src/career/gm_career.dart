@@ -25,6 +25,7 @@ import '../models/roster_rules.dart';
 import '../models/team.dart';
 import 'career_phase.dart';
 import 'career_setup.dart';
+import 'regular_season_state.dart';
 
 /// The authoritative, persistent root state of a GM Career.
 final class GmCareer {
@@ -49,6 +50,7 @@ final class GmCareer {
     FreeAgentMarketState? freeAgentMarket,
     OffseasonClearanceState? offseasonClearance,
     HardshipSettlement? hardshipSettlement,
+    this.regularSeasonState,
     CareerFinances? finances,
   }) : draftExecutionState =
            draftExecutionState ?? DraftExecutionState.initial(),
@@ -115,7 +117,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 14;
+  static const int currentSchemaVersion = 15;
 
   final String id;
   final int schemaVersion;
@@ -149,6 +151,9 @@ final class GmCareer {
 
   /// Separate one-time roster-completion settlement and authority.
   final HardshipSettlement hardshipSettlement;
+
+  /// Deterministic opening state for a career that entered regular season.
+  final RegularSeasonState? regularSeasonState;
 
   /// Authoritative contract, payroll, budget, staff and facility records.
   final CareerFinances finances;
@@ -290,6 +295,48 @@ final class GmCareer {
       currentYear: currentYear,
       hardshipCapReliefByTeam: _hardshipCapReliefByTeam,
     );
+    _validateRegularSeasonState();
+  }
+
+  void _validateRegularSeasonState() {
+    final state = regularSeasonState;
+    if (phase == CareerPhase.openingOffseason) {
+      if (state != null) {
+        throw const FormatException(
+          'Opening-offseason career cannot contain regular-season state',
+        );
+      }
+      return;
+    }
+    if (schemaVersion < 15 || state == null) {
+      throw const FormatException(
+        'Regular-season career requires schema v15 regular-season state',
+      );
+    }
+    state.validate();
+    if (state.seasonYear != currentYear ||
+        state.scheduleSeed != generationSeed ||
+        state.seasonId != RegularSeasonState.seasonIdFor(id, currentYear)) {
+      throw const FormatException(
+        'Regular-season identity does not match the career',
+      );
+    }
+    if (state.openingTeams.length != league.teams.length) {
+      throw const FormatException(
+        'Regular-season opening teams do not match the league',
+      );
+    }
+    for (var index = 0; index < league.teams.length; index++) {
+      final team = league.teams[index];
+      final identity = state.openingTeams[index];
+      if (identity.teamId != team.id ||
+          identity.name != team.name ||
+          identity.abbreviation != team.abbreviation) {
+        throw const FormatException(
+          'Regular-season opening team identity changed',
+        );
+      }
+    }
   }
 
   /// Rejects free agents that collide with ownership, contracts or prospects.
@@ -1174,6 +1221,7 @@ final class GmCareer {
     FreeAgentMarketState? freeAgentMarket,
     OffseasonClearanceState? offseasonClearance,
     HardshipSettlement? hardshipSettlement,
+    RegularSeasonState? regularSeasonState,
     CareerFinances? finances,
   }) {
     return GmCareer(
@@ -1197,6 +1245,7 @@ final class GmCareer {
       freeAgentMarket: freeAgentMarket ?? this.freeAgentMarket,
       offseasonClearance: offseasonClearance ?? this.offseasonClearance,
       hardshipSettlement: hardshipSettlement ?? this.hardshipSettlement,
+      regularSeasonState: regularSeasonState ?? this.regularSeasonState,
       finances: finances ?? this.finances,
     );
   }

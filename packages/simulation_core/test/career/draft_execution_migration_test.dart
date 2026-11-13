@@ -17,7 +17,7 @@ void main() {
     id: 'migration-draft',
   );
 
-  test('writer always emits v13 even for an explicitly older career model', () {
+  test('writer emits current schema for an explicitly older career model', () {
     const service = DraftExecutionService();
     final older = initial.copyWith(schemaVersion: 3);
     final selected = service.makeHumanSelection(
@@ -25,7 +25,10 @@ void main() {
       prospectId: older.draftClass.rankedFirst.id,
     );
     final encoded = GmCareerCodec.encode(selected);
-    expect(jsonDecode(encoded)['schemaVersion'], 14);
+    expect(
+      jsonDecode(encoded)['schemaVersion'],
+      GmCareerCodec.currentSchemaVersion,
+    );
     expect(
       GmCareerCodec.decode(
         encoded,

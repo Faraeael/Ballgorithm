@@ -22,17 +22,19 @@ import '../models/team.dart';
 import '../generation/free_agent_generator.dart';
 import '../finance/career_finances.dart';
 import 'career_phase.dart';
+import 'offseason_readiness_gate.dart';
+import 'regular_season_state.dart';
 import 'gm_career.dart';
 
 /// Serialization and strict validation for persistent [GmCareer] state.
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 14;
+  static const int currentSchemaVersion = 15;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
-    career.validate();
+    _validateNativeCareer(career);
     final map = <String, dynamic>{
       'schemaVersion': currentSchemaVersion,
       'id': career.id,
@@ -54,6 +56,7 @@ final class GmCareerCodec {
       'freeAgentMarket': career.freeAgentMarket.toJson(),
       'offseasonClearance': career.offseasonClearance.toJson(),
       'hardshipSettlement': career.hardshipSettlement.toJson(),
+      'regularSeasonState': career.regularSeasonState?.toJson(),
       'finances': career.finances.toJson(),
       'rosterMemberships': {
         for (final team in career.league.teams)
@@ -443,6 +446,26 @@ final class GmCareerCodec {
     } else {
       hardshipSettlement = HardshipSettlement.initial(seasonYear: currentYear);
     }
+    final RegularSeasonState? regularSeasonState;
+    final rawRegularSeasonState = raw['regularSeasonState'];
+    if (schemaVersion >= 15) {
+      if (!raw.containsKey('regularSeasonState')) {
+        throw const FormatException(
+          'Missing regularSeasonState in career JSON v15',
+        );
+      }
+      if (rawRegularSeasonState == null) {
+        regularSeasonState = null;
+      } else if (rawRegularSeasonState is Map<String, dynamic>) {
+        regularSeasonState = RegularSeasonState.fromJson(rawRegularSeasonState);
+      } else {
+        throw const FormatException(
+          'Invalid regularSeasonState in career JSON v15',
+        );
+      }
+    } else {
+      regularSeasonState = null;
+    }
     final CareerFinances? finances;
     final rawFinances = raw['finances'];
     if (schemaVersion >= 8) {
@@ -478,8 +501,23 @@ final class GmCareerCodec {
       offseasonClearance: offseasonClearance,
       hardshipSettlement: hardshipSettlement,
       finances: finances,
+      regularSeasonState: regularSeasonState,
     );
-    career.validate();
+    _validateNativeCareer(career);
     return career;
+  }
+
+  static void _validateNativeCareer(GmCareer career) {
+    if (career.phase != CareerPhase.regularSeason) {
+      career.validate();
+      return;
+    }
+    final readiness = const OffseasonReadinessGate().evaluate(career);
+    if (readiness.status != OffseasonReadinessStatus.cleared ||
+        readiness.readyCount != career.league.teams.length) {
+      throw const FormatException(
+        'Regular-season save does not satisfy offseason readiness',
+      );
+    }
   }
 }

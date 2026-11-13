@@ -338,7 +338,7 @@ void main() {
             ..['schemaVersion'] = 13
             ..remove('hardshipSettlement');
       final migrated = GmCareerCodec.decode(jsonEncode(legacy));
-      expect(migrated.schemaVersion, 14);
+      expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
       expect(
         migrated.hardshipSettlement.status,
         HardshipSettlementStatus.notStarted,

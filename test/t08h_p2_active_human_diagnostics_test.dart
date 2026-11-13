@@ -1,3 +1,6 @@
+import 'package:basketball_manager/app.dart';
+import 'package:basketball_manager/features/career/offseason_overview_screen.dart';
+import 'package:basketball_manager/features/season/season_storage.dart';
 import 'package:basketball_manager/features/career/career_controller.dart';
 import 'package:basketball_manager/features/career/career_storage.dart';
 import 'package:basketball_manager/features/career/offseason_clearance_screen.dart';
@@ -82,6 +85,283 @@ void main() {
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
   });
+
+  testWidgets(
+    'M009-T01 enters only active-human ready cohorts and recovers promotion failure',
+    (tester) async {
+      tester.view.physicalSize = const Size(393, 852);
+      tester.view.devicePixelRatio = 1;
+      const readyCases = [
+        (20261028, FranchiseSituation.playIn),
+        (20261028, FranchiseSituation.playoff),
+        (20261028, FranchiseSituation.contender),
+        (987654321, FranchiseSituation.tanking),
+        (987654321, FranchiseSituation.playIn),
+        (987654321, FranchiseSituation.playoff),
+      ];
+      const blockedCases = [
+        (271828182, FranchiseSituation.tanking),
+        (8675309, FranchiseSituation.contender),
+      ];
+      GmCareer? firstCleared;
+      String? firstClearedSave;
+
+      for (final (seed, situation) in readyCases) {
+        final active = await _runActiveCohort(tester, seed, situation);
+        expect(
+          active.readiness.status,
+          OffseasonReadinessStatus.readyForConfirmation,
+          reason: '$seed/${situation.jsonValue}',
+        );
+        final storage = InMemoryGmCareerStorage({
+          'default': GmCareerCodec.encode(active.career),
+        });
+        final controller = GmCareerController(storage: storage);
+        await controller.loadCareer();
+        await controller.markOffseasonCleared();
+        final cleared = controller.career!;
+        expect(
+          _gate.evaluate(cleared).status,
+          OffseasonReadinessStatus.cleared,
+        );
+        if (firstCleared == null) {
+          firstCleared = cleared;
+          firstClearedSave = await storage.read();
+          final seasonStorage = InMemorySeasonStorage();
+          await tester.pumpWidget(
+            BasketballManagerApp(
+              league: cleared.league,
+              storage: seasonStorage,
+              careerStorage: storage,
+              careerController: controller,
+              seasonMode: true,
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.scrollUntilVisible(
+            find.byKey(const ValueKey('btn-start-regular-season')),
+            220,
+            scrollable: find
+                .descendant(
+                  of: find.byKey(const ValueKey('offseason-overview-scroll')),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.byKey(const ValueKey('btn-start-regular-season')),
+          );
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const ValueKey('confirm-start-regular-season')),
+            findsOneWidget,
+          );
+          expect(controller.career!.phase, CareerPhase.openingOffseason);
+          await tester.tap(
+            find.byKey(const ValueKey('cancel-start-regular-season')),
+          );
+          await tester.pumpAndSettle();
+          expect(await storage.read(), firstClearedSave);
+          expect(controller.career!.phase, CareerPhase.openingOffseason);
+          await expectLater(
+            controller.startRegularSeason(confirmed: false),
+            throwsStateError,
+          );
+          expect(controller.career!.phase, CareerPhase.openingOffseason);
+          expect(await storage.read(), firstClearedSave);
+
+          await tester.tap(
+            find.byKey(const ValueKey('btn-start-regular-season')),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.byKey(const ValueKey('confirm-start-regular-season')),
+          );
+          await tester.pumpAndSettle();
+          final entered = controller.career!;
+          expect(entered.phase, CareerPhase.regularSeason);
+          expect(entered.regularSeasonState!.gameResults, isEmpty);
+          expect(entered.currentYear, cleared.currentYear);
+          expect(
+            GmCareerCodec.encode(entered),
+            GmCareerCodec.encode(
+              const RegularSeasonEntryService().start(cleared),
+            ),
+          );
+          expect(find.text('Regular Season'), findsOneWidget);
+          expect(find.text('Record: 0 wins, 0 losses'), findsOneWidget);
+          expect(find.textContaining('Schedule generation'), findsOneWidget);
+          tester.view.physicalSize = const Size(360, 640);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          tester.view.physicalSize = const Size(393, 852);
+          await tester.pumpAndSettle();
+          await expectLater(
+            controller.startRegularSeason(confirmed: true),
+            throwsStateError,
+          );
+          expect(controller.career!.phase, CareerPhase.regularSeason);
+          expect(await seasonStorage.read(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+          controller.dispose();
+
+          final failureSeasonStorage = InMemorySeasonStorage();
+          final failureStorage = _CommitThenFailCareerStorage(
+            InMemoryGmCareerStorage({'default': firstClearedSave}),
+          )..failNextWrite = true;
+          final failureController = GmCareerController(storage: failureStorage);
+          await failureController.loadCareer();
+          await tester.pumpWidget(
+            BasketballManagerApp(
+              league: cleared.league,
+              storage: failureSeasonStorage,
+              careerStorage: failureStorage,
+              careerController: failureController,
+              seasonMode: true,
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.scrollUntilVisible(
+            find.byKey(const ValueKey('btn-start-regular-season')),
+            220,
+            scrollable: find
+                .descendant(
+                  of: find.byKey(const ValueKey('offseason-overview-scroll')),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.byKey(const ValueKey('btn-start-regular-season')),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.byKey(const ValueKey('confirm-start-regular-season')),
+          );
+          await tester.pumpAndSettle();
+          expect(failureController.career!.phase, CareerPhase.openingOffseason);
+          expect(failureController.draftRecoveryRequired, isTrue);
+          final promotedSave = await failureStorage.read();
+          expect(
+            GmCareerCodec.decode(promotedSave!).phase,
+            CareerPhase.regularSeason,
+          );
+          await tester.scrollUntilVisible(
+            find.byKey(const ValueKey('btn-season-entry-reload')),
+            220,
+            scrollable: find
+                .descendant(
+                  of: find.byKey(const ValueKey('offseason-overview-scroll')),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.byKey(const ValueKey('btn-season-entry-reload')),
+          );
+          await tester.pumpAndSettle();
+          expect(failureController.career!.phase, CareerPhase.regularSeason);
+          expect(failureController.draftRecoveryRequired, isFalse);
+          expect(
+            failureController.career!.regularSeasonState!.seasonId,
+            entered.regularSeasonState!.seasonId,
+          );
+          expect(
+            failureController.career!.freeAgentPool.acquisitions.entries.length,
+            cleared.freeAgentPool.acquisitions.entries.length,
+          );
+          expect(
+            failureController.career!.finances.contracts.keys.toSet(),
+            cleared.finances.contracts.keys.toSet(),
+          );
+          expect(await failureSeasonStorage.read(), isNull);
+          expect(GmCareerCodec.encode(failureController.career!), promotedSave);
+          await expectLater(
+            failureController.startRegularSeason(confirmed: true),
+            throwsStateError,
+          );
+          expect(await failureStorage.read(), promotedSave);
+          await tester.pumpWidget(const SizedBox.shrink());
+          failureController.dispose();
+        } else {
+          final entered = const RegularSeasonEntryService().start(cleared);
+          expect(entered.phase, CareerPhase.regularSeason);
+          expect(entered.regularSeasonState!.gameResults, isEmpty);
+          expect(entered.regularSeasonState!.scheduleSeed, seed);
+          expect(
+            GmCareerCodec.encode(entered),
+            GmCareerCodec.encode(
+              const RegularSeasonEntryService().start(cleared),
+            ),
+          );
+          expect(
+            GmCareerCodec.decode(GmCareerCodec.encode(entered)).phase,
+            CareerPhase.regularSeason,
+          );
+          controller.dispose();
+        }
+        debugPrint(
+          'M009-T01 READY seed=$seed situation=${situation.jsonValue} '
+          'phase=regularSeason scheduleSeed=$seed games=0',
+        );
+      }
+
+      for (final (seed, situation) in blockedCases) {
+        final active = await _runActiveCohort(tester, seed, situation);
+        expect(active.readiness.readyCount, lessThan(30));
+        expect(
+          () => const RegularSeasonEntryService().start(active.career),
+          throwsA(isA<RegularSeasonEntryBlocked>()),
+        );
+        final blockedStorage = InMemoryGmCareerStorage({
+          'default': GmCareerCodec.encode(active.career),
+        });
+        final blockedController = GmCareerController(storage: blockedStorage);
+        await blockedController.loadCareer();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: GmOffseasonOverviewScreen(controller: blockedController),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.byKey(const ValueKey('btn-start-regular-season')),
+          220,
+          scrollable: find
+              .descendant(
+                of: find.byKey(const ValueKey('offseason-overview-scroll')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        expect(find.text('Season Start Blocked'), findsOneWidget);
+        expect(
+          tester
+              .widget<FilledButton>(
+                find.byKey(const ValueKey('btn-start-regular-season')),
+              )
+              .onPressed,
+          isNull,
+        );
+        expect(blockedController.career!.phase, CareerPhase.openingOffseason);
+        await tester.pumpWidget(const SizedBox.shrink());
+        blockedController.dispose();
+        debugPrint(
+          'M009-T01 BLOCKED seed=$seed situation=${situation.jsonValue} '
+          'ready=${active.readiness.readyCount}/30 '
+          'vacancies=${active.readiness.totalShortage}',
+        );
+      }
+      expect(firstCleared, isNotNull);
+      expect(firstClearedSave, isNotNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    },
+  );
 }
 
 Future<_ActiveResult> _runActiveCohort(
@@ -547,4 +827,30 @@ final class _ActiveResult {
   final int hardshipUsed;
   final int maximumRequired;
   final int humanOffers;
+}
+
+final class _CommitThenFailCareerStorage implements GmCareerStorage {
+  _CommitThenFailCareerStorage(this.delegate);
+
+  final InMemoryGmCareerStorage delegate;
+  bool failNextWrite = false;
+
+  @override
+  Future<String?> read({String slot = 'default'}) => delegate.read(slot: slot);
+
+  @override
+  Future<void> write(String data, {String slot = 'default'}) async {
+    await delegate.write(data, slot: slot);
+    if (failNextWrite) {
+      failNextWrite = false;
+      throw const GmCareerStorageException('Injected post-promotion failure');
+    }
+  }
+
+  @override
+  Future<void> clear({String slot = 'default'}) => delegate.clear(slot: slot);
+
+  @override
+  Future<bool> hasSave({String slot = 'default'}) =>
+      delegate.hasSave(slot: slot);
 }

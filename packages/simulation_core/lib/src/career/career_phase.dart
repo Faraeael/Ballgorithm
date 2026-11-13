@@ -1,6 +1,7 @@
 /// Represents the lifecycle phase of a GM Career.
 enum CareerPhase {
-  openingOffseason('openingOffseason', 'Opening Offseason');
+  openingOffseason('openingOffseason', 'Opening Offseason'),
+  regularSeason('regularSeason', 'Regular Season');
 
   const CareerPhase(this.jsonValue, this.displayName);
 

@@ -267,14 +267,14 @@ void main() {
       );
     });
 
-    test('v12 migrates to v13 with empty clearance; v13 is strict', () {
+    test('v12 migrates to v15 with empty clearance; v15 is strict', () {
       final base =
           jsonDecode(GmCareerCodec.encode(_base())) as Map<String, dynamic>;
       final v12 = Map<String, dynamic>.from(base)
         ..['schemaVersion'] = 12
         ..remove('offseasonClearance');
       final migrated = GmCareerCodec.decode(jsonEncode(v12));
-      expect(migrated.schemaVersion, 14);
+      expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
       expect(
         migrated.offseasonClearance.status,
         OffseasonClearanceStatus.notStarted,
