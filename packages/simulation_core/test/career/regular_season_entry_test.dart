@@ -67,6 +67,22 @@ void main() {
         career.finances.contracts.keys.toSet(),
       );
     });
+    test('v17 saves migrate without starting a season', () {
+      final career = _career();
+      final v17 = Map<String, dynamic>.from(
+        jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>,
+      )..['schemaVersion'] = 17;
+
+      final migrated = GmCareerCodec.decode(jsonEncode(v17));
+
+      expect(migrated.schemaVersion, GmCareer.currentSchemaVersion);
+      expect(migrated.phase, CareerPhase.openingOffseason);
+      expect(migrated.regularSeasonState, isNull);
+      expect(
+        migrated.finances.contracts.keys.toSet(),
+        career.finances.contracts.keys.toSet(),
+      );
+    });
 
     test('v15 requires state key and rejects impossible phase-state pairs', () {
       final career = _career();

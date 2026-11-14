@@ -30,8 +30,27 @@ import 'regular_season_schedule_generator.dart';
 import '../simulation/game_fingerprint.dart';
 import 'regular_season_game_adapter.dart';
 
+import 'regular_season_game_input_evidence.dart';
+
+typedef _RegularSeasonResultValidationContext = ({
+  String seasonId,
+  int seasonYear,
+  String fixtureId,
+  String fixtureSeasonId,
+  int fixtureSeasonYear,
+  String homeTeamId,
+  String awayTeamId,
+  int gameSeed,
+  String snapshotId,
+  String snapshotJson,
+});
+
 /// The authoritative, persistent root state of a GM Career.
 final class GmCareer {
+  // Reuse validation only for immutable results; decoding creates fresh objects.
+
+  static final _validatedRegularSeasonResults =
+      Expando<_RegularSeasonResultValidationContext>();
   GmCareer({
     required this.id,
     this.schemaVersion = currentSchemaVersion,
@@ -120,7 +139,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 17;
+  static const int currentSchemaVersion = 18;
 
   final String id;
   final int schemaVersion;
@@ -357,22 +376,23 @@ final class GmCareer {
         openingTeams: state.openingTeams,
       );
     }
-    if (schedule != null && state.gameResults.isNotEmpty) {
+    if (schedule == null || state.gameResults.isEmpty) return;
+    final fixturesById = {
+      for (final fixture in schedule.allFixtures) fixture.id: fixture,
+    };
+    if (schemaVersion < 18) {
       final adapter = const RegularSeasonGameAdapter();
       final simulationLeague = adapter.simulationLeagueFor(this);
-      final fixturesById = {
-        for (final fixture in schedule.allFixtures) fixture.id: fixture,
-      };
       for (final entry in state.gameResults.entries) {
         final fixture = fixturesById[entry.key]!;
-        final participating = {
+        final participants = {
           fixture.homeTeamId.value,
           fixture.awayTeamId.value,
         };
         final standardPlayers = <String>{};
         final playerTeams = <String, String>{};
         for (final team in league.teams) {
-          if (!participating.contains(team.id.value)) continue;
+          if (!participants.contains(team.id.value)) continue;
           for (final player in team.players) {
             if (team.roster.categoryOf(player.id) == RosterCategory.standard) {
               standardPlayers.add(player.id.value);
@@ -387,6 +407,7 @@ final class GmCareer {
           expectedSeasonYear: state.seasonYear,
           standardPlayers: standardPlayers,
           playerTeams: playerTeams,
+          legacyCompatibility: true,
         );
         if (GameFingerprint.of(
               adapter.createInput(
@@ -401,6 +422,88 @@ final class GmCareer {
           );
         }
       }
+      return;
+    }
+    final openingTeamIds = {
+      for (final team in state.openingTeams) team.teamId.value,
+    };
+    final historicalLeagues = <String, League>{
+      for (final entry in state.gameInputSnapshots.entries)
+        entry.key: RegularSeasonGameInputEvidence.parseLeagueSnapshot(
+          snapshotId: entry.key,
+          leagueSnapshotJson: entry.value,
+          openingTeamIds: openingTeamIds,
+        ),
+    };
+    for (final entry in state.gameResults.entries) {
+      final fixture = fixturesById[entry.key]!;
+      final result = entry.value;
+      final evidence = result.inputEvidence;
+      if (evidence == null ||
+          result.fingerprintVersion == null ||
+          result.coreEngineVersion == null ||
+          result.leagueSchemaVersion == null) {
+        throw const FormatException(
+          'Native regular-season result lacks historical input evidence',
+        );
+      }
+      final snapshotJson = state.gameInputSnapshots[evidence.leagueSnapshotId];
+      final historicalLeague = historicalLeagues[evidence.leagueSnapshotId];
+      if (snapshotJson == null || historicalLeague == null) {
+        throw const FormatException(
+          'Historical game-time league snapshot is missing',
+        );
+      }
+      final validationContext = (
+        seasonId: state.seasonId,
+        seasonYear: state.seasonYear,
+        fixtureId: fixture.id,
+        fixtureSeasonId: fixture.seasonId,
+        fixtureSeasonYear: fixture.seasonYear,
+        homeTeamId: fixture.homeTeamId.value,
+        awayTeamId: fixture.awayTeamId.value,
+        gameSeed: fixture.gameSeed,
+        snapshotId: evidence.leagueSnapshotId,
+        snapshotJson: snapshotJson,
+      );
+      if (_validatedRegularSeasonResults[result] == validationContext) {
+        continue;
+      }
+
+      final historicalInput = evidence.validate(
+        leagueSnapshotId: evidence.leagueSnapshotId,
+        leagueSnapshotJson: snapshotJson,
+        league: historicalLeague,
+        inputFingerprint: result.inputFingerprint,
+        homeTeamId: result.homeTeamId.value,
+        awayTeamId: result.awayTeamId.value,
+        gameSeed: result.gameSeed,
+        simulationVersion: result.simulationVersion,
+        rulesVersion: result.rulesVersion,
+        eventSchemaVersion: result.eventSchemaVersion,
+        prngImplementationId: result.prngImplementationId,
+        fingerprintVersion: result.fingerprintVersion!,
+        coreEngineVersion: result.coreEngineVersion!,
+        leagueSchemaVersion: result.leagueSchemaVersion!,
+      );
+      final participants = {fixture.homeTeamId.value, fixture.awayTeamId.value};
+      final standardPlayers = <String>{};
+      final playerTeams = <String, String>{};
+      for (final team in historicalInput.league.teams) {
+        if (!participants.contains(team.id.value)) continue;
+        for (final player in team.players) {
+          standardPlayers.add(player.id.value);
+          playerTeams[player.id.value] = team.id.value;
+        }
+      }
+      result.validateFor(
+        fixture: fixture,
+        expectedSeasonId: state.seasonId,
+        expectedSeasonYear: state.seasonYear,
+        standardPlayers: standardPlayers,
+        playerTeams: playerTeams,
+      );
+      _validatedRegularSeasonResults[result] = validationContext;
     }
   }
 

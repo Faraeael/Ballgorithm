@@ -60,6 +60,7 @@ export 'src/career/regular_season_schedule.dart';
 export 'src/career/regular_season_schedule_generator.dart';
 export 'src/career/regular_season_schedule_service.dart';
 export 'src/career/regular_season_game_result.dart';
+export 'src/career/regular_season_game_input_evidence.dart';
 export 'src/career/regular_season_game_adapter.dart';
 export 'src/career/regular_season_round_service.dart';
 export 'src/career/league_readiness.dart';

@@ -1,8 +1,6 @@
-import '../domain_versions.dart' as versions;
 import '../models/ids.dart';
 import '../season/season_fixture.dart';
-import '../simulation/game_rules.dart';
-import '../simulation/game_versions.dart';
+import 'regular_season_game_input_evidence.dart';
 import 'regular_season_schedule.dart';
 
 final _fingerprintPattern = RegExp(r'^[0-9a-f]{64}$');
@@ -21,26 +19,63 @@ final class RegularSeasonGameResult {
     required this.rulesVersion,
     required this.eventSchemaVersion,
     required this.prngImplementationId,
+    this.fingerprintVersion,
+    this.coreEngineVersion,
+    this.leagueSchemaVersion,
+    this.inputEvidence,
     required this.periodsPlayed,
     required this.summary,
   });
 
-  factory RegularSeasonGameResult.fromJson(Map<String, dynamic> json) =>
-      RegularSeasonGameResult(
-        fixtureId: _string(json, 'fixtureId'),
-        seasonId: _string(json, 'seasonId'),
-        seasonYear: _int(json, 'seasonYear'),
-        homeTeamId: TeamId(_string(json, 'homeTeamId')),
-        awayTeamId: TeamId(_string(json, 'awayTeamId')),
-        gameSeed: _int(json, 'gameSeed'),
-        inputFingerprint: _string(json, 'inputFingerprint'),
-        simulationVersion: _int(json, 'simulationVersion'),
-        rulesVersion: _int(json, 'rulesVersion'),
-        eventSchemaVersion: _int(json, 'eventSchemaVersion'),
-        prngImplementationId: _string(json, 'prngImplementationId'),
-        periodsPlayed: _int(json, 'periodsPlayed'),
-        summary: SeasonGameSummary.fromJson(_map(json, 'summary')),
+  factory RegularSeasonGameResult.fromJson(
+    Map<String, dynamic> json, {
+    int schemaVersion = 18,
+  }) {
+    final RegularSeasonGameInputEvidence? inputEvidence;
+    final int? fingerprintVersion;
+    final String? coreEngineVersion;
+    final int? leagueSchemaVersion;
+    if (schemaVersion >= 18) {
+      inputEvidence = RegularSeasonGameInputEvidence.fromJson(
+        _map(json, 'inputEvidence'),
       );
+      fingerprintVersion = _int(json, 'fingerprintVersion');
+      coreEngineVersion = _string(json, 'coreEngineVersion');
+      leagueSchemaVersion = _int(json, 'leagueSchemaVersion');
+    } else {
+      if (json.containsKey('inputEvidence') ||
+          json.containsKey('fingerprintVersion') ||
+          json.containsKey('coreEngineVersion') ||
+          json.containsKey('leagueSchemaVersion')) {
+        throw const FormatException(
+          'Historical result evidence is not supported before schema v18',
+        );
+      }
+      inputEvidence = null;
+      fingerprintVersion = null;
+      coreEngineVersion = null;
+      leagueSchemaVersion = null;
+    }
+    return RegularSeasonGameResult(
+      fixtureId: _string(json, 'fixtureId'),
+      seasonId: _string(json, 'seasonId'),
+      seasonYear: _int(json, 'seasonYear'),
+      homeTeamId: TeamId(_string(json, 'homeTeamId')),
+      awayTeamId: TeamId(_string(json, 'awayTeamId')),
+      gameSeed: _int(json, 'gameSeed'),
+      inputFingerprint: _string(json, 'inputFingerprint'),
+      simulationVersion: _int(json, 'simulationVersion'),
+      rulesVersion: _int(json, 'rulesVersion'),
+      eventSchemaVersion: _int(json, 'eventSchemaVersion'),
+      prngImplementationId: _string(json, 'prngImplementationId'),
+      fingerprintVersion: fingerprintVersion,
+      coreEngineVersion: coreEngineVersion,
+      leagueSchemaVersion: leagueSchemaVersion,
+      inputEvidence: inputEvidence,
+      periodsPlayed: _int(json, 'periodsPlayed'),
+      summary: SeasonGameSummary.fromJson(_map(json, 'summary')),
+    );
+  }
 
   final String fixtureId;
   final String seasonId;
@@ -53,6 +88,10 @@ final class RegularSeasonGameResult {
   final int rulesVersion;
   final int eventSchemaVersion;
   final String prngImplementationId;
+  final int? fingerprintVersion;
+  final String? coreEngineVersion;
+  final int? leagueSchemaVersion;
+  final RegularSeasonGameInputEvidence? inputEvidence;
   final int periodsPlayed;
   final SeasonGameSummary summary;
 
@@ -68,9 +107,37 @@ final class RegularSeasonGameResult {
     'rulesVersion': rulesVersion,
     'eventSchemaVersion': eventSchemaVersion,
     'prngImplementationId': prngImplementationId,
+    if (fingerprintVersion != null) 'fingerprintVersion': fingerprintVersion,
+    if (coreEngineVersion != null) 'coreEngineVersion': coreEngineVersion,
+    if (leagueSchemaVersion != null) 'leagueSchemaVersion': leagueSchemaVersion,
+    if (inputEvidence != null) 'inputEvidence': inputEvidence!.toJson(),
     'periodsPlayed': periodsPlayed,
     'summary': summary.toJson(),
   };
+  RegularSeasonGameResult withInputEvidence({
+    required RegularSeasonGameInputEvidence inputEvidence,
+    required int fingerprintVersion,
+    required String coreEngineVersion,
+    required int leagueSchemaVersion,
+  }) => RegularSeasonGameResult(
+    fixtureId: fixtureId,
+    seasonId: seasonId,
+    seasonYear: seasonYear,
+    homeTeamId: homeTeamId,
+    awayTeamId: awayTeamId,
+    gameSeed: gameSeed,
+    inputFingerprint: inputFingerprint,
+    simulationVersion: simulationVersion,
+    rulesVersion: rulesVersion,
+    eventSchemaVersion: eventSchemaVersion,
+    prngImplementationId: prngImplementationId,
+    fingerprintVersion: fingerprintVersion,
+    coreEngineVersion: coreEngineVersion,
+    leagueSchemaVersion: leagueSchemaVersion,
+    inputEvidence: inputEvidence,
+    periodsPlayed: periodsPlayed,
+    summary: summary,
+  );
 
   void validateFor({
     required RegularSeasonFixture fixture,
@@ -78,8 +145,29 @@ final class RegularSeasonGameResult {
     required int expectedSeasonYear,
     required Set<String> standardPlayers,
     required Map<String, String> playerTeams,
+    bool legacyCompatibility = false,
   }) {
-    if (fixtureId != fixture.id ||
+    final profile = legacyCompatibility
+        ? RegularSeasonGameVersionProfile.t03
+        : fingerprintVersion == null ||
+              coreEngineVersion == null ||
+              leagueSchemaVersion == null
+        ? null
+        : RegularSeasonGameVersionProfile.find(
+            fingerprintVersion: fingerprintVersion!,
+            simulationVersion: simulationVersion,
+            rulesVersion: rulesVersion,
+            eventSchemaVersion: eventSchemaVersion,
+            prngImplementationId: prngImplementationId,
+            coreEngineVersion: coreEngineVersion!,
+            leagueSchemaVersion: leagueSchemaVersion!,
+          );
+    if (profile == null ||
+        simulationVersion != profile.simulationVersion ||
+        rulesVersion != profile.rulesVersion ||
+        eventSchemaVersion != profile.eventSchemaVersion ||
+        prngImplementationId != profile.prngImplementationId ||
+        fixtureId != fixture.id ||
         seasonId != expectedSeasonId ||
         seasonYear != expectedSeasonYear ||
         fixture.seasonId != seasonId ||
@@ -88,13 +176,15 @@ final class RegularSeasonGameResult {
         awayTeamId != fixture.awayTeamId ||
         gameSeed != fixture.gameSeed ||
         !_fingerprintPattern.hasMatch(inputFingerprint) ||
-        simulationVersion != gameSimulationVersion ||
-        rulesVersion != gameRulesVersion ||
-        eventSchemaVersion != gameEventSchemaVersion ||
-        prngImplementationId != versions.prngImplementationId ||
-        periodsPlayed < 4 ||
-        periodsPlayed > 4 + GameRules.standard.maxOvertimes) {
+        periodsPlayed < profile.periods ||
+        periodsPlayed > profile.periods + profile.maxOvertimes) {
       throw const FormatException('Regular-season result identity mismatch');
+    }
+    var duration = 0;
+    for (var period = 1; period <= periodsPlayed; period++) {
+      duration += period <= profile.periods
+          ? profile.periodSeconds
+          : profile.overtimeSeconds;
     }
     final s = summary;
     if (s.homeScore < 0 ||
@@ -118,10 +208,6 @@ final class RegularSeasonGameResult {
         s.periodScoresAway.values.fold<int>(0, (a, b) => a + b) !=
             s.awayScore) {
       throw const FormatException('Invalid regular-season period scores');
-    }
-    var duration = 0;
-    for (var period = 1; period <= periodsPlayed; period++) {
-      duration += GameRules.standard.periodLength(period);
     }
     var homePoints = 0;
     var awayPoints = 0;

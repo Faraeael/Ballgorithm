@@ -1,10 +1,13 @@
+import '../domain_versions.dart' as domain_versions;
 import '../models/roster_category.dart';
 import '../season/season_fixture.dart';
 import '../simulation/game_fingerprint.dart';
 import '../simulation/game_simulator.dart';
+import '../simulation/game_versions.dart';
 import 'career_phase.dart';
 import 'gm_career.dart';
 import 'regular_season_game_adapter.dart';
+import 'regular_season_game_input_evidence.dart';
 import 'regular_season_game_result.dart';
 import 'regular_season_schedule.dart';
 
@@ -51,6 +54,7 @@ final class RegularSeasonRoundService {
     if (expectedRoundNumber != next) throw StateError('Expected round $next');
 
     final results = Map<String, RegularSeasonGameResult>.of(state.gameResults);
+    final gameInputSnapshots = Map<String, String>.of(state.gameInputSnapshots);
     final simulationLeague = adapter.simulationLeagueFor(career);
     final simulator = GameSimulator();
     for (final fixture in schedule.fixturesForRound(next)) {
@@ -74,6 +78,16 @@ final class RegularSeasonRoundService {
           'Simulation result does not match fixture input',
         );
       }
+      final captured = RegularSeasonGameInputEvidence.capture(input);
+      final previousSnapshot = gameInputSnapshots.putIfAbsent(
+        captured.evidence.leagueSnapshotId,
+        () => captured.leagueSnapshotJson,
+      );
+      if (previousSnapshot != captured.leagueSnapshotJson) {
+        throw const FormatException(
+          'Game-time league snapshot digest collision',
+        );
+      }
       final result = RegularSeasonGameResult(
         fixtureId: fixture.id,
         seasonId: fixture.seasonId,
@@ -86,6 +100,10 @@ final class RegularSeasonRoundService {
         rulesVersion: game.rulesVersion,
         eventSchemaVersion: game.eventSchemaVersion,
         prngImplementationId: game.prngImplementationId,
+        fingerprintVersion: gameFingerprintVersion,
+        coreEngineVersion: domain_versions.coreEngineVersion,
+        leagueSchemaVersion: domain_versions.snapshotSchemaVersion,
+        inputEvidence: captured.evidence,
         periodsPlayed: game.periodsPlayed,
         summary: SeasonGameSummary.fromResult(game),
       );
@@ -125,6 +143,7 @@ final class RegularSeasonRoundService {
     final updatedState = state.copyWith(
       schedule: updatedSchedule,
       gameResults: results,
+      gameInputSnapshots: gameInputSnapshots,
     );
     return career.copyWith(
       schemaVersion: GmCareer.currentSchemaVersion,

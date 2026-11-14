@@ -8,14 +8,19 @@ class RegularSeasonResultsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = career.regularSeasonState!;
-    final fixtures = state.schedule!.rounds.expand((r) => r.fixtures).toList();
-    final teams = {for (final t in career.league.teams) t.id.value: t.name};
+    final schedule = state.schedule!;
+    final fixturesPerRound = schedule.rounds.first.fixtures.length;
+    final teams = {
+      for (final team in state.openingTeams) team.teamId.value: team.name,
+    };
     return Scaffold(
       appBar: AppBar(title: const Text('League Results')),
       body: ListView.builder(
-        itemCount: fixtures.length,
+        itemCount: schedule.totalFixtures,
         itemBuilder: (context, i) {
-          final f = fixtures[i];
+          final f = schedule
+              .rounds[i ~/ fixturesPerRound]
+              .fixtures[i % fixturesPerRound];
           final result = state.gameResults[f.id];
           return ListTile(
             title: Text(
@@ -56,9 +61,24 @@ class RegularSeasonBoxScoreScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final result = career.regularSeasonState!.gameResults[fixtureId]!;
+    final state = career.regularSeasonState!;
+    final result = state.gameResults[fixtureId]!;
+    final evidence = result.inputEvidence!;
+    final historicalLeague = RegularSeasonGameInputEvidence.parseLeagueSnapshot(
+      snapshotId: evidence.leagueSnapshotId,
+      leagueSnapshotJson: state.gameInputSnapshots[evidence.leagueSnapshotId]!,
+      openingTeamIds: {
+        for (final team in state.openingTeams) team.teamId.value,
+      },
+    );
+    final players = {
+      for (final team in historicalLeague.teams)
+        for (final player in team.players) player.id.value: player.fullName,
+    };
     final summary = result.summary;
-    final teams = {for (final t in career.league.teams) t.id.value: t.name};
+    final teams = {
+      for (final team in state.openingTeams) team.teamId.value: team.name,
+    };
     final home = teams[result.homeTeamId.value] ?? result.homeTeamId.value;
     final away = teams[result.awayTeamId.value] ?? result.awayTeamId.value;
     return Scaffold(
@@ -81,14 +101,7 @@ class RegularSeasonBoxScoreScreen extends StatelessWidget {
           const Divider(),
           for (final line in summary.playerLines.values)
             ListTile(
-              title: Text(
-                career.league.teams
-                        .expand((team) => team.roster.players)
-                        .where((player) => player.id.value == line.playerId)
-                        .map((player) => player.fullName)
-                        .firstOrNull ??
-                    line.playerId,
-              ),
+              title: Text(players[line.playerId] ?? line.playerId),
               subtitle: Text(
                 '${teams[line.teamId] ?? line.teamId} • ${line.secondsPlayed ~/ 60} min\n'
                 'FG ${line.fgm}/${line.fga} • 3P ${line.threePm}/${line.threePa} • '
@@ -112,7 +125,9 @@ class RegularSeasonStandingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = career.regularSeasonState!;
-    final teams = {for (final t in career.league.teams) t.id.value: t.name};
+    final teams = {
+      for (final team in state.openingTeams) team.teamId.value: team.name,
+    };
     final table = state.standings.ranked;
     return Scaffold(
       appBar: AppBar(title: const Text('Standings')),

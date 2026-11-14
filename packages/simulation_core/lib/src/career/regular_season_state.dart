@@ -51,9 +51,11 @@ final class RegularSeasonState {
     required this.scheduleSeed,
     required List<RegularSeasonTeamIdentity> openingTeams,
     required Map<String, RegularSeasonGameResult> gameResults,
+    Map<String, String> gameInputSnapshots = const {},
     this.schedule,
   }) : openingTeams = List.unmodifiable(openingTeams),
-       gameResults = Map.unmodifiable(gameResults) {
+       gameResults = Map.unmodifiable(gameResults),
+       gameInputSnapshots = Map.unmodifiable(gameInputSnapshots) {
     validate();
   }
 
@@ -72,6 +74,24 @@ final class RegularSeasonState {
         rawTeams is! List ||
         rawResults is! Map<String, dynamic>) {
       throw const FormatException('Malformed regular-season state');
+    }
+    final Map<String, String> gameInputSnapshots;
+    if (schemaVersion >= 18) {
+      final rawSnapshots = json['gameInputSnapshots'];
+      if (rawSnapshots is! Map<String, dynamic> ||
+          rawSnapshots.values.any((value) => value is! String)) {
+        throw const FormatException(
+          'Missing or malformed gameInputSnapshots in regular-season state v18',
+        );
+      }
+      gameInputSnapshots = rawSnapshots.cast<String, String>();
+    } else {
+      if (json.containsKey('gameInputSnapshots')) {
+        throw const FormatException(
+          'Game-input snapshots are not supported before schema v18',
+        );
+      }
+      gameInputSnapshots = const {};
     }
     final RegularSeasonSchedule? schedule;
     if (schemaVersion >= 16) {
@@ -106,6 +126,7 @@ final class RegularSeasonState {
       }
       parsed[entry.key] = RegularSeasonGameResult.fromJson(
         entry.value as Map<String, dynamic>,
+        schemaVersion: schemaVersion,
       );
     }
     return RegularSeasonState(
@@ -120,6 +141,7 @@ final class RegularSeasonState {
             throw const FormatException('Malformed opening team identity'),
       ],
       gameResults: parsed,
+      gameInputSnapshots: gameInputSnapshots,
       schedule: schedule,
     );
   }
@@ -129,6 +151,7 @@ final class RegularSeasonState {
   final int scheduleSeed;
   final List<RegularSeasonTeamIdentity> openingTeams;
   final Map<String, RegularSeasonGameResult> gameResults;
+  final Map<String, String> gameInputSnapshots;
   final RegularSeasonSchedule? schedule;
   static String seasonIdFor(String careerId, int seasonYear) =>
       '$careerId-season-$seasonYear';
@@ -156,12 +179,14 @@ final class RegularSeasonState {
   RegularSeasonState copyWith({
     RegularSeasonSchedule? schedule,
     Map<String, RegularSeasonGameResult>? gameResults,
+    Map<String, String>? gameInputSnapshots,
   }) => RegularSeasonState(
     seasonId: seasonId,
     seasonYear: seasonYear,
     scheduleSeed: scheduleSeed,
     openingTeams: openingTeams,
     gameResults: gameResults ?? this.gameResults,
+    gameInputSnapshots: gameInputSnapshots ?? this.gameInputSnapshots,
     schedule: schedule ?? this.schedule,
   );
 
@@ -205,9 +230,9 @@ final class RegularSeasonState {
     }
     final generatedSchedule = schedule;
     if (generatedSchedule == null) {
-      if (gameResults.isNotEmpty) {
+      if (gameResults.isNotEmpty || gameInputSnapshots.isNotEmpty) {
         throw const FormatException(
-          'Results require a regular-season schedule',
+          'Results and evidence require a regular-season schedule',
         );
       }
       return;
@@ -223,6 +248,17 @@ final class RegularSeasonState {
     };
     if (gameResults.keys.any((id) => !fixtures.containsKey(id))) {
       throw const FormatException('Unknown regular-season result fixture');
+    }
+    final referencedSnapshots = <String>{
+      for (final result in gameResults.values)
+        if (result.inputEvidence != null)
+          result.inputEvidence!.leagueSnapshotId,
+    };
+    if (referencedSnapshots.length != gameInputSnapshots.length ||
+        !referencedSnapshots.containsAll(gameInputSnapshots.keys)) {
+      throw const FormatException(
+        'Game-input snapshots are missing or unreferenced',
+      );
     }
     var scheduledSeen = false;
     for (final round in generatedSchedule.rounds) {
@@ -261,6 +297,7 @@ final class RegularSeasonState {
     'gameResults': {
       for (final entry in gameResults.entries) entry.key: entry.value.toJson(),
     },
+    'gameInputSnapshots': gameInputSnapshots,
     'schedule': schedule?.toJson(),
   };
 }

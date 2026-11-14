@@ -21,6 +21,10 @@ import '../models/roster_membership.dart';
 import '../models/team.dart';
 import '../generation/free_agent_generator.dart';
 import '../finance/career_finances.dart';
+import '../simulation/game_fingerprint.dart';
+import 'regular_season_game_adapter.dart';
+import 'regular_season_game_input_evidence.dart';
+import 'regular_season_game_result.dart';
 import 'career_phase.dart';
 import 'offseason_readiness_gate.dart';
 import 'regular_season_state.dart';
@@ -30,7 +34,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 17;
+  static const int currentSchemaVersion = 18;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -484,7 +488,7 @@ final class GmCareerCodec {
 
     final career = GmCareer(
       id: id,
-      schemaVersion: currentSchemaVersion,
+      schemaVersion: schemaVersion == 17 ? 17 : currentSchemaVersion,
       generationSeed: generationSeed,
       userFranchiseId: userFranchiseId,
       originalSituation: originalSituation,
@@ -506,15 +510,68 @@ final class GmCareerCodec {
       finances: finances,
       regularSeasonState: regularSeasonState,
     );
-    _validateNativeCareer(career);
-    return career;
+    if (schemaVersion == 17) _validateNativeCareer(career);
+    final migrated = schemaVersion == 17 ? _migrateV17(career) : career;
+    _validateNativeCareer(migrated);
+    return migrated;
+  }
+
+  static GmCareer _migrateV17(GmCareer career) {
+    final state = career.regularSeasonState;
+    if (state == null || state.gameResults.isEmpty) {
+      return career.copyWith(schemaVersion: currentSchemaVersion);
+    }
+    final schedule = state.schedule!;
+    final fixtures = {
+      for (final fixture in schedule.allFixtures) fixture.id: fixture,
+    };
+    final adapter = const RegularSeasonGameAdapter();
+    final simulationLeague = adapter.simulationLeagueFor(career);
+    final snapshots = <String, String>{};
+    final results = <String, RegularSeasonGameResult>{};
+    const profile = RegularSeasonGameVersionProfile.t03;
+    for (final entry in state.gameResults.entries) {
+      final legacyResult = entry.value;
+      final fixture = fixtures[entry.key]!;
+      final input = adapter.createInput(
+        career,
+        fixture,
+        simulationLeague: simulationLeague,
+      );
+      if (GameFingerprint.of(input) != legacyResult.inputFingerprint) {
+        throw const FormatException(
+          'Cannot migrate v17 result without exact historical input match',
+        );
+      }
+      final captured = RegularSeasonGameInputEvidence.capture(input);
+      final prior = snapshots.putIfAbsent(
+        captured.evidence.leagueSnapshotId,
+        () => captured.leagueSnapshotJson,
+      );
+      if (prior != captured.leagueSnapshotJson) {
+        throw const FormatException(
+          'Historical league snapshot digest collision',
+        );
+      }
+      results[entry.key] = legacyResult.withInputEvidence(
+        inputEvidence: captured.evidence,
+        fingerprintVersion: profile.fingerprintVersion,
+        coreEngineVersion: profile.coreEngineVersion,
+        leagueSchemaVersion: profile.leagueSchemaVersion,
+      );
+    }
+    return career.copyWith(
+      schemaVersion: currentSchemaVersion,
+      regularSeasonState: state.copyWith(
+        gameResults: results,
+        gameInputSnapshots: snapshots,
+      ),
+    );
   }
 
   static void _validateNativeCareer(GmCareer career) {
-    if (career.phase != CareerPhase.regularSeason) {
-      career.validate();
-      return;
-    }
+    career.validate();
+    if (career.phase != CareerPhase.regularSeason) return;
     final readiness = const OffseasonReadinessGate().evaluate(career);
     if (readiness.status != OffseasonReadinessStatus.cleared ||
         readiness.readyCount != career.league.teams.length) {

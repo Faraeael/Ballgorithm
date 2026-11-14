@@ -34,6 +34,9 @@ RegularSeasonGameResult _result(RegularSeasonFixture fixture) =>
       rulesVersion: 3,
       eventSchemaVersion: 3,
       prngImplementationId: 'xorshift32-v1',
+      fingerprintVersion: 5,
+      coreEngineVersion: '1.0.0',
+      leagueSchemaVersion: 1,
       periodsPlayed: 4,
       summary: SeasonGameSummary(
         homeScore: 2,
@@ -65,6 +68,28 @@ RegularSeasonGameResult _result(RegularSeasonFixture fixture) =>
         },
       ),
     );
+RegularSeasonGameResult _copyResult(
+  RegularSeasonGameResult result, {
+  int? simulationVersion,
+}) => RegularSeasonGameResult(
+  fixtureId: result.fixtureId,
+  seasonId: result.seasonId,
+  seasonYear: result.seasonYear,
+  homeTeamId: result.homeTeamId,
+  awayTeamId: result.awayTeamId,
+  gameSeed: result.gameSeed,
+  inputFingerprint: result.inputFingerprint,
+  simulationVersion: simulationVersion ?? result.simulationVersion,
+  rulesVersion: result.rulesVersion,
+  eventSchemaVersion: result.eventSchemaVersion,
+  prngImplementationId: result.prngImplementationId,
+  fingerprintVersion: result.fingerprintVersion,
+  coreEngineVersion: result.coreEngineVersion,
+  leagueSchemaVersion: result.leagueSchemaVersion,
+  inputEvidence: result.inputEvidence,
+  periodsPlayed: result.periodsPlayed,
+  summary: result.summary,
+);
 
 GmCareer _scheduledCareer() {
   final career = GmCareer.fromSetupResult(
@@ -136,19 +161,28 @@ void main() {
       expectedSeasonYear: fixture.seasonYear,
       standardPlayers: const {'home-player'},
       playerTeams: {'home-player': fixture.homeTeamId.value},
+      legacyCompatibility: true,
     );
 
-    final wrongSeed = Map<String, dynamic>.from(result.toJson())
-      ..['gameSeed'] = fixture.gameSeed + 1;
-    final wrongTeam = Map<String, dynamic>.from(result.toJson())
+    Map<String, dynamic> legacyJson(RegularSeasonGameResult candidate) =>
+        Map<String, dynamic>.from(candidate.toJson())
+          ..remove('fingerprintVersion')
+          ..remove('coreEngineVersion')
+          ..remove('leagueSchemaVersion');
+    final wrongSeed = legacyJson(result)..['gameSeed'] = fixture.gameSeed + 1;
+    final wrongTeam = legacyJson(result)
       ..['homeTeamId'] = fixture.awayTeamId.value;
     validate(result);
     expect(
-      () => validate(RegularSeasonGameResult.fromJson(wrongSeed)),
+      () => validate(
+        RegularSeasonGameResult.fromJson(wrongSeed, schemaVersion: 17),
+      ),
       throwsFormatException,
     );
     expect(
-      () => validate(RegularSeasonGameResult.fromJson(wrongTeam)),
+      () => validate(
+        RegularSeasonGameResult.fromJson(wrongTeam, schemaVersion: 17),
+      ),
       throwsFormatException,
     );
   });
@@ -379,5 +413,78 @@ void main() {
     expect(calls, 2);
     expect(career.regularSeasonState!.gameResults, isEmpty);
     expect(career.regularSeasonState!.completedGames, 0);
+  });
+  test('historical game evidence survives public player progression', () {
+    final service = const RegularSeasonRoundService();
+    final career = service.simulateNextRound(
+      _scheduledCareer(),
+      expectedRoundNumber: 1,
+    );
+    final state = career.regularSeasonState!;
+    expect(state.gameInputSnapshots, hasLength(1));
+    final team = career.league.teams.first;
+    final player = team.roster.standardPlayers.first;
+    final ratings = Map<String, Object?>.from(player.attributes.asMap)
+      ..['threePoint'] = (player.attributes.threePoint + 1) % 101;
+    final progressedPlayer = Player(
+      id: player.id,
+      firstName: player.firstName,
+      lastName: player.lastName,
+      position: player.position,
+      attributes: PlayerAttributes.fromJson(ratings),
+    );
+    final progressedTeam = team.copyWith(
+      roster: Roster([
+        for (final rostered in team.players)
+          if (rostered.id == player.id) progressedPlayer else rostered,
+      ], categories: team.roster.categories),
+    );
+
+    final progressedCareer = career.withUpdatedTeam(progressedTeam);
+
+    expect(() => progressedCareer.validate(), returnsNormally);
+    expect(
+      progressedCareer
+          .regularSeasonState!
+          .gameResults
+          .values
+          .first
+          .inputFingerprint,
+      state.gameResults.values.first.inputFingerprint,
+    );
+  });
+
+  test('unsupported versions and altered snapshots are rejected', () {
+    final career = const RegularSeasonRoundService().simulateNextRound(
+      _scheduledCareer(),
+      expectedRoundNumber: 1,
+    );
+    final state = career.regularSeasonState!;
+    final first = state.gameResults.entries.first;
+    final unsupportedResults = Map<String, RegularSeasonGameResult>.of(
+      state.gameResults,
+    )..[first.key] = _copyResult(first.value, simulationVersion: 99);
+    expect(
+      () => career.copyWith(
+        regularSeasonState: state.copyWith(gameResults: unsupportedResults),
+      ),
+      throwsFormatException,
+    );
+
+    final snapshotId = state.gameInputSnapshots.keys.first;
+    final alteredSnapshot =
+        jsonDecode(state.gameInputSnapshots[snapshotId]!)
+              as Map<String, dynamic>
+          ..['name'] = 'Altered historical league';
+    final alteredSnapshots = Map<String, String>.of(state.gameInputSnapshots)
+      ..[snapshotId] = jsonEncode(alteredSnapshot);
+    expect(
+      () => career.copyWith(
+        regularSeasonState: state.copyWith(
+          gameInputSnapshots: alteredSnapshots,
+        ),
+      ),
+      throwsFormatException,
+    );
   });
 }
