@@ -26,6 +26,7 @@ import '../models/team.dart';
 import 'career_phase.dart';
 import 'career_setup.dart';
 import 'regular_season_state.dart';
+import 'play_in_state.dart';
 import 'regular_season_schedule_generator.dart';
 import '../simulation/game_fingerprint.dart';
 import 'regular_season_game_adapter.dart';
@@ -72,8 +73,9 @@ final class GmCareer {
     FreeAgentMarketState? freeAgentMarket,
     OffseasonClearanceState? offseasonClearance,
     HardshipSettlement? hardshipSettlement,
-    this.regularSeasonState,
     CareerFinances? finances,
+    this.regularSeasonState,
+    this.playInState,
   }) : draftExecutionState =
            draftExecutionState ?? DraftExecutionState.initial(),
        rookieSigningLedger = rookieSigningLedger ?? RookieSigningLedger.empty(),
@@ -139,7 +141,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 18;
+  static const int currentSchemaVersion = 19;
 
   final String id;
   final int schemaVersion;
@@ -176,6 +178,9 @@ final class GmCareer {
 
   /// Deterministic opening state for a career that entered regular season.
   final RegularSeasonState? regularSeasonState;
+
+  /// Independent playoff qualification and game results after regular season.
+  final PlayInState? playInState;
 
   /// Authoritative contract, payroll, budget, staff and facility records.
   final CareerFinances finances;
@@ -323,12 +328,20 @@ final class GmCareer {
   void _validateRegularSeasonState() {
     final state = regularSeasonState;
     if (phase == CareerPhase.openingOffseason) {
-      if (state != null) {
+      if (state != null || playInState != null) {
         throw const FormatException(
-          'Opening-offseason career cannot contain regular-season state',
+          'Opening-offseason career cannot contain season state',
         );
       }
       return;
+    }
+    if (phase == CareerPhase.regularSeason && playInState != null) {
+      throw const FormatException(
+        'Regular-season career cannot contain Play-In state',
+      );
+    }
+    if (phase == CareerPhase.playIn && schemaVersion < 19) {
+      throw const FormatException('Play-In career requires schema v19');
     }
     if (schemaVersion < 15 || state == null) {
       throw const FormatException(
@@ -376,7 +389,14 @@ final class GmCareer {
         openingTeams: state.openingTeams,
       );
     }
-    if (schedule == null || state.gameResults.isEmpty) return;
+    if (schedule == null || state.gameResults.isEmpty) {
+      if (phase == CareerPhase.playIn || playInState != null) {
+        throw const FormatException(
+          'Play-In requires a completed regular season',
+        );
+      }
+      return;
+    }
     final fixturesById = {
       for (final fixture in schedule.allFixtures) fixture.id: fixture,
     };
@@ -504,6 +524,21 @@ final class GmCareer {
         playerTeams: playerTeams,
       );
       _validatedRegularSeasonResults[result] = validationContext;
+    }
+    if (phase == CareerPhase.playIn) {
+      final playIn = playInState;
+      if (schemaVersion < 19 ||
+          playIn == null ||
+          schedule.totalFixtures != 1230 ||
+          state.completedRounds != 82 ||
+          state.completedGames != 1230) {
+        throw const FormatException(
+          'Play-In career lacks completed season state',
+        );
+      }
+      playIn.validate(regularSeasonState: state);
+    } else if (playInState != null) {
+      throw const FormatException('Play-In state requires the Play-In phase');
     }
   }
 
@@ -1390,6 +1425,7 @@ final class GmCareer {
     OffseasonClearanceState? offseasonClearance,
     HardshipSettlement? hardshipSettlement,
     RegularSeasonState? regularSeasonState,
+    PlayInState? playInState,
     CareerFinances? finances,
   }) {
     return GmCareer(
@@ -1414,6 +1450,7 @@ final class GmCareer {
       offseasonClearance: offseasonClearance ?? this.offseasonClearance,
       hardshipSettlement: hardshipSettlement ?? this.hardshipSettlement,
       regularSeasonState: regularSeasonState ?? this.regularSeasonState,
+      playInState: playInState ?? this.playInState,
       finances: finances ?? this.finances,
     );
   }

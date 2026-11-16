@@ -11,6 +11,7 @@ import 'package:basketball_manager/features/career/offseason_clearance_screen.da
 import 'package:basketball_manager/features/career/regular_season_overview_screen.dart';
 import 'package:basketball_manager/features/career/regular_season_results_screen.dart';
 import 'package:basketball_manager/features/career/regular_season_schedule_screen.dart';
+import 'package:basketball_manager/features/career/play_in_tournament_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simulation_core/simulation_core.dart';
@@ -91,7 +92,7 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
-  });
+  }, tags: ['endurance']);
 
   testWidgets(
     'M009-T03 simulates ready careers and recovers game saves',
@@ -114,7 +115,6 @@ void main() {
       String? firstClearedSave;
 
       String? scheduleFingerprint;
-      final situationCareers = <FranchiseSituation, GmCareer>{};
       for (final (seed, situation) in readyCases) {
         final active = await _runActiveCohort(tester, seed, situation);
         expect(
@@ -129,6 +129,9 @@ void main() {
         await controller.loadCareer();
         await controller.markOffseasonCleared();
         final cleared = controller.career!;
+        final migratedV18Offseason = GmCareerCodec.decode(_v18Json(cleared));
+        expect(migratedV18Offseason.phase, CareerPhase.openingOffseason);
+        expect(migratedV18Offseason.playInState, isNull);
         expect(
           _gate.evaluate(cleared).status,
           OffseasonReadinessStatus.cleared,
@@ -192,6 +195,9 @@ void main() {
           expect(entered.phase, CareerPhase.regularSeason);
           expect(entered.regularSeasonState!.gameResults, isEmpty);
           expect(entered.currentYear, cleared.currentYear);
+          final migratedV18Entered = GmCareerCodec.decode(_v18Json(entered));
+          expect(migratedV18Entered.phase, CareerPhase.regularSeason);
+          expect(migratedV18Entered.regularSeasonState!.schedule, isNull);
           expect(
             GmCareerCodec.encode(entered),
             GmCareerCodec.encode(
@@ -223,8 +229,16 @@ void main() {
           await tester.tap(find.byKey(const ValueKey('btn-generate-schedule')));
           await tester.pumpAndSettle();
           final scheduledCareer = controller.career!;
-          situationCareers.putIfAbsent(situation, () => scheduledCareer);
+          expect(
+            () => const PlayInEntryService().enter(scheduledCareer),
+            throwsStateError,
+          );
           final schedule = scheduledCareer.regularSeasonState!.schedule!;
+          final migratedV18Scheduled = GmCareerCodec.decode(
+            _v18Json(scheduledCareer),
+          );
+          expect(migratedV18Scheduled.regularSeasonState!.schedule, isNotNull);
+          expect(migratedV18Scheduled.regularSeasonState!.gameResults, isEmpty);
           final saveBeforeCancel = await storage.read();
           expect(saveBeforeCancel, isNotNull);
           scheduleFingerprint = schedule.fingerprint;
@@ -452,6 +466,13 @@ void main() {
           final engineRound = const RegularSeasonRoundService()
               .simulateNextRound(scheduledCareer, expectedRoundNumber: 1);
           engineTimer.stop();
+          final migratedV18Partial = GmCareerCodec.decode(
+            _v18Json(engineRound),
+          );
+          expect(
+            migratedV18Partial.regularSeasonState!.gameResults,
+            hasLength(15),
+          );
           expect(
             GmCareerCodec.encode(gameplayController.career!),
             GmCareerCodec.encode(engineRound),
@@ -758,7 +779,6 @@ void main() {
             'record=${threeRoundCareer.regularSeasonState!.standings.table[entered.userFranchiseId.value]!.wins}-'
             '${threeRoundCareer.regularSeasonState!.standings.table[entered.userFranchiseId.value]!.losses}',
           );
-          await _runFullSeasonReliability(tester, scheduledCareer);
           gameplayController.dispose();
           await tester.pumpWidget(const SizedBox.shrink());
           controller.dispose();
@@ -925,7 +945,6 @@ void main() {
             schedule.fingerprint,
           );
           final scheduledCareer = controller.career!;
-          situationCareers.putIfAbsent(situation, () => scheduledCareer);
           final roundTimer = Stopwatch()..start();
           await _pumpCommand(
             tester,
@@ -972,7 +991,6 @@ void main() {
           'fingerprint=$scheduleFingerprint gameplay=round-1-verified',
         );
       }
-      _reportStartingSituationSeasons(situationCareers);
 
       for (final (seed, situation) in blockedCases) {
         final active = await _runActiveCohort(tester, seed, situation);
@@ -1042,6 +1060,81 @@ void main() {
       tester.view.resetPhysicalSize();
       tester.view.resetDevicePixelRatio();
     },
+    timeout: const Timeout(Duration(minutes: 60)),
+  );
+  testWidgets(
+    'M009-T05A Play-In lifecycle from a completed regular season',
+    (tester) async {
+      tester.view.physicalSize = const Size(393, 852);
+      tester.view.devicePixelRatio = 1;
+      final startingCareer = await _scheduledCareerForSituation(
+        tester,
+        seed: 20261028,
+        situation: FranchiseSituation.playIn,
+      );
+      expect(startingCareer.generationSeed, 20261028);
+      expect(startingCareer.originalSituation, FranchiseSituation.playIn);
+      await _reportStartingSituationSeasons(
+        tester,
+        {FranchiseSituation.playIn: startingCareer},
+        situations: {FranchiseSituation.playIn},
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    },
+    timeout: const Timeout(Duration(minutes: 15)),
+  );
+
+  testWidgets(
+    'M009-T04 endurance: completed-season reliability and starting situations',
+    (tester) async {
+      tester.view.physicalSize = const Size(393, 852);
+      tester.view.devicePixelRatio = 1;
+      final startingCareers = <FranchiseSituation, GmCareer>{};
+      for (final (situation, seed) in const [
+        (FranchiseSituation.playIn, 20261028),
+        (FranchiseSituation.playoff, 20261028),
+        (FranchiseSituation.contender, 20261028),
+        (FranchiseSituation.tanking, 987654321),
+      ]) {
+        startingCareers[situation] = await _scheduledCareerForSituation(
+          tester,
+          seed: seed,
+          situation: situation,
+        );
+      }
+      final completedPlayInSeason = await _runFullSeasonReliability(
+        tester,
+        startingCareers[FranchiseSituation.playIn]!,
+      );
+      final playInState = completedPlayInSeason.regularSeasonState!;
+      expect(playInState.completedRounds, 82);
+      expect(playInState.gameResults, hasLength(1230));
+      expect(completedPlayInSeason.currentYear, 1);
+      debugPrint(
+        'T04 START-SITUATION playIn '
+        'seed=${completedPlayInSeason.generationSeed} '
+        'rounds=${playInState.completedRounds} '
+        'games=${playInState.gameResults.length} '
+        'userRecord=${playInState.standings.table[completedPlayInSeason.userFranchiseId.value]!.wins}-'
+        '${playInState.standings.table[completedPlayInSeason.userFranchiseId.value]!.losses} '
+        'year=${completedPlayInSeason.currentYear}',
+      );
+      await _reportStartingSituationSeasons(
+        tester,
+        startingCareers,
+        situations: {
+          FranchiseSituation.playoff,
+          FranchiseSituation.contender,
+          FranchiseSituation.tanking,
+        },
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    },
+    tags: ['endurance'],
     timeout: const Timeout(Duration(minutes: 60)),
   );
 }
@@ -1270,6 +1363,45 @@ Future<_ActiveResult> _runActiveCohort(
   } finally {
     controller.dispose();
   }
+}
+
+Future<GmCareer> _scheduledCareerForSituation(
+  WidgetTester tester, {
+  required int seed,
+  required FranchiseSituation situation,
+}) async {
+  final active = await _runActiveCohort(tester, seed, situation);
+  expect(
+    active.readiness.status,
+    OffseasonReadinessStatus.readyForConfirmation,
+  );
+  final storage = InMemoryGmCareerStorage({
+    'default': GmCareerCodec.encode(active.career),
+  });
+  final controller = GmCareerController(storage: storage);
+  await controller.loadCareer();
+  await controller.markOffseasonCleared();
+  await controller.startRegularSeason(confirmed: true);
+  await controller.generateRegularSeasonSchedule();
+  final career = controller.career!;
+  expect(career.generationSeed, seed);
+  expect(career.originalSituation, situation);
+  final schedule = career.regularSeasonState!.schedule!;
+  expect(
+    schedule.fingerprint,
+    {
+      '20261028/playIn':
+          '9e48097a90dbefa6bc319523164c77dce2c46dd937ca377abc440bb45bc7c768',
+      '20261028/playoff':
+          'b0d726204afa17974ff4dd329f575aeb9d42caa9bab230a9738b3d99abbfa5f6',
+      '20261028/contender':
+          '830ab252437ce9c08af72ad364ff4c1cf2f8c3d94e43d4ba6da48a4d34bbeae7',
+      '987654321/tanking':
+          'c8c383cd91dd7d05749a8a6488e48a1822f7483d5c79dfff45db7defd98a10a7',
+    }['$seed/${situation.jsonValue}'],
+  );
+  controller.dispose();
+  return career;
 }
 
 Future<void> _submitHumanMarketOffers(GmCareerController controller) async {
@@ -1617,17 +1749,22 @@ void _logRoundMetrics(
   );
 }
 
-Future<void> _runFullSeasonReliability(
+Future<GmCareer> _runFullSeasonReliability(
   WidgetTester tester,
   GmCareer startingCareer,
 ) async {
   final startState = startingCareer.regularSeasonState!;
   final schedule = startState.schedule!;
+  final situation = startingCareer.originalSituation.jsonValue;
+  const progressRounds = {1, 10, 20, 30, 40, 50, 60, 70, 80, 82};
   final rounds = {1, 10, 25, 40, 41, 60, 80, 81, 82};
   final requiredCheckpoints = {1, 10, 25, 41, 60, 81, 82};
   final referenceStates = <int, GmCareer>{0: startingCareer};
   final referenceRoundMilliseconds = <int, int>{};
   var reference = startingCareer;
+  final referenceProgress = Stopwatch()..start();
+  var referenceBoundaryMs = 0;
+  var referenceBoundaryRound = 0;
   for (var round = 1; round <= 82; round++) {
     final watch = Stopwatch()..start();
     reference = const RegularSeasonRoundService().simulateNextRound(
@@ -1636,6 +1773,19 @@ Future<void> _runFullSeasonReliability(
     );
     watch.stop();
     referenceRoundMilliseconds[round] = watch.elapsedMilliseconds;
+    if (progressRounds.contains(round)) {
+      final elapsedMs = referenceProgress.elapsedMilliseconds;
+      debugPrint(
+        'T04 PROGRESS situation=$situation pass=reference round=$round '
+        'games=${reference.regularSeasonState!.completedGames} '
+        'elapsedMs=$elapsedMs '
+        'intervalRounds=${round - referenceBoundaryRound} '
+        'intervalMs=${elapsedMs - referenceBoundaryMs} '
+        'stage=simulate rssBytes=${io.ProcessInfo.currentRss}',
+      );
+      referenceBoundaryMs = elapsedMs;
+      referenceBoundaryRound = round;
+    }
     if (rounds.contains(round)) {
       referenceStates[round] = reference;
       debugPrint(
@@ -1655,12 +1805,14 @@ Future<void> _runFullSeasonReliability(
   Future<void> checkpoint(int round) async {
     final state = checkpointed.regularSeasonState!;
     final progress = state.completedGames;
-    debugPrint('T04 CHECKPOINT start games=$progress round=$round');
+    debugPrint(
+      'T04 CHECKPOINT start situation=$situation games=$progress round=$round',
+    );
     final validationWatch = Stopwatch()..start();
     checkpointed.validate();
     validationWatch.stop();
     debugPrint(
-      'T04 CHECKPOINT stage=validation games=$progress '
+      'T04 CHECKPOINT stage=validation situation=$situation games=$progress '
       'ms=${validationWatch.elapsedMilliseconds}',
     );
 
@@ -1669,7 +1821,7 @@ Future<void> _runFullSeasonReliability(
     encodeWatch.stop();
     final bytes = utf8.encode(encoded).length;
     debugPrint(
-      'T04 CHECKPOINT stage=serialize games=$progress '
+      'T04 CHECKPOINT stage=serialize situation=$situation games=$progress '
       'ms=${encodeWatch.elapsedMilliseconds}',
     );
 
@@ -1677,7 +1829,7 @@ Future<void> _runFullSeasonReliability(
     await tester.runAsync(() => fileStorage.write(encoded, slot: storageSlot));
     writeWatch.stop();
     debugPrint(
-      'T04 CHECKPOINT stage=promote games=$progress '
+      'T04 CHECKPOINT stage=promote situation=$situation games=$progress '
       'ms=${writeWatch.elapsedMilliseconds}',
     );
 
@@ -1688,7 +1840,7 @@ Future<void> _runFullSeasonReliability(
     readWatch.stop();
     expect(saved, encoded);
     debugPrint(
-      'T04 CHECKPOINT stage=read games=$progress '
+      'T04 CHECKPOINT stage=read situation=$situation games=$progress '
       'ms=${readWatch.elapsedMilliseconds}',
     );
 
@@ -1697,10 +1849,9 @@ Future<void> _runFullSeasonReliability(
     decodeWatch.stop();
     checkpointStates[round] = checkpointed;
     debugPrint(
-      'T04 CHECKPOINT stage=decode games=$progress '
+      'T04 CHECKPOINT stage=decode situation=$situation games=$progress '
       'ms=${decodeWatch.elapsedMilliseconds}',
     );
-
     final queryWatch = Stopwatch()..start();
     expect(checkpointed.regularSeasonState!.standings.ranked, hasLength(30));
     queryWatch.stop();
@@ -1728,6 +1879,9 @@ Future<void> _runFullSeasonReliability(
   }
 
   await checkpoint(0);
+  final checkpointProgress = Stopwatch()..start();
+  var checkpointBoundaryMs = 0;
+  var checkpointBoundaryRound = 0;
   for (var round = 1; round <= 82; round++) {
     final watch = Stopwatch()..start();
     checkpointed = const RegularSeasonRoundService().simulateNextRound(
@@ -1737,6 +1891,20 @@ Future<void> _runFullSeasonReliability(
     watch.stop();
     if (round == 40 || round == 80) {
       checkpointStates[round] = checkpointed;
+    }
+    if (progressRounds.contains(round)) {
+      final elapsedMs = checkpointProgress.elapsedMilliseconds;
+      debugPrint(
+        'T04 PROGRESS situation=$situation pass=checkpointed round=$round '
+        'games=${checkpointed.regularSeasonState!.completedGames} '
+        'elapsedMs=$elapsedMs '
+        'intervalRounds=${round - checkpointBoundaryRound} '
+        'intervalMs=${elapsedMs - checkpointBoundaryMs} '
+        'roundMs=${watch.elapsedMilliseconds} '
+        'stage=simulate rssBytes=${io.ProcessInfo.currentRss}',
+      );
+      checkpointBoundaryMs = elapsedMs;
+      checkpointBoundaryRound = round;
     }
     if (requiredCheckpoints.contains(round)) {
       await checkpoint(round);
@@ -1845,6 +2013,7 @@ Future<void> _runFullSeasonReliability(
       if (await file.exists()) await file.delete();
     }
   });
+  return checkpointed;
 }
 
 Future<void> _verifyFullSeasonRecovery(
@@ -2142,26 +2311,324 @@ void _reportFullSeasonQuality(GmCareer career) {
   );
 }
 
-void _reportStartingSituationSeasons(
-  Map<FranchiseSituation, GmCareer> startingCareers,
-) {
-  expect(startingCareers.keys, containsAll(FranchiseSituation.values));
+Future<void> _reportStartingSituationSeasons(
+  WidgetTester tester,
+  Map<FranchiseSituation, GmCareer> startingCareers, {
+  required Set<FranchiseSituation> situations,
+}) async {
+  expect(startingCareers.keys, containsAll(situations));
   const roundService = RegularSeasonRoundService();
-  for (final situation in FranchiseSituation.values) {
+  const progressRounds = {1, 10, 20, 30, 40, 50, 60, 70, 80, 82};
+  for (final situation in situations) {
     final starting = startingCareers[situation]!;
     var career = starting;
+    final progressWatch = Stopwatch()..start();
+    var previousBoundaryMs = 0;
+    var previousBoundaryRound = 0;
+    debugPrint(
+      'T04 START-SITUATION BEGIN situation=${situation.jsonValue} '
+      'seed=${starting.generationSeed} '
+      'schedule=${starting.regularSeasonState!.schedule!.fingerprint}',
+    );
     for (var round = 1; round <= 82; round++) {
       career = roundService.simulateNextRound(
         career,
         expectedRoundNumber: round,
       );
+      if (progressRounds.contains(round)) {
+        final elapsedMs = progressWatch.elapsedMilliseconds;
+        debugPrint(
+          'T04 PROGRESS situation=${situation.jsonValue} '
+          'pass=starting-situation round=$round '
+          'games=${career.regularSeasonState!.completedGames} '
+          'elapsedMs=$elapsedMs '
+          'intervalRounds=${round - previousBoundaryRound} '
+          'intervalMs=${elapsedMs - previousBoundaryMs} '
+          'stage=simulate rssBytes=${io.ProcessInfo.currentRss}',
+        );
+        previousBoundaryMs = elapsedMs;
+        previousBoundaryRound = round;
+      }
     }
+    final validationWatch = Stopwatch()..start();
     career.validate();
+    validationWatch.stop();
     final state = career.regularSeasonState!;
     final userRecord = state.standings.table[career.userFranchiseId.value]!;
     expect(state.completedRounds, 82);
     expect(state.gameResults, hasLength(1230));
+    expect(state.gameResults.keys.toSet(), hasLength(1230));
     expect(career.currentYear, starting.currentYear);
+    expect(career.finances.toJson(), starting.finances.toJson());
+    if (situation == FranchiseSituation.playIn) {
+      expect(
+        state.schedule!.fingerprint,
+        '497ca34883102e39365e03ec6c8afcf9b33c00ebf75c6f6e57405e6e78adb23f',
+      );
+    }
+    expect(
+      GmCareerCodec.decode(
+        GmCareerCodec.encode(career),
+      ).regularSeasonState!.toJson(),
+      state.toJson(),
+    );
+    debugPrint(
+      'T04 START-SITUATION stage=validation '
+      'situation=${situation.jsonValue} ms=${validationWatch.elapsedMilliseconds} '
+      'elapsedMs=${progressWatch.elapsedMilliseconds} '
+      'rssBytes=${io.ProcessInfo.currentRss}',
+    );
+    if (situation == FranchiseSituation.playIn) {
+      final playInProgress = Stopwatch()..start();
+      void reportPlayInProgress(String stage) {
+        debugPrint(
+          'T05A PROGRESS stage=$stage elapsedMs='
+          '${playInProgress.elapsedMilliseconds} '
+          'rssBytes=${io.ProcessInfo.currentRss}',
+        );
+      }
+
+      reportPlayInProgress('v18-migration-start');
+      final v18Save = _v18Json(career);
+      final migratedCompleted = GmCareerCodec.decode(v18Save);
+      expect(migratedCompleted.schemaVersion, 19);
+      expect(migratedCompleted.phase, CareerPhase.regularSeason);
+      expect(
+        migratedCompleted.regularSeasonState!.gameResults,
+        hasLength(1230),
+      );
+      expect(migratedCompleted.playInState, isNull);
+      final migratedV19Save =
+          jsonDecode(GmCareerCodec.encode(migratedCompleted))
+              as Map<String, dynamic>;
+      final expectedV19Save =
+          Map<String, dynamic>.from(jsonDecode(v18Save) as Map)
+            ..['schemaVersion'] = 19
+            ..['playInState'] = null;
+      expect(migratedV19Save, expectedV19Save);
+      reportPlayInProgress('v18-migration-complete');
+
+      final beforeRecords = jsonEncode({
+        for (final entry in state.gameResults.entries)
+          entry.key: entry.value.toJson(),
+      });
+      final storage = _CommitThenFailCareerStorage(
+        InMemoryGmCareerStorage({'default': v18Save}),
+      );
+      final controller = GmCareerController(storage: storage);
+      await controller.loadCareer();
+      reportPlayInProgress('load-completed-career');
+      expect(controller.career!.phase, CareerPhase.regularSeason);
+      expect(controller.career!.playInState, isNull);
+      storage.failBeforePromotionNextWrite = true;
+      await expectLater(
+        controller.enterPlayIn(confirmed: true),
+        throwsA(isA<GmCareerStorageException>()),
+      );
+      expect(controller.career!.phase, CareerPhase.regularSeason);
+      expect(controller.draftRecoveryRequired, isTrue);
+      await controller.loadCareer();
+      expect(controller.career!.phase, CareerPhase.regularSeason);
+      reportPlayInProgress('pre-promotion-entry-recovery');
+      final app = BasketballManagerApp(
+        league: career.league,
+        storage: InMemorySeasonStorage(),
+        careerStorage: storage,
+        careerController: controller,
+        seasonMode: true,
+      );
+      await tester.pumpWidget(app);
+      await tester.pumpAndSettle();
+      reportPlayInProgress('completed-career-screen');
+      final enterButton = find.byKey(const ValueKey('btn-enter-play-in'));
+      await tester.ensureVisible(enterButton);
+      expect(enterButton, findsOneWidget);
+      for (final size in const [Size(360, 640), Size(393, 852)]) {
+        tester.view.physicalSize = size;
+        await tester.pumpAndSettle();
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: '$size completed season screen',
+        );
+      }
+      tester.view.resetPhysicalSize();
+      final saveBeforeEntryCancel = await storage.read();
+      await tester.tap(enterButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(await storage.read(), saveBeforeEntryCancel);
+      reportPlayInProgress('entry-cancellation');
+      expect(controller.career!.phase, CareerPhase.regularSeason);
+      await tester.ensureVisible(enterButton);
+      await tester.tap(enterButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('confirm-enter-play-in')));
+      await tester.pumpAndSettle();
+      expect(controller.career!.phase, CareerPhase.playIn);
+      reportPlayInProgress('play-in-entry');
+      await expectLater(
+        controller.enterPlayIn(confirmed: true),
+        throwsStateError,
+      );
+      await controller.loadCareer();
+      expect(controller.career!.phase, CareerPhase.playIn);
+      expect(controller.career!.currentYear, career.currentYear);
+      expect(
+        jsonEncode({
+          for (final entry
+              in controller.career!.regularSeasonState!.gameResults.entries)
+            entry.key: entry.value.toJson(),
+        }),
+        beforeRecords,
+      );
+      expect(controller.career!.playInState!.originalRanking, hasLength(30));
+      reportPlayInProgress('entry-reload-records-verified');
+
+      expect(find.text('Play-In Tournament'), findsOneWidget);
+      expect(
+        find.byKey(ValueKey('simulate-play-in-${state.seasonId}-playin-g1')),
+        findsOneWidget,
+      );
+      for (final size in const [Size(360, 640), Size(393, 852)]) {
+        tester.view.physicalSize = size;
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: '$size Play-In screen');
+      }
+      tester.view.resetPhysicalSize();
+      await tester.pumpAndSettle();
+      reportPlayInProgress('play-in-screen-layout');
+
+      final saveBeforeGameCancel = await storage.read();
+      final playNextGame = find.byKey(
+        ValueKey('simulate-play-in-${state.seasonId}-playin-g1'),
+      );
+      await tester.scrollUntilVisible(
+        playNextGame,
+        220,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(playNextGame);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(await storage.read(), saveBeforeGameCancel);
+      expect(controller.career!.playInState!.gameResults, isEmpty);
+      reportPlayInProgress('game-cancel');
+
+      final reloadButton = find.byKey(const ValueKey('btn-play-in-reload'));
+
+      storage.failBeforePromotionNextWrite = true;
+      await expectLater(
+        _pumpCommand(
+          tester,
+          controller.simulatePlayInGame(
+            expectedGameId: '${state.seasonId}-playin-g1',
+            confirmed: true,
+          ),
+        ),
+        throwsA(isA<GmCareerStorageException>()),
+      );
+      expect(controller.draftRecoveryRequired, isTrue);
+      expect(controller.career!.playInState!.gameResults, isEmpty);
+      await tester.ensureVisible(reloadButton);
+      await tester.tap(reloadButton);
+      await tester.pumpAndSettle();
+      expect(controller.career!.playInState!.gameResults, isEmpty);
+      reportPlayInProgress('pre-promotion-game-recovery');
+
+      storage.failNextWrite = true;
+      await expectLater(
+        _pumpCommand(
+          tester,
+          controller.simulatePlayInGame(
+            expectedGameId: '${state.seasonId}-playin-g1',
+            confirmed: true,
+          ),
+        ),
+        throwsA(isA<GmCareerStorageException>()),
+      );
+      expect(controller.draftRecoveryRequired, isTrue);
+      expect(controller.career!.playInState!.gameResults, isEmpty);
+      await tester.ensureVisible(reloadButton);
+      expect(reloadButton, findsOneWidget);
+      await tester.tap(reloadButton);
+      await tester.pumpAndSettle();
+      expect(controller.career!.playInState!.gameResults, hasLength(1));
+      reportPlayInProgress('post-promotion-game-recovery');
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(ValueKey('simulate-play-in-${state.seasonId}-playin-g2')),
+        findsOneWidget,
+      );
+      final writesBeforeDuplicate = storage.writes;
+      reportPlayInProgress('duplicate-G1-start');
+      await expectLater(
+        _pumpCommand(
+          tester,
+          controller.simulatePlayInGame(
+            expectedGameId: '${state.seasonId}-playin-g1',
+            confirmed: true,
+          ),
+        ),
+        throwsStateError,
+      );
+      reportPlayInProgress('duplicate-G1-rejected');
+      expect(storage.writes, writesBeforeDuplicate);
+      for (var gameNumber = 2; gameNumber <= 3; gameNumber++) {
+        await _pumpCommand(
+          tester,
+          controller.simulatePlayInGame(
+            expectedGameId: '${state.seasonId}-playin-g$gameNumber',
+            confirmed: true,
+          ),
+        );
+        if (gameNumber == 2) {
+          await tester.pumpAndSettle();
+          expect(find.textContaining('Advances to Game 3'), findsNWidgets(2));
+        }
+      }
+      reportPlayInProgress('three-games-complete');
+      final completed = controller.career!;
+      expect(completed.playInState!.isComplete, isTrue);
+      expect(completed.playInState!.qualifiedTeams, hasLength(16));
+      expect(completed.currentYear, career.currentYear);
+      expect(
+        jsonEncode({
+          for (final entry in completed.regularSeasonState!.gameResults.entries)
+            entry.key: entry.value.toJson(),
+        }),
+        beforeRecords,
+      );
+      final reloaded = GmCareerController(storage: storage);
+      await reloaded.loadCareer();
+      expect(reloaded.career!.phase, CareerPhase.playIn);
+      expect(reloaded.career!.playInState!.gameResults, hasLength(3));
+      expect(reloaded.career!.playInState!.qualifiedTeams, hasLength(16));
+      reportPlayInProgress('final-reload');
+      await tester.pumpWidget(
+        MaterialApp(home: PlayInTournamentScreen(controller: reloaded)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('play-in-boxscore-1')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('play-in-boxscore-1')));
+      await tester.pumpAndSettle();
+      expect(find.text('Play-In Box Score'), findsOneWidget);
+      for (final size in const [Size(360, 640), Size(393, 852)]) {
+        tester.view.physicalSize = size;
+        await tester.pumpAndSettle();
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: '$size Play-In box score',
+        );
+      }
+      tester.view.resetPhysicalSize();
+      await tester.pumpWidget(const SizedBox.shrink());
+      controller.dispose();
+      reloaded.dispose();
+    }
     debugPrint(
       'T04 START-SITUATION ${situation.jsonValue} '
       'seed=${state.scheduleSeed} rounds=${state.completedRounds} '
@@ -2203,4 +2670,11 @@ Future<T> _pumpCommand<T>(WidgetTester tester, Future<T> command) async {
     Error.throwWithStackTrace(failure!, failureStack!);
   }
   return value as T;
+}
+
+String _v18Json(GmCareer career) {
+  final save = jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>
+    ..['schemaVersion'] = 18
+    ..remove('playInState');
+  return jsonEncode(save);
 }

@@ -130,6 +130,23 @@ void main() {
       );
     });
 
+    test('codec rejects Play-In state before schema v19', () {
+      final career = GmCareer.fromSetupResult(setupResult);
+      final jsonMap =
+          jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>
+            ..['schemaVersion'] = 18
+            ..['playInState'] = <String, dynamic>{};
+
+      expect(
+        () => GmCareerCodec.decode(jsonEncode(jsonMap)),
+        throwsA(
+          predicate<FormatException>(
+            (e) => e.message.contains('Play-In state is not supported before'),
+          ),
+        ),
+      );
+    });
+
     test('AC-008-36: codec rejects missing or empty ID and fields', () {
       final career = GmCareer.fromSetupResult(setupResult);
       final jsonMap =

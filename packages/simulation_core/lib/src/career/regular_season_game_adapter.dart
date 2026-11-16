@@ -1,3 +1,4 @@
+import '../models/ids.dart';
 import '../models/league.dart';
 import '../models/roster.dart';
 import '../models/roster_category.dart';
@@ -44,11 +45,27 @@ final class RegularSeasonGameAdapter {
     GmCareer career,
     RegularSeasonFixture fixture, {
     League? simulationLeague,
+  }) => createGameInput(
+    career,
+    gameId: fixture.id,
+    homeTeamId: fixture.homeTeamId,
+    awayTeamId: fixture.awayTeamId,
+    seed: fixture.gameSeed,
+    simulationLeague: simulationLeague,
+  );
+
+  GameInput createGameInput(
+    GmCareer career, {
+    required String gameId,
+    required TeamId homeTeamId,
+    required TeamId awayTeamId,
+    required int seed,
+    League? simulationLeague,
   }) {
     final league = simulationLeague ?? simulationLeagueFor(career);
     final teams = league.teams;
-    final home = teams.firstWhere((team) => team.id == fixture.homeTeamId);
-    final away = teams.firstWhere((team) => team.id == fixture.awayTeamId);
+    final home = teams.firstWhere((team) => team.id == homeTeamId);
+    final away = teams.firstWhere((team) => team.id == awayTeamId);
     final homeLineup = CourtLineup.defaultFor(home);
     final awayLineup = CourtLineup.defaultFor(away);
     final rules = GameRules.standard;
@@ -81,13 +98,13 @@ final class RegularSeasonGameAdapter {
       ),
     );
     return GameInput.create(
-      gameId: fixture.id,
+      gameId: gameId,
       league: league,
-      homeTeamId: fixture.homeTeamId,
-      awayTeamId: fixture.awayTeamId,
+      homeTeamId: homeTeamId,
+      awayTeamId: awayTeamId,
       homeLineup: homeLineup,
       awayLineup: awayLineup,
-      seed: fixture.gameSeed,
+      seed: seed,
       rules: rules,
       rotationPlan: plan,
     );

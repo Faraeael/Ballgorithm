@@ -146,6 +146,32 @@ final class RegularSeasonGameResult {
     required Set<String> standardPlayers,
     required Map<String, String> playerTeams,
     bool legacyCompatibility = false,
+  }) => validateForIdentity(
+    fixtureId: fixture.id,
+    fixtureSeasonId: fixture.seasonId,
+    fixtureSeasonYear: fixture.seasonYear,
+    expectedSeasonId: expectedSeasonId,
+    expectedSeasonYear: expectedSeasonYear,
+    expectedHomeTeamId: fixture.homeTeamId,
+    expectedAwayTeamId: fixture.awayTeamId,
+    expectedGameSeed: fixture.gameSeed,
+    standardPlayers: standardPlayers,
+    playerTeams: playerTeams,
+    legacyCompatibility: legacyCompatibility,
+  );
+
+  void validateForIdentity({
+    required String fixtureId,
+    required String fixtureSeasonId,
+    required int fixtureSeasonYear,
+    required String expectedSeasonId,
+    required int expectedSeasonYear,
+    required TeamId expectedHomeTeamId,
+    required TeamId expectedAwayTeamId,
+    required int expectedGameSeed,
+    required Set<String> standardPlayers,
+    required Map<String, String> playerTeams,
+    bool legacyCompatibility = false,
   }) {
     final profile = legacyCompatibility
         ? RegularSeasonGameVersionProfile.t03
@@ -167,18 +193,18 @@ final class RegularSeasonGameResult {
         rulesVersion != profile.rulesVersion ||
         eventSchemaVersion != profile.eventSchemaVersion ||
         prngImplementationId != profile.prngImplementationId ||
-        fixtureId != fixture.id ||
+        this.fixtureId != fixtureId ||
         seasonId != expectedSeasonId ||
         seasonYear != expectedSeasonYear ||
-        fixture.seasonId != seasonId ||
-        fixture.seasonYear != seasonYear ||
-        homeTeamId != fixture.homeTeamId ||
-        awayTeamId != fixture.awayTeamId ||
-        gameSeed != fixture.gameSeed ||
+        fixtureSeasonId != seasonId ||
+        fixtureSeasonYear != seasonYear ||
+        homeTeamId != expectedHomeTeamId ||
+        awayTeamId != expectedAwayTeamId ||
+        gameSeed != expectedGameSeed ||
         !_fingerprintPattern.hasMatch(inputFingerprint) ||
         periodsPlayed < profile.periods ||
         periodsPlayed > profile.periods + profile.maxOvertimes) {
-      throw const FormatException('Regular-season result identity mismatch');
+      throw const FormatException('Career game result identity mismatch');
     }
     var duration = 0;
     for (var period = 1; period <= periodsPlayed; period++) {

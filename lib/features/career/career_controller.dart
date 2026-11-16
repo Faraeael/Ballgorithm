@@ -22,6 +22,7 @@ class GmCareerController extends ChangeNotifier {
   static const _hardshipService = HardshipSettlementService();
   static const _regularSeasonEntryService = RegularSeasonEntryService();
   static const _regularSeasonScheduleService = RegularSeasonScheduleService();
+  static const _playInEntryService = PlayInEntryService();
 
   GmCareer? get career => _career;
   bool get hasCareer => _career != null;
@@ -378,6 +379,34 @@ class GmCareerController extends ChangeNotifier {
     await _saveCareerState(next, slot);
   });
 
+  /// Enters Play-In only after explicit confirmation and a fresh completion gate.
+  Future<void> enterPlayIn({
+    required bool confirmed,
+    String slot = 'default',
+  }) => _runCareerCommand(action: 'enter Play-In', () async {
+    if (!confirmed) {
+      throw StateError('Explicit human confirmation is required');
+    }
+    await _saveCareerState(_playInEntryService.enter(_requireCareer()), slot);
+  });
+
+  /// Simulates one explicitly confirmed and legally available Play-In game.
+  Future<void> simulatePlayInGame({
+    required String expectedGameId,
+    required bool confirmed,
+    String slot = 'default',
+  }) => _runCareerCommand(action: 'simulate Play-In game', () async {
+    if (!confirmed) {
+      throw StateError('Explicit human confirmation is required');
+    }
+    final current = _requireCareer();
+    final next = await compute(
+      _simulatePlayInGame,
+      _PlayInSimulationRequest(current, expectedGameId),
+    );
+    await _saveCareerState(next, slot);
+  });
+
   Future<void> generateRegularSeasonSchedule({String slot = 'default'}) =>
       _runCareerCommand(action: 'generate regular-season schedule', () async {
         await _saveCareerState(
@@ -486,9 +515,22 @@ GmCareer _simulateRegularSeasonRound(_RoundSimulationRequest request) =>
       expectedRoundNumber: request.expectedRoundNumber,
     );
 
+GmCareer _simulatePlayInGame(_PlayInSimulationRequest request) =>
+    const PlayInGameService().simulateGame(
+      request.career,
+      expectedGameId: request.expectedGameId,
+    );
+
 final class _RoundSimulationRequest {
   const _RoundSimulationRequest(this.career, this.expectedRoundNumber);
 
   final GmCareer career;
   final int expectedRoundNumber;
+}
+
+final class _PlayInSimulationRequest {
+  const _PlayInSimulationRequest(this.career, this.expectedGameId);
+
+  final GmCareer career;
+  final String expectedGameId;
 }

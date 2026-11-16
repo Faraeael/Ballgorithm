@@ -27,6 +27,7 @@ import 'regular_season_game_input_evidence.dart';
 import 'regular_season_game_result.dart';
 import 'career_phase.dart';
 import 'offseason_readiness_gate.dart';
+import 'play_in_state.dart';
 import 'regular_season_state.dart';
 import 'gm_career.dart';
 
@@ -34,7 +35,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 18;
+  static const int currentSchemaVersion = 19;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -61,6 +62,7 @@ final class GmCareerCodec {
       'offseasonClearance': career.offseasonClearance.toJson(),
       'hardshipSettlement': career.hardshipSettlement.toJson(),
       'regularSeasonState': career.regularSeasonState?.toJson(),
+      'playInState': career.playInState?.toJson(),
       'finances': career.finances.toJson(),
       'rosterMemberships': {
         for (final team in career.league.teams)
@@ -473,6 +475,27 @@ final class GmCareerCodec {
     } else {
       regularSeasonState = null;
     }
+    final PlayInState? playInState;
+    final rawPlayInState = raw['playInState'];
+    if (schemaVersion >= 19) {
+      if (!raw.containsKey('playInState')) {
+        throw const FormatException('Missing playInState in career JSON v19');
+      }
+      if (rawPlayInState == null) {
+        playInState = null;
+      } else if (rawPlayInState is Map<String, dynamic>) {
+        playInState = PlayInState.fromJson(rawPlayInState);
+      } else {
+        throw const FormatException('Invalid playInState in career JSON v19');
+      }
+    } else {
+      if (rawPlayInState != null) {
+        throw const FormatException(
+          'Play-In state is not supported before career schema v19',
+        );
+      }
+      playInState = null;
+    }
     final CareerFinances? finances;
     final rawFinances = raw['finances'];
     if (schemaVersion >= 8) {
@@ -508,6 +531,7 @@ final class GmCareerCodec {
       offseasonClearance: offseasonClearance,
       hardshipSettlement: hardshipSettlement,
       finances: finances,
+      playInState: playInState,
       regularSeasonState: regularSeasonState,
     );
     if (schemaVersion == 17) _validateNativeCareer(career);
@@ -571,7 +595,10 @@ final class GmCareerCodec {
 
   static void _validateNativeCareer(GmCareer career) {
     career.validate();
-    if (career.phase != CareerPhase.regularSeason) return;
+    if (career.phase != CareerPhase.regularSeason &&
+        career.phase != CareerPhase.playIn) {
+      return;
+    }
     final readiness = const OffseasonReadinessGate().evaluate(career);
     if (readiness.status != OffseasonReadinessStatus.cleared ||
         readiness.readyCount != career.league.teams.length) {

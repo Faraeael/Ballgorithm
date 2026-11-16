@@ -1,8 +1,7 @@
 /// Deterministic game-seed derivation for M007 season fixtures.
 ///
-/// Disjoint bit fields: home index in bits 16–18, away index in bits 8–10,
-/// round/rematch index in bits 0–7. Masked to 31 bits: web-safe, non-zero,
-/// and collision-free across the season matrix.
+/// Disjoint bit fields: home index in bits 16–20, away index in bits 8–12,
+/// round/rematch index in bits 0–7. Masked to 31 bits for web-safe seeds.
 int deriveGameSeed({
   required int leagueSeed,
   required int homeIndex,

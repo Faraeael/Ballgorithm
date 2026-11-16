@@ -301,9 +301,43 @@ class RegularSeasonOverviewScreen extends StatelessWidget {
             ),
             child: Text('View Round ${next.roundNumber}'),
           ),
-        if (next == null)
-          const Card(child: ListTile(title: Text('Regular Season Complete')))
-        else
+        if (next == null) ...[
+          const Card(child: ListTile(title: Text('Regular Season Complete'))),
+          FilledButton(
+            key: const ValueKey('btn-enter-play-in'),
+            onPressed: controller.isLoading || controller.draftRecoveryRequired
+                ? null
+                : () async {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (dialogContext) => AlertDialog(
+                        title: const Text('Enter Play-In Tournament?'),
+                        content: const Text(
+                          'Freeze regular-season records and seed teams 15–18. '
+                          'You will confirm each game separately.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () =>
+                                Navigator.pop(dialogContext, false),
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            key: const ValueKey('confirm-enter-play-in'),
+                            onPressed: () => Navigator.pop(dialogContext, true),
+                            child: const Text('Enter Play-In'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirmed != true || !context.mounted) return;
+                    try {
+                      await controller.enterPlayIn(confirmed: true);
+                    } catch (_) {}
+                  },
+            child: const Text('Enter Play-In'),
+          ),
+        ] else
           FilledButton(
             onPressed: controller.isLoading || controller.draftRecoveryRequired
                 ? null
