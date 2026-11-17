@@ -27,6 +27,7 @@ import 'career_phase.dart';
 import 'career_setup.dart';
 import 'regular_season_state.dart';
 import 'play_in_state.dart';
+import 'playoff_state.dart';
 import 'regular_season_schedule_generator.dart';
 import '../simulation/game_fingerprint.dart';
 import 'regular_season_game_adapter.dart';
@@ -76,6 +77,7 @@ final class GmCareer {
     CareerFinances? finances,
     this.regularSeasonState,
     this.playInState,
+    this.playoffState,
   }) : draftExecutionState =
            draftExecutionState ?? DraftExecutionState.initial(),
        rookieSigningLedger = rookieSigningLedger ?? RookieSigningLedger.empty(),
@@ -141,7 +143,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 19;
+  static const int currentSchemaVersion = 20;
 
   final String id;
   final int schemaVersion;
@@ -181,6 +183,9 @@ final class GmCareer {
 
   /// Independent playoff qualification and game results after regular season.
   final PlayInState? playInState;
+
+  /// Fixed-bracket postseason state, independent of regular-season results.
+  final PlayoffState? playoffState;
 
   /// Authoritative contract, payroll, budget, staff and facility records.
   final CareerFinances finances;
@@ -328,20 +333,29 @@ final class GmCareer {
   void _validateRegularSeasonState() {
     final state = regularSeasonState;
     if (phase == CareerPhase.openingOffseason) {
-      if (state != null || playInState != null) {
+      if (state != null || playInState != null || playoffState != null) {
         throw const FormatException(
           'Opening-offseason career cannot contain season state',
         );
       }
       return;
     }
-    if (phase == CareerPhase.regularSeason && playInState != null) {
+    if (phase == CareerPhase.regularSeason &&
+        (playInState != null || playoffState != null)) {
       throw const FormatException(
-        'Regular-season career cannot contain Play-In state',
+        'Regular-season career cannot contain postseason state',
+      );
+    }
+    if (phase == CareerPhase.playIn && playoffState != null) {
+      throw const FormatException(
+        'Play-In career cannot contain playoff state',
       );
     }
     if (phase == CareerPhase.playIn && schemaVersion < 19) {
       throw const FormatException('Play-In career requires schema v19');
+    }
+    if (phase == CareerPhase.playoffs && schemaVersion < 20) {
+      throw const FormatException('Playoff career requires schema v20');
     }
     if (schemaVersion < 15 || state == null) {
       throw const FormatException(
@@ -390,9 +404,12 @@ final class GmCareer {
       );
     }
     if (schedule == null || state.gameResults.isEmpty) {
-      if (phase == CareerPhase.playIn || playInState != null) {
+      if (phase == CareerPhase.playIn ||
+          phase == CareerPhase.playoffs ||
+          playInState != null ||
+          playoffState != null) {
         throw const FormatException(
-          'Play-In requires a completed regular season',
+          'Postseason requires a completed regular season',
         );
       }
       return;
@@ -537,8 +554,23 @@ final class GmCareer {
         );
       }
       playIn.validate(regularSeasonState: state);
-    } else if (playInState != null) {
-      throw const FormatException('Play-In state requires the Play-In phase');
+    } else if (phase == CareerPhase.playoffs) {
+      final playIn = playInState;
+      final playoffs = playoffState;
+      if (schemaVersion < 20 ||
+          playIn == null ||
+          !playIn.isComplete ||
+          playoffs == null) {
+        throw const FormatException(
+          'Playoff career lacks completed Play-In state',
+        );
+      }
+      playIn.validate(regularSeasonState: state);
+      playoffs.validate(regularSeason: state, playIn: playIn);
+    } else if (playInState != null || playoffState != null) {
+      throw const FormatException(
+        'Postseason state does not match career phase',
+      );
     }
   }
 
@@ -1426,6 +1458,7 @@ final class GmCareer {
     HardshipSettlement? hardshipSettlement,
     RegularSeasonState? regularSeasonState,
     PlayInState? playInState,
+    PlayoffState? playoffState,
     CareerFinances? finances,
   }) {
     return GmCareer(
@@ -1451,6 +1484,7 @@ final class GmCareer {
       hardshipSettlement: hardshipSettlement ?? this.hardshipSettlement,
       regularSeasonState: regularSeasonState ?? this.regularSeasonState,
       playInState: playInState ?? this.playInState,
+      playoffState: playoffState ?? this.playoffState,
       finances: finances ?? this.finances,
     );
   }

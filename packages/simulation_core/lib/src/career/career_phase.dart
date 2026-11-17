@@ -2,7 +2,8 @@
 enum CareerPhase {
   openingOffseason('openingOffseason', 'Opening Offseason'),
   regularSeason('regularSeason', 'Regular Season'),
-  playIn('playIn', 'Play-In Tournament');
+  playIn('playIn', 'Play-In Tournament'),
+  playoffs('playoffs', 'Playoffs');
 
   const CareerPhase(this.jsonValue, this.displayName);
 

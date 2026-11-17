@@ -23,6 +23,7 @@ class GmCareerController extends ChangeNotifier {
   static const _regularSeasonEntryService = RegularSeasonEntryService();
   static const _regularSeasonScheduleService = RegularSeasonScheduleService();
   static const _playInEntryService = PlayInEntryService();
+  static const _playoffEntryService = PlayoffEntryService();
 
   GmCareer? get career => _career;
   bool get hasCareer => _career != null;
@@ -407,6 +408,49 @@ class GmCareerController extends ChangeNotifier {
     await _saveCareerState(next, slot);
   });
 
+  /// Enters playoffs after explicit confirmation and successful T05A validation.
+  Future<void> enterPlayoffs({
+    required bool confirmed,
+    String slot = 'default',
+  }) {
+    final submittedCareer = _career;
+    return _runCareerCommand(action: 'enter playoffs', () async {
+      if (!confirmed) {
+        throw StateError('Explicit human confirmation is required');
+      }
+      final current = _requireCareer();
+      if (!identical(current, submittedCareer)) {
+        throw StateError('Career changed before playoff entry executed');
+      }
+      await _saveCareerState(_playoffEntryService.enter(current), slot);
+    });
+  }
+
+  /// Simulates one next game for each active series in the current round.
+  Future<void> simulateNextPlayoffSlate({
+    required bool confirmed,
+    String slot = 'default',
+  }) {
+    final submittedCareer = _career;
+    return _runCareerCommand(action: 'simulate playoff slate', () async {
+      if (!confirmed) {
+        throw StateError('Explicit human confirmation is required');
+      }
+      final current = _requireCareer();
+      if (!identical(current, submittedCareer)) {
+        throw StateError('Career changed before playoff slate executed');
+      }
+      if (current.playoffState?.isComplete == true) {
+        throw StateError('Playoffs are already complete');
+      }
+      final next = await compute(
+        _simulatePlayoffSlate,
+        _PlayoffSlateSimulationRequest(current),
+      );
+      await _saveCareerState(next, slot);
+    });
+  }
+
   Future<void> generateRegularSeasonSchedule({String slot = 'default'}) =>
       _runCareerCommand(action: 'generate regular-season schedule', () async {
         await _saveCareerState(
@@ -521,6 +565,9 @@ GmCareer _simulatePlayInGame(_PlayInSimulationRequest request) =>
       expectedGameId: request.expectedGameId,
     );
 
+GmCareer _simulatePlayoffSlate(_PlayoffSlateSimulationRequest request) =>
+    const PlayoffSlateService().simulateNextSlate(request.career);
+
 final class _RoundSimulationRequest {
   const _RoundSimulationRequest(this.career, this.expectedRoundNumber);
 
@@ -533,4 +580,10 @@ final class _PlayInSimulationRequest {
 
   final GmCareer career;
   final String expectedGameId;
+}
+
+final class _PlayoffSlateSimulationRequest {
+  const _PlayoffSlateSimulationRequest(this.career);
+
+  final GmCareer career;
 }

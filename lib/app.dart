@@ -5,6 +5,7 @@ import 'features/career/career_setup_screens.dart';
 import 'features/career/career_storage.dart';
 import 'features/career/regular_season_overview_screen.dart';
 import 'features/career/play_in_tournament_screen.dart';
+import 'features/career/playoff_tournament_screen.dart';
 import 'features/career/offseason_overview_screen.dart';
 import 'features/game/game_screen.dart';
 import 'features/league/league_screen.dart';
@@ -156,6 +157,9 @@ class _BasketballManagerAppState extends State<BasketballManagerApp> {
           final career = _careerController!.career!;
           if (career.phase == CareerPhase.playIn) {
             return PlayInTournamentScreen(controller: _careerController!);
+          }
+          if (career.phase == CareerPhase.playoffs) {
+            return PlayoffTournamentScreen(controller: _careerController!);
           }
           if (career.phase == CareerPhase.regularSeason) {
             return RegularSeasonOverviewScreen(controller: _careerController!);

@@ -1063,7 +1063,7 @@ void main() {
     timeout: const Timeout(Duration(minutes: 60)),
   );
   testWidgets(
-    'M009-T05A Play-In lifecycle from a completed regular season',
+    'M009-T05B endurance: full season through champion',
     (tester) async {
       tester.view.physicalSize = const Size(393, 852);
       tester.view.devicePixelRatio = 1;
@@ -1074,16 +1074,72 @@ void main() {
       );
       expect(startingCareer.generationSeed, 20261028);
       expect(startingCareer.originalSituation, FranchiseSituation.playIn);
-      await _reportStartingSituationSeasons(
+      final migratedScheduledV18 = GmCareerCodec.decode(
+        _v18Json(startingCareer),
+      );
+      expect(migratedScheduledV18.phase, CareerPhase.regularSeason);
+      expect(migratedScheduledV18.regularSeasonState!.completedGames, 0);
+      expect(migratedScheduledV18.playInState, isNull);
+      expect(migratedScheduledV18.playoffState, isNull);
+      final migratedScheduledV19 = GmCareerCodec.decode(
+        _v19Json(startingCareer),
+      );
+      expect(migratedScheduledV19.schemaVersion, 20);
+      expect(migratedScheduledV19.phase, CareerPhase.regularSeason);
+      expect(migratedScheduledV19.regularSeasonState!.schedule, isNotNull);
+      expect(migratedScheduledV19.regularSeasonState!.gameResults, isEmpty);
+      expect(migratedScheduledV19.playInState, isNull);
+      expect(migratedScheduledV19.playoffState, isNull);
+
+      final season = startingCareer.regularSeasonState!;
+      final unscheduledCareer = startingCareer.copyWith(
+        regularSeasonState: RegularSeasonState(
+          seasonId: season.seasonId,
+          seasonYear: season.seasonYear,
+          scheduleSeed: season.scheduleSeed,
+          openingTeams: season.openingTeams,
+          gameResults: const {},
+        ),
+      );
+      final migratedUnscheduledV18 = GmCareerCodec.decode(
+        _v18Json(unscheduledCareer),
+      );
+      expect(migratedUnscheduledV18.regularSeasonState!.schedule, isNull);
+      expect(migratedUnscheduledV18.regularSeasonState!.gameResults, isEmpty);
+      expect(migratedUnscheduledV18.phase, CareerPhase.regularSeason);
+      final migratedUnscheduledV19 = GmCareerCodec.decode(
+        _v19Json(unscheduledCareer),
+      );
+      expect(migratedUnscheduledV19.regularSeasonState!.schedule, isNull);
+      expect(migratedUnscheduledV19.regularSeasonState!.gameResults, isEmpty);
+      expect(migratedUnscheduledV19.phase, CareerPhase.regularSeason);
+
+      final oneRound = const RegularSeasonRoundService().simulateNextRound(
+        startingCareer,
+        expectedRoundNumber: 1,
+      );
+      final migratedPartialV18 = GmCareerCodec.decode(_v18Json(oneRound));
+      expect(migratedPartialV18.regularSeasonState!.completedRounds, 1);
+      expect(migratedPartialV18.regularSeasonState!.gameResults, hasLength(15));
+      expect(migratedPartialV18.phase, CareerPhase.regularSeason);
+      final migratedPartialV19 = GmCareerCodec.decode(_v19Json(oneRound));
+      expect(migratedPartialV19.regularSeasonState!.completedRounds, 1);
+      expect(migratedPartialV19.regularSeasonState!.gameResults, hasLength(15));
+      expect(migratedPartialV19.phase, CareerPhase.regularSeason);
+
+      final completedPlayInCareer = await _reportStartingSituationSeasons(
         tester,
         {FranchiseSituation.playIn: startingCareer},
         situations: {FranchiseSituation.playIn},
       );
+      expect(completedPlayInCareer, isNotNull);
+      await _runPostseasonEndurance(tester, completedPlayInCareer!);
       await tester.pumpWidget(const SizedBox.shrink());
       tester.view.resetPhysicalSize();
       tester.view.resetDevicePixelRatio();
     },
-    timeout: const Timeout(Duration(minutes: 15)),
+    tags: ['endurance'],
+    timeout: const Timeout(Duration(minutes: 60)),
   );
 
   testWidgets(
@@ -1650,21 +1706,28 @@ final class _CommitThenFailCareerStorage implements GmCareerStorage {
   bool failNextWrite = false;
   bool failBeforePromotionNextWrite = false;
   int writes = 0;
+  int lastWriteMilliseconds = 0;
 
   @override
   Future<String?> read({String slot = 'default'}) => delegate.read(slot: slot);
 
   @override
   Future<void> write(String data, {String slot = 'default'}) async {
-    writes++;
-    if (failBeforePromotionNextWrite) {
-      failBeforePromotionNextWrite = false;
-      throw const GmCareerStorageException('Injected pre-promotion failure');
-    }
-    await delegate.write(data, slot: slot);
-    if (failNextWrite) {
-      failNextWrite = false;
-      throw const GmCareerStorageException('Injected post-promotion failure');
+    final watch = Stopwatch()..start();
+    try {
+      writes++;
+      if (failBeforePromotionNextWrite) {
+        failBeforePromotionNextWrite = false;
+        throw const GmCareerStorageException('Injected pre-promotion failure');
+      }
+      await delegate.write(data, slot: slot);
+      if (failNextWrite) {
+        failNextWrite = false;
+        throw const GmCareerStorageException('Injected post-promotion failure');
+      }
+    } finally {
+      watch.stop();
+      lastWriteMilliseconds = watch.elapsedMilliseconds;
     }
   }
 
@@ -2311,11 +2374,12 @@ void _reportFullSeasonQuality(GmCareer career) {
   );
 }
 
-Future<void> _reportStartingSituationSeasons(
+Future<GmCareer?> _reportStartingSituationSeasons(
   WidgetTester tester,
   Map<FranchiseSituation, GmCareer> startingCareers, {
   required Set<FranchiseSituation> situations,
 }) async {
+  GmCareer? completedPlayInCareer;
   expect(startingCareers.keys, containsAll(situations));
   const roundService = RegularSeasonRoundService();
   const progressRounds = {1, 10, 20, 30, 40, 50, 60, 70, 80, 82};
@@ -2355,6 +2419,18 @@ Future<void> _reportStartingSituationSeasons(
     validationWatch.stop();
     final state = career.regularSeasonState!;
     final userRecord = state.standings.table[career.userFranchiseId.value]!;
+    if (situation == FranchiseSituation.playIn) {
+      final migratedV19CompletedSeason = GmCareerCodec.decode(_v19Json(career));
+      expect(migratedV19CompletedSeason.schemaVersion, 20);
+      expect(migratedV19CompletedSeason.phase, CareerPhase.regularSeason);
+      expect(
+        migratedV19CompletedSeason.regularSeasonState!.toJson(),
+        state.toJson(),
+      );
+      expect(migratedV19CompletedSeason.playInState, isNull);
+      expect(migratedV19CompletedSeason.playoffState, isNull);
+    }
+
     expect(state.completedRounds, 82);
     expect(state.gameResults, hasLength(1230));
     expect(state.gameResults.keys.toSet(), hasLength(1230));
@@ -2391,21 +2467,22 @@ Future<void> _reportStartingSituationSeasons(
       reportPlayInProgress('v18-migration-start');
       final v18Save = _v18Json(career);
       final migratedCompleted = GmCareerCodec.decode(v18Save);
-      expect(migratedCompleted.schemaVersion, 19);
+      expect(migratedCompleted.schemaVersion, 20);
       expect(migratedCompleted.phase, CareerPhase.regularSeason);
       expect(
         migratedCompleted.regularSeasonState!.gameResults,
         hasLength(1230),
       );
       expect(migratedCompleted.playInState, isNull);
-      final migratedV19Save =
+      final migratedV20Save =
           jsonDecode(GmCareerCodec.encode(migratedCompleted))
               as Map<String, dynamic>;
-      final expectedV19Save =
+      final expectedV20Save =
           Map<String, dynamic>.from(jsonDecode(v18Save) as Map)
-            ..['schemaVersion'] = 19
-            ..['playInState'] = null;
-      expect(migratedV19Save, expectedV19Save);
+            ..['schemaVersion'] = 20
+            ..['playInState'] = null
+            ..['playoffState'] = null;
+      expect(migratedV20Save, expectedV20Save);
       reportPlayInProgress('v18-migration-complete');
 
       final beforeRecords = jsonEncode({
@@ -2470,6 +2547,10 @@ Future<void> _reportStartingSituationSeasons(
       reportPlayInProgress('play-in-entry');
       await expectLater(
         controller.enterPlayIn(confirmed: true),
+        throwsStateError,
+      );
+      await expectLater(
+        controller.enterPlayoffs(confirmed: true),
         throwsStateError,
       );
       await controller.loadCareer();
@@ -2556,6 +2637,18 @@ Future<void> _reportStartingSituationSeasons(
       await tester.tap(reloadButton);
       await tester.pumpAndSettle();
       expect(controller.career!.playInState!.gameResults, hasLength(1));
+      final partialV19Save =
+          Map<String, dynamic>.from(
+              jsonDecode(GmCareerCodec.encode(controller.career!)) as Map,
+            )
+            ..['schemaVersion'] = 19
+            ..remove('playoffState');
+      final migratedPartialV19 = GmCareerCodec.decode(
+        jsonEncode(partialV19Save),
+      );
+      expect(migratedPartialV19.phase, CareerPhase.playIn);
+      expect(migratedPartialV19.playInState!.gameResults, hasLength(1));
+      expect(migratedPartialV19.playoffState, isNull);
       reportPlayInProgress('post-promotion-game-recovery');
       await tester.pumpAndSettle();
       expect(
@@ -2606,6 +2699,17 @@ Future<void> _reportStartingSituationSeasons(
       expect(reloaded.career!.phase, CareerPhase.playIn);
       expect(reloaded.career!.playInState!.gameResults, hasLength(3));
       expect(reloaded.career!.playInState!.qualifiedTeams, hasLength(16));
+      final v19PlayInSave =
+          Map<String, dynamic>.from(
+              jsonDecode(GmCareerCodec.encode(reloaded.career!)) as Map,
+            )
+            ..['schemaVersion'] = 19
+            ..remove('playoffState');
+      final migratedV19PlayIn = GmCareerCodec.decode(jsonEncode(v19PlayInSave));
+      expect(migratedV19PlayIn.schemaVersion, 20);
+      expect(migratedV19PlayIn.phase, CareerPhase.playIn);
+      expect(migratedV19PlayIn.playInState!.gameResults, hasLength(3));
+      expect(migratedV19PlayIn.playoffState, isNull);
       reportPlayInProgress('final-reload');
       await tester.pumpWidget(
         MaterialApp(home: PlayInTournamentScreen(controller: reloaded)),
@@ -2625,6 +2729,7 @@ Future<void> _reportStartingSituationSeasons(
         );
       }
       tester.view.resetPhysicalSize();
+      completedPlayInCareer = reloaded.career!;
       await tester.pumpWidget(const SizedBox.shrink());
       controller.dispose();
       reloaded.dispose();
@@ -2637,6 +2742,427 @@ Future<void> _reportStartingSituationSeasons(
       'year=${career.currentYear}',
     );
   }
+  return completedPlayInCareer;
+}
+
+Future<void> _runPostseasonEndurance(
+  WidgetTester tester,
+  GmCareer completedPlayInCareer,
+) async {
+  final regularSeasonResults = jsonEncode({
+    for (final entry
+        in completedPlayInCareer.regularSeasonState!.gameResults.entries)
+      entry.key: entry.value.toJson(),
+  });
+  final playInResults = jsonEncode({
+    for (final entry in completedPlayInCareer.playInState!.gameResults.entries)
+      entry.key: entry.value.toJson(),
+  });
+  final startingYear = completedPlayInCareer.currentYear;
+  final startingLeague = jsonEncode(completedPlayInCareer.league.toJson());
+  final startingFinances = jsonEncode(completedPlayInCareer.finances.toJson());
+  final storage = _CommitThenFailCareerStorage(
+    InMemoryGmCareerStorage({
+      'default': GmCareerCodec.encode(completedPlayInCareer),
+    }),
+  );
+  final controller = GmCareerController(storage: storage);
+  await controller.loadCareer();
+  expect(controller.career!.phase, CareerPhase.playIn);
+  final writesBeforeNoConfirmation = storage.writes;
+  await expectLater(
+    controller.enterPlayoffs(confirmed: false),
+    throwsStateError,
+  );
+  expect(storage.writes, writesBeforeNoConfirmation);
+  final app = BasketballManagerApp(
+    league: completedPlayInCareer.league,
+    storage: InMemorySeasonStorage(),
+    careerStorage: storage,
+    careerController: controller,
+    seasonMode: true,
+  );
+  await tester.pumpWidget(app);
+  await tester.pumpAndSettle();
+
+  final enterButton = find.byKey(const ValueKey('btn-enter-playoffs'));
+  await tester.ensureVisible(enterButton);
+  final beforeCancel = await storage.read();
+  await tester.tap(enterButton);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Cancel'));
+  await tester.pumpAndSettle();
+  expect(await storage.read(), beforeCancel);
+  expect(controller.career!.phase, CareerPhase.playIn);
+
+  storage.failBeforePromotionNextWrite = true;
+  await tester.ensureVisible(enterButton);
+  await tester.tap(enterButton);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Confirm'));
+  await _pumpUntilCareerCommand(
+    tester,
+    () => controller.draftRecoveryRequired,
+    reason: 'pre-promotion playoff entry',
+  );
+  await tester.pumpAndSettle();
+  expect(controller.career!.phase, CareerPhase.playIn);
+  expect(controller.draftRecoveryRequired, isTrue);
+  final playInReload = find.byKey(const ValueKey('btn-play-in-reload'));
+  await tester.ensureVisible(playInReload);
+  await tester.tap(playInReload);
+  await tester.pumpAndSettle();
+  expect(controller.career!.phase, CareerPhase.playIn);
+  expect(controller.career!.playoffState, isNull);
+
+  storage.failNextWrite = true;
+  await tester.ensureVisible(enterButton);
+  await tester.tap(enterButton);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Confirm'));
+  await _pumpUntilCareerCommand(
+    tester,
+    () => controller.draftRecoveryRequired,
+    reason: 'post-promotion playoff entry',
+  );
+  await tester.pumpAndSettle();
+  expect(controller.career!.phase, CareerPhase.playIn);
+  expect(controller.draftRecoveryRequired, isTrue);
+  await tester.ensureVisible(playInReload);
+  await tester.tap(playInReload);
+  await tester.pumpAndSettle();
+  expect(controller.career!.phase, CareerPhase.playoffs);
+  expect(controller.career!.playoffState!.qualifiedTeams, hasLength(16));
+  expect(controller.career!.currentYear, startingYear);
+  expect(jsonEncode(controller.career!.league.toJson()), startingLeague);
+  expect(jsonEncode(controller.career!.finances.toJson()), startingFinances);
+  expect(
+    jsonEncode({
+      for (final entry
+          in controller.career!.regularSeasonState!.gameResults.entries)
+        entry.key: entry.value.toJson(),
+    }),
+    regularSeasonResults,
+  );
+  expect(
+    jsonEncode({
+      for (final entry in controller.career!.playInState!.gameResults.entries)
+        entry.key: entry.value.toJson(),
+    }),
+    playInResults,
+  );
+  final writesAfterEntry = storage.writes;
+  await expectLater(
+    controller.enterPlayoffs(confirmed: true),
+    throwsStateError,
+  );
+  expect(storage.writes, writesAfterEntry);
+
+  final playoffEntered = controller.career!;
+  expect(find.text('Playoffs'), findsOneWidget);
+  for (final size in const [Size(360, 640), Size(393, 852)]) {
+    tester.view.physicalSize = size;
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull, reason: '$size playoff overview');
+  }
+  tester.view.physicalSize = const Size(393, 852);
+  await tester.pumpAndSettle();
+  final fullBracket = find.byKey(const ValueKey('view-full-playoff-bracket'));
+  await tester.scrollUntilVisible(
+    fullBracket,
+    220,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.tap(fullBracket);
+  await tester.pumpAndSettle();
+  expect(find.text('Full Playoff Bracket'), findsOneWidget);
+  for (final size in const [Size(360, 640), Size(393, 852)]) {
+    tester.view.physicalSize = size;
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull, reason: '$size full bracket');
+  }
+  tester.view.physicalSize = const Size(393, 852);
+  await tester.pageBack();
+  await tester.pumpAndSettle();
+
+  final referenceWatch = Stopwatch()..start();
+  final reference = await tester.runAsync(() async {
+    var career = playoffEntered;
+    var slate = 0;
+    while (!career.playoffState!.isComplete) {
+      career = const PlayoffSlateService().simulateNextSlate(career);
+      slate++;
+      debugPrint(
+        'T05B REFERENCE slate=$slate '
+        'round=${career.playoffState!.currentRound?.name ?? 'complete'} '
+        'games=${career.playoffState!.gameResults.length} '
+        'elapsedMs=${referenceWatch.elapsedMilliseconds} '
+        'rssBytes=${io.ProcessInfo.currentRss}',
+      );
+    }
+    return career;
+  });
+  expect(reference, isNotNull);
+  final referenceCareer = reference!;
+  expect(referenceCareer.playoffState!.isComplete, isTrue);
+
+  final simulateButton = find.byKey(
+    const ValueKey('simulate-next-playoff-slate'),
+  );
+  final saveBeforeSlateCancel = await storage.read();
+  await tester.scrollUntilVisible(
+    simulateButton,
+    220,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.tap(simulateButton);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Cancel'));
+  await tester.pumpAndSettle();
+  expect(await storage.read(), saveBeforeSlateCancel);
+  expect(controller.career!.playoffState!.gameResults, isEmpty);
+
+  storage.failBeforePromotionNextWrite = true;
+  await expectLater(
+    _pumpPlayoffCommand(
+      tester,
+      controller.simulateNextPlayoffSlate(confirmed: true),
+    ),
+    throwsA(isA<GmCareerStorageException>()),
+  );
+  expect(controller.career!.playoffState!.gameResults, isEmpty);
+  expect(controller.draftRecoveryRequired, isTrue);
+  await expectLater(
+    controller.simulateNextPlayoffSlate(confirmed: true),
+    throwsStateError,
+  );
+  await controller.loadCareer();
+  expect(controller.career!.playoffState!.gameResults, isEmpty);
+  debugPrint(
+    'T05B RECOVERY stage=pre-promotion '
+    'games=${controller.career!.playoffState!.gameResults.length}',
+  );
+
+  await tester.pumpAndSettle();
+  await tester.scrollUntilVisible(
+    simulateButton,
+    220,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.tap(simulateButton);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Confirm'));
+  await _pumpUntilCareerCommand(
+    tester,
+    () => controller.career!.playoffState!.gameResults.length == 8,
+    reason: 'first playoff slate',
+  );
+  await tester.pumpAndSettle();
+  expect(controller.career!.playoffState!.gameResults, hasLength(8));
+  var slateCount = 1;
+
+  storage.failNextWrite = true;
+  final beforeUncertainCount =
+      controller.career!.playoffState!.gameResults.length;
+  final activeBeforeUncertain =
+      controller.career!.playoffState!.nextEligibleGames.length;
+  await expectLater(
+    _pumpPlayoffCommand(
+      tester,
+      controller.simulateNextPlayoffSlate(confirmed: true),
+    ),
+    throwsA(isA<GmCareerStorageException>()),
+  );
+  expect(
+    controller.career!.playoffState!.gameResults.length,
+    beforeUncertainCount,
+  );
+  expect(controller.draftRecoveryRequired, isTrue);
+  await controller.loadCareer();
+  final recoveredCount = controller.career!.playoffState!.gameResults.length;
+  expect(recoveredCount, beforeUncertainCount + activeBeforeUncertain);
+  slateCount++;
+  debugPrint(
+    'T05B RECOVERY stage=post-promotion games=$recoveredCount '
+    'slates=$slateCount writeMs=${storage.lastWriteMilliseconds} '
+    'rssBytes=${io.ProcessInfo.currentRss}',
+  );
+
+  while (!controller.career!.playoffState!.isComplete) {
+    final stateBefore = controller.career!.playoffState!;
+    final roundBefore = stateBefore.currentRound;
+    final resultCountBefore = stateBefore.gameResults.length;
+    final expectedSlateSize = stateBefore.nextEligibleGames.length;
+    final watch = Stopwatch()..start();
+    await _pumpPlayoffCommand(
+      tester,
+      controller.simulateNextPlayoffSlate(confirmed: true),
+    );
+    watch.stop();
+    slateCount++;
+    final current = controller.career!.playoffState!;
+    expect(current.gameResults.length, resultCountBefore + expectedSlateSize);
+    debugPrint(
+      'T05B SAVED slate=$slateCount '
+      'round=${current.currentRound?.name ?? 'complete'} '
+      'games=${current.gameResults.length} '
+      'commandSaveMs=${watch.elapsedMilliseconds} '
+      'storageWriteMs=${storage.lastWriteMilliseconds} '
+      'rssBytes=${io.ProcessInfo.currentRss}',
+    );
+    if (current.currentRound != roundBefore) {
+      final reloadWatch = Stopwatch()..start();
+      await controller.loadCareer();
+      reloadWatch.stop();
+      expect(
+        controller.career!.playoffState!.currentRound,
+        current.currentRound,
+      );
+      debugPrint(
+        'T05B RELOAD round=${current.currentRound?.name ?? 'complete'} '
+        'decodeMs=${reloadWatch.elapsedMilliseconds} '
+        'rssBytes=${io.ProcessInfo.currentRss}',
+      );
+    }
+  }
+
+  final complete = controller.career!;
+  final finalState = complete.playoffState!;
+  expect(finalState.isComplete, isTrue);
+  expect(finalState.champion, isNotNull);
+  expect(finalState.qualifiedTeams, hasLength(16));
+  expect(finalState.series, hasLength(15));
+  expect(finalState.gameResults.length, inInclusiveRange(60, 105));
+  expect(finalState.currentRound, isNull);
+  expect(complete.currentYear, startingYear);
+  expect(jsonEncode(complete.league.toJson()), startingLeague);
+  expect(jsonEncode(complete.finances.toJson()), startingFinances);
+  expect(
+    jsonEncode({
+      for (final entry in complete.regularSeasonState!.gameResults.entries)
+        entry.key: entry.value.toJson(),
+    }),
+    regularSeasonResults,
+  );
+  expect(
+    jsonEncode({
+      for (final entry in complete.playInState!.gameResults.entries)
+        entry.key: entry.value.toJson(),
+    }),
+    playInResults,
+  );
+  expect(
+    jsonEncode(finalState.toJson()),
+    jsonEncode(referenceCareer.playoffState!.toJson()),
+  );
+  expect(
+    jsonEncode([
+      for (final id in finalState.gameResults.keys.toList()..sort())
+        [id, finalState.gameResults[id]!.inputFingerprint],
+    ]),
+    jsonEncode([
+      for (final id
+          in referenceCareer.playoffState!.gameResults.keys.toList()..sort())
+        [id, referenceCareer.playoffState!.gameResults[id]!.inputFingerprint],
+    ]),
+  );
+  expect(finalState.gameResults.values.first.summary.playerLines, isNotEmpty);
+  final encodeWatch = Stopwatch()..start();
+  final canonicalSave = GmCareerCodec.encode(complete);
+  encodeWatch.stop();
+  final storedJson = await storage.read();
+  expect(storedJson, canonicalSave);
+  final decodeWatch = Stopwatch()..start();
+  final savedCareer = GmCareerCodec.decode(storedJson!);
+  decodeWatch.stop();
+  debugPrint(
+    'T05B PERF encodeMs=${encodeWatch.elapsedMilliseconds} '
+    'decodeMs=${decodeWatch.elapsedMilliseconds} '
+    'writeMs=${storage.lastWriteMilliseconds} '
+    'bytes=${utf8.encode(canonicalSave).length} '
+    'rssBytes=${io.ProcessInfo.currentRss}',
+  );
+  expect(savedCareer.playoffState!.toJson(), finalState.toJson());
+  final writesAfterChampion = storage.writes;
+  await expectLater(
+    controller.simulateNextPlayoffSlate(confirmed: true),
+    throwsStateError,
+  );
+  expect(storage.writes, writesAfterChampion);
+
+  final resultsButton = find.byKey(const ValueKey('view-playoff-game-results'));
+  await tester.scrollUntilVisible(
+    resultsButton,
+    220,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.tap(resultsButton);
+  await tester.pumpAndSettle();
+  expect(find.text('Playoff Game Results'), findsOneWidget);
+  for (final size in const [Size(360, 640), Size(393, 852)]) {
+    tester.view.physicalSize = size;
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull, reason: '$size playoff results');
+  }
+  tester.view.physicalSize = const Size(393, 852);
+  final boxScoreButton = find.byTooltip('View box score').first;
+  await tester.tap(boxScoreButton);
+  await tester.pumpAndSettle();
+  expect(find.text('Playoff Box Score'), findsOneWidget);
+  for (final size in const [Size(360, 640), Size(393, 852)]) {
+    tester.view.physicalSize = size;
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull, reason: '$size playoff box score');
+  }
+  tester.view.resetPhysicalSize();
+  await tester.pumpWidget(const SizedBox.shrink());
+  controller.dispose();
+}
+
+Future<void> _pumpUntilCareerCommand(
+  WidgetTester tester,
+  bool Function() complete, {
+  required String reason,
+}) async {
+  for (var attempt = 0; attempt < 2400; attempt++) {
+    await tester.pump();
+    if (complete()) return;
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+  }
+  fail('$reason did not complete within 120 seconds');
+}
+
+Future<T> _pumpPlayoffCommand<T>(WidgetTester tester, Future<T> command) async {
+  var completed = false;
+  T? value;
+  Object? failure;
+  StackTrace? failureStack;
+  command.then(
+    (result) {
+      value = result;
+      completed = true;
+    },
+    onError: (Object error, StackTrace stack) {
+      failure = error;
+      failureStack = stack;
+      completed = true;
+    },
+  );
+  for (var attempt = 0; attempt < 2400 && !completed; attempt++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump();
+  }
+  expect(
+    completed,
+    isTrue,
+    reason: 'Playoff career command did not complete within 120 seconds',
+  );
+  if (failure != null) Error.throwWithStackTrace(failure!, failureStack!);
+  return value as T;
 }
 
 Future<T> _pumpCommand<T>(WidgetTester tester, Future<T> command) async {
@@ -2675,6 +3201,14 @@ Future<T> _pumpCommand<T>(WidgetTester tester, Future<T> command) async {
 String _v18Json(GmCareer career) {
   final save = jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>
     ..['schemaVersion'] = 18
-    ..remove('playInState');
+    ..remove('playInState')
+    ..remove('playoffState');
+  return jsonEncode(save);
+}
+
+String _v19Json(GmCareer career) {
+  final save = jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>
+    ..['schemaVersion'] = 19
+    ..remove('playoffState');
   return jsonEncode(save);
 }

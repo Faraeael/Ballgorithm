@@ -28,6 +28,7 @@ import 'regular_season_game_result.dart';
 import 'career_phase.dart';
 import 'offseason_readiness_gate.dart';
 import 'play_in_state.dart';
+import 'playoff_state.dart';
 import 'regular_season_state.dart';
 import 'gm_career.dart';
 
@@ -35,7 +36,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 19;
+  static const int currentSchemaVersion = 20;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -63,6 +64,7 @@ final class GmCareerCodec {
       'hardshipSettlement': career.hardshipSettlement.toJson(),
       'regularSeasonState': career.regularSeasonState?.toJson(),
       'playInState': career.playInState?.toJson(),
+      'playoffState': career.playoffState?.toJson(),
       'finances': career.finances.toJson(),
       'rosterMemberships': {
         for (final team in career.league.teams)
@@ -496,6 +498,27 @@ final class GmCareerCodec {
       }
       playInState = null;
     }
+    final PlayoffState? playoffState;
+    final rawPlayoffState = raw['playoffState'];
+    if (schemaVersion >= 20) {
+      if (!raw.containsKey('playoffState')) {
+        throw const FormatException('Missing playoffState in career JSON v20');
+      }
+      if (rawPlayoffState == null) {
+        playoffState = null;
+      } else if (rawPlayoffState is Map<String, dynamic>) {
+        playoffState = PlayoffState.fromJson(rawPlayoffState);
+      } else {
+        throw const FormatException('Invalid playoffState in career JSON v20');
+      }
+    } else {
+      if (rawPlayoffState != null) {
+        throw const FormatException(
+          'Playoff state is not supported before career schema v20',
+        );
+      }
+      playoffState = null;
+    }
     final CareerFinances? finances;
     final rawFinances = raw['finances'];
     if (schemaVersion >= 8) {
@@ -533,6 +556,7 @@ final class GmCareerCodec {
       finances: finances,
       playInState: playInState,
       regularSeasonState: regularSeasonState,
+      playoffState: playoffState,
     );
     if (schemaVersion == 17) _validateNativeCareer(career);
     final migrated = schemaVersion == 17 ? _migrateV17(career) : career;
@@ -596,7 +620,8 @@ final class GmCareerCodec {
   static void _validateNativeCareer(GmCareer career) {
     career.validate();
     if (career.phase != CareerPhase.regularSeason &&
-        career.phase != CareerPhase.playIn) {
+        career.phase != CareerPhase.playIn &&
+        career.phase != CareerPhase.playoffs) {
       return;
     }
     final readiness = const OffseasonReadinessGate().evaluate(career);

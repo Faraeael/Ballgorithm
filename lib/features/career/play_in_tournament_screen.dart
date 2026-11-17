@@ -64,6 +64,17 @@ class PlayInTournamentScreen extends StatelessWidget {
             ] else ...[
               const SizedBox(height: 12),
               const Text('Play-In complete — 16 playoff teams qualified.'),
+              const SizedBox(height: 8),
+              FilledButton(
+                key: const ValueKey('btn-enter-playoffs'),
+                onPressed:
+                    controller.isLoading || controller.draftRecoveryRequired
+                    ? null
+                    : () => _confirmAndEnterPlayoffs(context),
+                child: Text(
+                  controller.isLoading ? 'Saving…' : 'Enter Playoffs',
+                ),
+              ),
             ],
             if (controller.draftRecoveryRequired)
               TextButton(
@@ -225,6 +236,32 @@ class PlayInTournamentScreen extends StatelessWidget {
       return state.fixture(gameNumber: gameNumber, scheduleSeed: scheduleSeed);
     }
     return null;
+  }
+
+  Future<void> _confirmAndEnterPlayoffs(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Enter playoffs?'),
+        content: const Text(
+          'The 16 qualified teams and original regular-season ranks will be frozen.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      await controller.enterPlayoffs(confirmed: true);
+    } catch (_) {}
   }
 
   Future<void> _confirmAndSimulate(

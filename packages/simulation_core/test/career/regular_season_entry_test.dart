@@ -83,6 +83,42 @@ void main() {
         career.finances.contracts.keys.toSet(),
       );
     });
+    test('v18 opening-offseason saves migrate without entering a season', () {
+      final career = _career();
+      final v18 =
+          Map<String, dynamic>.from(
+              jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>,
+            )
+            ..['schemaVersion'] = 18
+            ..remove('playInState')
+            ..remove('playoffState');
+
+      final migrated = GmCareerCodec.decode(jsonEncode(v18));
+
+      expect(migrated.schemaVersion, GmCareer.currentSchemaVersion);
+      expect(migrated.phase, CareerPhase.openingOffseason);
+      expect(migrated.regularSeasonState, isNull);
+      expect(migrated.playInState, isNull);
+      expect(migrated.playoffState, isNull);
+    });
+
+    test('v19 opening-offseason saves migrate without entering a season', () {
+      final career = _career();
+      final v19 =
+          Map<String, dynamic>.from(
+              jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>,
+            )
+            ..['schemaVersion'] = 19
+            ..remove('playoffState');
+
+      final migrated = GmCareerCodec.decode(jsonEncode(v19));
+
+      expect(migrated.schemaVersion, GmCareer.currentSchemaVersion);
+      expect(migrated.phase, CareerPhase.openingOffseason);
+      expect(migrated.regularSeasonState, isNull);
+      expect(migrated.playInState, isNull);
+      expect(migrated.playoffState, isNull);
+    });
 
     test('v15 requires state key and rejects impossible phase-state pairs', () {
       final career = _career();
