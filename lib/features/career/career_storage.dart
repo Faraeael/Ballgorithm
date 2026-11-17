@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:simulation_core/simulation_core.dart';
+
 class GmCareerStorageException implements Exception {
   const GmCareerStorageException(this.message, [this.cause]);
   final String message;
@@ -22,15 +24,38 @@ abstract interface class GmCareerStorage {
   Future<bool> hasSave({String slot = 'default'});
 }
 
+/// Abstract archive storage interface for immutable per-season archives.
+abstract interface class GmCareerArchiveStorage {
+  Future<void> writeArchive({
+    required int seasonYear,
+    required String archiveJson,
+    required String expectedDigest,
+    String slot = 'default',
+  });
+
+  Future<String?> readArchive({
+    required int seasonYear,
+    String slot = 'default',
+  });
+
+  Future<bool> hasArchive({required int seasonYear, String slot = 'default'});
+
+  Future<void> clearArchives({String slot = 'default'});
+}
+
 /// In-memory storage implementation for tests and web preview demonstrations.
-class InMemoryGmCareerStorage implements GmCareerStorage {
+class InMemoryGmCareerStorage
+    implements GmCareerStorage, GmCareerArchiveStorage {
   InMemoryGmCareerStorage([Map<String, String?>? initialSlots])
     : _slots = initialSlots ?? {};
 
   final Map<String, String?> _slots;
+  final Map<(String, int), String> _archives = {};
   bool shouldThrowOnRead = false;
   bool shouldThrowOnWrite = false;
   bool shouldThrowOnClear = false;
+  bool shouldThrowOnWriteArchive = false;
+  bool shouldThrowOnReadArchive = false;
 
   @override
   Future<String?> read({String slot = 'default'}) async {
@@ -54,6 +79,7 @@ class InMemoryGmCareerStorage implements GmCareerStorage {
       throw const GmCareerStorageException('Injected in-memory clear error');
     }
     _slots.remove(slot);
+    await clearArchives(slot: slot);
   }
 
   @override
@@ -61,11 +87,70 @@ class InMemoryGmCareerStorage implements GmCareerStorage {
     final data = _slots[slot];
     return data != null && data.trim().isNotEmpty;
   }
+
+  @override
+  Future<void> writeArchive({
+    required int seasonYear,
+    required String archiveJson,
+    required String expectedDigest,
+    String slot = 'default',
+  }) async {
+    if (shouldThrowOnWriteArchive) {
+      throw const GmCareerStorageException(
+        'Injected in-memory archive write error',
+      );
+    }
+    if (SeasonArchiveCodec.digestOf(archiveJson) != expectedDigest) {
+      throw const GmCareerStorageException(
+        'Archive payload digest does not match expectedDigest',
+      );
+    }
+    final existing = _archives[(slot, seasonYear)];
+    if (existing != null) {
+      if (SeasonArchiveCodec.digestOf(existing) == expectedDigest) {
+        return;
+      }
+      throw GmCareerStorageException(
+        'Conflicting historical archive already exists for slot "$slot" year $seasonYear',
+      );
+    }
+    _archives[(slot, seasonYear)] = archiveJson;
+  }
+
+  @override
+  Future<String?> readArchive({
+    required int seasonYear,
+    String slot = 'default',
+  }) async {
+    if (shouldThrowOnReadArchive) {
+      throw const GmCareerStorageException(
+        'Injected in-memory archive read error',
+      );
+    }
+    return _archives[(slot, seasonYear)];
+  }
+
+  @override
+  Future<bool> hasArchive({
+    required int seasonYear,
+    String slot = 'default',
+  }) async {
+    final data = _archives[(slot, seasonYear)];
+    return data != null && data.trim().isNotEmpty;
+  }
+
+  @override
+  Future<void> clearArchives({String slot = 'default'}) async {
+    if (shouldThrowOnClear) {
+      throw const GmCareerStorageException('Injected in-memory clear error');
+    }
+    _archives.removeWhere((key, _) => key.$1 == slot);
+  }
 }
 
 /// File-backed persistent storage for GM Career saves with atomic promotion,
 /// backup recovery, and strict isolation from M007 season saves.
-class FileGmCareerStorage implements GmCareerStorage {
+class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
   FileGmCareerStorage({this.filePath, this.directoryPath})
     : assert(
         filePath != null || directoryPath != null,
@@ -76,6 +161,7 @@ class FileGmCareerStorage implements GmCareerStorage {
   final String? directoryPath;
 
   String resolvePath([String slot = 'default']) {
+    _validateSlot(slot);
     if (filePath != null && slot == 'default') {
       return filePath!;
     }
@@ -109,6 +195,7 @@ class FileGmCareerStorage implements GmCareerStorage {
 
   @override
   Future<bool> hasSave({String slot = 'default'}) async {
+    _validateSlot(slot);
     try {
       final file = _file(slot);
       if (await file.exists()) {
@@ -260,6 +347,163 @@ class FileGmCareerStorage implements GmCareerStorage {
     }
   }
 
+  String _baseDirectory() =>
+      directoryPath ?? (filePath != null ? File(filePath!).parent.path : '.');
+
+  static final RegExp _validSlotPattern = RegExp(r'^[a-z0-9_-]+$');
+
+  void _validateSlot(String slot) {
+    if (!_validSlotPattern.hasMatch(slot)) {
+      throw GmCareerStorageException('Invalid career save slot: "$slot"');
+    }
+  }
+
+  String resolveArchivePath(int seasonYear, [String slot = 'default']) {
+    _validateSlot(slot);
+    if (seasonYear < 1) {
+      throw GmCareerStorageException('Invalid archive seasonYear: $seasonYear');
+    }
+    final base = _baseDirectory();
+    final fileName = slot == 'default'
+        ? 'ballgorithm_gm_career_archive_y$seasonYear.json'
+        : 'ballgorithm_gm_career_${slot}_archive_y$seasonYear.json';
+    return '$base/$fileName';
+  }
+
+  File _archiveFile(int seasonYear, String slot) =>
+      File(resolveArchivePath(seasonYear, slot));
+
+  File _archiveTempFile(int seasonYear, String slot) =>
+      File('${resolveArchivePath(seasonYear, slot)}.tmp');
+
+  @override
+  Future<void> writeArchive({
+    required int seasonYear,
+    required String archiveJson,
+    required String expectedDigest,
+    String slot = 'default',
+  }) async {
+    try {
+      _validateSlot(slot);
+      if (SeasonArchiveCodec.digestOf(archiveJson) != expectedDigest) {
+        throw const GmCareerStorageException(
+          'Archive payload digest does not match expectedDigest',
+        );
+      }
+      final file = _archiveFile(seasonYear, slot);
+      final temp = _archiveTempFile(seasonYear, slot);
+      await file.parent.create(recursive: true);
+      if (await file.exists()) {
+        final existing = await file.readAsString();
+        if (SeasonArchiveCodec.digestOf(existing) == expectedDigest) {
+          if (await temp.exists()) {
+            await temp.delete();
+          }
+          return;
+        }
+        throw GmCareerStorageException(
+          'Conflicting historical archive already exists for slot "$slot" year $seasonYear',
+        );
+      }
+      if (await temp.exists()) {
+        await temp.delete();
+      }
+      try {
+        await temp.writeAsString(archiveJson, flush: true);
+        await _replaceFile(temp, file);
+      } finally {
+        if (await temp.exists()) {
+          try {
+            await temp.delete();
+          } catch (_) {}
+        }
+      }
+    } on FileSystemException catch (e) {
+      throw GmCareerStorageException(
+        'File system error writing season archive: ${e.message}',
+        e,
+      );
+    } catch (e) {
+      if (e is GmCareerStorageException) rethrow;
+      throw GmCareerStorageException(
+        'Unexpected error writing season archive: $e',
+        e,
+      );
+    }
+  }
+
+  @override
+  Future<String?> readArchive({
+    required int seasonYear,
+    String slot = 'default',
+  }) async {
+    try {
+      final file = _archiveFile(seasonYear, slot);
+      if (await file.exists()) {
+        return await file.readAsString();
+      }
+      return null;
+    } on FileSystemException catch (e) {
+      throw GmCareerStorageException(
+        'File system error reading season archive: ${e.message}',
+        e,
+      );
+    } catch (e) {
+      if (e is GmCareerStorageException) rethrow;
+      throw GmCareerStorageException(
+        'Unexpected error reading season archive: $e',
+        e,
+      );
+    }
+  }
+
+  @override
+  Future<bool> hasArchive({
+    required int seasonYear,
+    String slot = 'default',
+  }) async {
+    _validateSlot(slot);
+    try {
+      final file = _archiveFile(seasonYear, slot);
+      return await file.exists() && await file.length() > 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<void> clearArchives({String slot = 'default'}) async {
+    try {
+      _validateSlot(slot);
+      final dir = Directory(_baseDirectory());
+      if (!await dir.exists()) return;
+      final pattern = slot == 'default'
+          ? RegExp(r'^ballgorithm_gm_career_archive_y\d+\.json(\.tmp)?$')
+          : RegExp(
+              '^ballgorithm_gm_career_${RegExp.escape(slot)}_archive_y\\d+\\.json(\\.tmp)?\$',
+            );
+      await for (final entity in dir.list()) {
+        if (entity is File) {
+          final name = entity.uri.pathSegments.last;
+          if (pattern.hasMatch(name)) {
+            await entity.delete();
+          }
+        }
+      }
+    } on FileSystemException catch (e) {
+      throw GmCareerStorageException(
+        'File system error clearing season archives: ${e.message}',
+        e,
+      );
+    } catch (e) {
+      if (e is GmCareerStorageException) rethrow;
+      throw GmCareerStorageException(
+        'Unexpected error clearing season archives: $e',
+        e,
+      );
+    }
+  }
+
   @override
   Future<void> clear({String slot = 'default'}) async {
     try {
@@ -276,6 +520,7 @@ class FileGmCareerStorage implements GmCareerStorage {
       if (await temp.exists()) {
         await temp.delete();
       }
+      await clearArchives(slot: slot);
     } on FileSystemException catch (e) {
       throw GmCareerStorageException(
         'File system error clearing career save: ${e.message}',

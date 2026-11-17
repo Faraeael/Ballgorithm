@@ -455,6 +455,182 @@ class GmCareerController extends ChangeNotifier {
     });
   }
 
+  /// Persists the completed Year N archive before writing and publishing Year N+1.
+  Future<void> persistArchivedSeasonTransition({
+    required GmCareer Function(
+      GmCareer current,
+      SeasonHistoryRecord archiveRecord,
+    )
+    buildNextCareer,
+    required bool confirmed,
+    String slot = 'default',
+  }) {
+    final submittedCareer = _career;
+    return _runCareerCommand(action: 'archive completed season', () async {
+      if (!confirmed) {
+        throw StateError('Explicit human confirmation is required');
+      }
+      final current = _requireCareer();
+      if (!identical(current, submittedCareer)) {
+        throw StateError('Career changed before season archive executed');
+      }
+      final archiveStorage = _requireArchiveStorage();
+      final archive = SeasonArchive.fromCareer(current);
+      final encodedArchive = SeasonArchiveCodec.encodeWithDigest(archive);
+      final record = archive.toHistoryRecord(encodedArchive.digest);
+      final next = buildNextCareer(current, record);
+      if (next.id != current.id) {
+        throw StateError('Archived transition must preserve career id');
+      }
+      if (next.currentYear != current.currentYear + 1) {
+        throw StateError(
+          'Archived transition must advance currentYear by exactly 1',
+        );
+      }
+      if (next.seasonHistory.length != current.seasonHistory.length + 1) {
+        throw StateError(
+          'Archived transition must append exactly one SeasonHistoryRecord',
+        );
+      }
+      for (var i = 0; i < current.seasonHistory.length; i++) {
+        if (next.seasonHistory[i] != current.seasonHistory[i]) {
+          throw StateError(
+            'Archived transition must preserve prior seasonHistory records',
+          );
+        }
+      }
+      if (next.seasonHistory.last != record) {
+        throw StateError(
+          'Archived transition seasonHistory.last must match archived season',
+        );
+      }
+      final encodedNext = GmCareerCodec.encode(next);
+      try {
+        await archiveStorage.writeArchive(
+          seasonYear: current.currentYear,
+          archiveJson: encodedArchive.json,
+          expectedDigest: encodedArchive.digest,
+          slot: slot,
+        );
+        await storage.write(encodedNext, slot: slot);
+      } catch (_) {
+        _draftRecoveryRequired = true;
+        rethrow;
+      }
+      _career = next;
+      notifyListeners();
+    });
+  }
+
+  /// Reads and cryptographically verifies an archived season for the active career.
+  Future<SeasonArchive> loadSeasonArchive(
+    int seasonYear, {
+    String slot = 'default',
+  }) async {
+    final current = _requireCareer();
+    final record = current.seasonHistory
+        .cast<SeasonHistoryRecord?>()
+        .firstWhere(
+          (entry) => entry?.seasonYear == seasonYear,
+          orElse: () => null,
+        );
+    if (record == null) {
+      throw StateError('No archived season record exists for year $seasonYear');
+    }
+    final raw = await _requireArchiveStorage().readArchive(
+      seasonYear: seasonYear,
+      slot: slot,
+    );
+    if (raw == null || raw.trim().isEmpty) {
+      throw GmCareerStorageException(
+        'Missing or empty historical archive for slot "$slot" year $seasonYear',
+      );
+    }
+    return SeasonArchiveCodec.decodeAndVerify(
+      raw,
+      expectedDigest: record.archiveDigest,
+      expectedCareerId: current.id,
+      expectedSeasonYear: seasonYear,
+      expectedRecord: record,
+    );
+  }
+
+  /// Exports the persisted career in [slot] and all referenced historical archives as a bundle.
+  Future<String> exportCareerBundle({String slot = 'default'}) async {
+    final activeJson = await storage.read(slot: slot);
+    if (activeJson == null || activeJson.trim().isEmpty) {
+      throw GmCareerStorageException(
+        'Cannot export bundle: no persisted career in slot "$slot"',
+      );
+    }
+    final persistedCareer = GmCareerCodec.decode(activeJson);
+    final archiveStorage = _requireArchiveStorage();
+    final archivesByYear = <int, String>{};
+    for (final record in persistedCareer.seasonHistory) {
+      final raw = await archiveStorage.readArchive(
+        seasonYear: record.seasonYear,
+        slot: slot,
+      );
+      if (raw == null || raw.trim().isEmpty) {
+        throw GmCareerStorageException(
+          'Cannot export bundle: missing archive for year ${record.seasonYear}',
+        );
+      }
+      archivesByYear[record.seasonYear] = raw;
+    }
+    return const CareerBundleService().exportBundle(
+      activeCareerJson: activeJson,
+      archivesByYear: archivesByYear,
+    );
+  }
+
+  /// Verifies and imports a career bundle into [slot] before publishing.
+  Future<void> importCareerBundle(
+    String bundleJson, {
+    String slot = 'default',
+  }) => _serialize(() async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    var wrotePersistentState = false;
+    try {
+      final imported = const CareerBundleService().importBundle(bundleJson);
+      final archiveStorage = _requireArchiveStorage();
+      for (final record in imported.career.seasonHistory) {
+        final rawArchive = imported.verifiedArchivesByYear[record.seasonYear]!;
+        wrotePersistentState = true;
+        await archiveStorage.writeArchive(
+          seasonYear: record.seasonYear,
+          archiveJson: rawArchive,
+          expectedDigest: record.archiveDigest,
+          slot: slot,
+        );
+      }
+      wrotePersistentState = true;
+      await storage.write(imported.activeCareerJson, slot: slot);
+      _career = imported.career;
+      _draftRecoveryRequired = false;
+    } catch (e) {
+      if (wrotePersistentState) {
+        _draftRecoveryRequired = true;
+      }
+      _errorMessage = 'Failed to import career bundle: $e';
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  });
+
+  GmCareerArchiveStorage _requireArchiveStorage() {
+    final s = storage;
+    if (s is GmCareerArchiveStorage) {
+      return s as GmCareerArchiveStorage;
+    }
+    throw StateError('Configured GmCareerStorage does not support archives');
+  }
+
   Future<void> generateRegularSeasonSchedule({String slot = 'default'}) =>
       _runCareerCommand(action: 'generate regular-season schedule', () async {
         await _saveCareerState(

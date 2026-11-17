@@ -52,6 +52,18 @@ final class SeasonStandingSummary {
     'wins': wins,
     'losses': losses,
   };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SeasonStandingSummary &&
+          rank == other.rank &&
+          teamId == other.teamId &&
+          wins == other.wins &&
+          losses == other.losses;
+
+  @override
+  int get hashCode => Object.hash(rank, teamId, wins, losses);
 }
 
 /// Authoritative Play-In outcome summary for an archived season.
@@ -112,6 +124,25 @@ final class PlayInOutcomeSummary {
     'seed15TeamId': seed15TeamId.value,
     'seed16TeamId': seed16TeamId.value,
   };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PlayInOutcomeSummary &&
+          game1WinnerTeamId == other.game1WinnerTeamId &&
+          game2WinnerTeamId == other.game2WinnerTeamId &&
+          game3WinnerTeamId == other.game3WinnerTeamId &&
+          seed15TeamId == other.seed15TeamId &&
+          seed16TeamId == other.seed16TeamId;
+
+  @override
+  int get hashCode => Object.hash(
+    game1WinnerTeamId,
+    game2WinnerTeamId,
+    game3WinnerTeamId,
+    seed15TeamId,
+    seed16TeamId,
+  );
 }
 
 /// Authoritative outcome of one completed best-of-seven playoff series.
@@ -198,6 +229,29 @@ final class PlayoffSeriesSummary {
     'firstTeamWins': firstTeamWins,
     'secondTeamWins': secondTeamWins,
   };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PlayoffSeriesSummary &&
+          seriesIndex == other.seriesIndex &&
+          round == other.round &&
+          firstTeamId == other.firstTeamId &&
+          secondTeamId == other.secondTeamId &&
+          winnerTeamId == other.winnerTeamId &&
+          firstTeamWins == other.firstTeamWins &&
+          secondTeamWins == other.secondTeamWins;
+
+  @override
+  int get hashCode => Object.hash(
+    seriesIndex,
+    round,
+    firstTeamId,
+    secondTeamId,
+    winnerTeamId,
+    firstTeamWins,
+    secondTeamWins,
+  );
 }
 
 /// Compact, immutable historical summary of one completed GM career season.
@@ -351,4 +405,43 @@ final class SeasonHistoryRecord {
     'archiveId': archiveId,
     'archiveDigest': archiveDigest,
   };
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! SeasonHistoryRecord) return false;
+    if (seasonYear != other.seasonYear ||
+        seasonId != other.seasonId ||
+        championTeamId != other.championTeamId ||
+        playInOutcome != other.playInOutcome ||
+        archiveId != other.archiveId ||
+        archiveDigest != other.archiveDigest ||
+        regularSeasonStandings.length != other.regularSeasonStandings.length ||
+        playoffSeries.length != other.playoffSeries.length) {
+      return false;
+    }
+    for (var i = 0; i < regularSeasonStandings.length; i++) {
+      if (regularSeasonStandings[i] != other.regularSeasonStandings[i]) {
+        return false;
+      }
+    }
+    for (var i = 0; i < playoffSeries.length; i++) {
+      if (playoffSeries[i] != other.playoffSeries[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    seasonYear,
+    seasonId,
+    championTeamId,
+    Object.hashAll(regularSeasonStandings),
+    playInOutcome,
+    Object.hashAll(playoffSeries),
+    archiveId,
+    archiveDigest,
+  );
 }
