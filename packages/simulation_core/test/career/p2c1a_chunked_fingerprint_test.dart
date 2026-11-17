@@ -346,6 +346,7 @@ void main() {
       // Build a v17 save from the same played career (stripping inputEvidence & snapshots)
       final v17Map = jsonDecode(v20Json) as Map<String, dynamic>;
       v17Map['schemaVersion'] = 17;
+      v17Map.remove('seasonHistory');
       final rsMap = v17Map['regularSeasonState'] as Map<String, dynamic>;
       rsMap.remove('gameInputSnapshots');
       final grMap = rsMap['gameResults'] as Map<String, dynamic>;

@@ -52,7 +52,8 @@ void main() {
       final legacy =
           jsonDecode(GmCareerCodec.encode(mixed)) as Map<String, dynamic>
             ..['schemaVersion'] = 3
-            ..remove('draftExecutionState');
+            ..remove('draftExecutionState')
+            ..remove('seasonHistory');
       final migrated = GmCareerCodec.decode(jsonEncode(legacy));
       final saved =
           jsonDecode(GmCareerCodec.encode(migrated)) as Map<String, dynamic>;

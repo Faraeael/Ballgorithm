@@ -28,6 +28,7 @@ import 'career_setup.dart';
 import 'regular_season_state.dart';
 import 'play_in_state.dart';
 import 'playoff_state.dart';
+import 'season_history_record.dart';
 import 'regular_season_schedule_generator.dart';
 import '../simulation/game_fingerprint.dart';
 import 'regular_season_game_adapter.dart';
@@ -47,6 +48,8 @@ typedef _RegularSeasonResultValidationContext = ({
   String snapshotJson,
   String openingTeamIdsKey,
 });
+
+const Object _unset = Object();
 
 /// The authoritative, persistent root state of a GM Career.
 final class GmCareer {
@@ -79,6 +82,7 @@ final class GmCareer {
     this.regularSeasonState,
     this.playInState,
     this.playoffState,
+    List<SeasonHistoryRecord> seasonHistory = const [],
   }) : draftExecutionState =
            draftExecutionState ?? DraftExecutionState.initial(),
        rookieSigningLedger = rookieSigningLedger ?? RookieSigningLedger.empty(),
@@ -119,7 +123,8 @@ final class GmCareer {
              league: league,
              seed: generationSeed,
              seasonYear: currentYear,
-           ) {
+           ),
+       seasonHistory = List.unmodifiable(seasonHistory) {
     validate();
   }
 
@@ -144,7 +149,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 20;
+  static const int currentSchemaVersion = 21;
 
   final String id;
   final int schemaVersion;
@@ -190,6 +195,9 @@ final class GmCareer {
 
   /// Authoritative contract, payroll, budget, staff and facility records.
   final CareerFinances finances;
+
+  /// Immutable chronological summaries of completed prior seasons.
+  final List<SeasonHistoryRecord> seasonHistory;
 
   /// Draft rights whose prospect has not signed a rookie contract yet.
   ///
@@ -329,6 +337,31 @@ final class GmCareer {
       hardshipCapReliefByTeam: _hardshipCapReliefByTeam,
     );
     _validateRegularSeasonState();
+    _validateSeasonHistory(teamIds);
+  }
+
+  void _validateSeasonHistory(Set<String> teamIds) {
+    var previousYear = 0;
+    final seenSeasonIds = <String>{};
+    final seenYears = <int>{};
+    for (final record in seasonHistory) {
+      if (record.seasonYear >= currentYear) {
+        throw const FormatException(
+          'SeasonHistoryRecord cannot represent current or future season',
+        );
+      }
+      if (record.seasonYear <= previousYear) {
+        throw const FormatException(
+          'SeasonHistoryRecord entries must be strictly chronological',
+        );
+      }
+      if (!seenYears.add(record.seasonYear) ||
+          !seenSeasonIds.add(record.seasonId)) {
+        throw const FormatException('Duplicate SeasonHistoryRecord entry');
+      }
+      record.validate(validTeamIds: teamIds, expectedCareerId: id);
+      previousYear = record.seasonYear;
+    }
   }
 
   void _validateRegularSeasonState() {
@@ -1459,10 +1492,11 @@ final class GmCareer {
     FreeAgentMarketState? freeAgentMarket,
     OffseasonClearanceState? offseasonClearance,
     HardshipSettlement? hardshipSettlement,
-    RegularSeasonState? regularSeasonState,
-    PlayInState? playInState,
-    PlayoffState? playoffState,
+    Object? regularSeasonState = _unset,
+    Object? playInState = _unset,
+    Object? playoffState = _unset,
     CareerFinances? finances,
+    List<SeasonHistoryRecord>? seasonHistory,
   }) {
     return GmCareer(
       id: id ?? this.id,
@@ -1485,10 +1519,17 @@ final class GmCareer {
       freeAgentMarket: freeAgentMarket ?? this.freeAgentMarket,
       offseasonClearance: offseasonClearance ?? this.offseasonClearance,
       hardshipSettlement: hardshipSettlement ?? this.hardshipSettlement,
-      regularSeasonState: regularSeasonState ?? this.regularSeasonState,
-      playInState: playInState ?? this.playInState,
-      playoffState: playoffState ?? this.playoffState,
+      regularSeasonState: identical(regularSeasonState, _unset)
+          ? this.regularSeasonState
+          : regularSeasonState as RegularSeasonState?,
+      playInState: identical(playInState, _unset)
+          ? this.playInState
+          : playInState as PlayInState?,
+      playoffState: identical(playoffState, _unset)
+          ? this.playoffState
+          : playoffState as PlayoffState?,
       finances: finances ?? this.finances,
+      seasonHistory: seasonHistory ?? this.seasonHistory,
     );
   }
 }

@@ -30,13 +30,14 @@ import 'offseason_readiness_gate.dart';
 import 'play_in_state.dart';
 import 'playoff_state.dart';
 import 'regular_season_state.dart';
+import 'season_history_record.dart';
 import 'gm_career.dart';
 
 /// Serialization and strict validation for persistent [GmCareer] state.
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 20;
+  static const int currentSchemaVersion = 21;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -66,6 +67,9 @@ final class GmCareerCodec {
       'playInState': career.playInState?.toJson(),
       'playoffState': career.playoffState?.toJson(),
       'finances': career.finances.toJson(),
+      'seasonHistory': [
+        for (final record in career.seasonHistory) record.toJson(),
+      ],
       'rosterMemberships': {
         for (final team in career.league.teams)
           team.id.value: [
@@ -532,6 +536,30 @@ final class GmCareerCodec {
       finances = null;
     }
 
+    final List<SeasonHistoryRecord> seasonHistory;
+    final rawSeasonHistory = raw['seasonHistory'];
+    if (schemaVersion >= 21) {
+      if (!raw.containsKey('seasonHistory') || rawSeasonHistory is! List) {
+        throw const FormatException(
+          'Missing or invalid seasonHistory in career JSON v21',
+        );
+      }
+      seasonHistory = [
+        for (final entry in rawSeasonHistory)
+          if (entry is Map<String, dynamic>)
+            SeasonHistoryRecord.fromJson(entry)
+          else
+            throw const FormatException('Malformed SeasonHistoryRecord entry'),
+      ];
+    } else {
+      if (rawSeasonHistory != null) {
+        throw const FormatException(
+          'Season history is not supported before career schema v21',
+        );
+      }
+      seasonHistory = const [];
+    }
+
     final career = GmCareer(
       id: id,
       schemaVersion: schemaVersion == 17 ? 17 : currentSchemaVersion,
@@ -557,6 +585,7 @@ final class GmCareerCodec {
       playInState: playInState,
       regularSeasonState: regularSeasonState,
       playoffState: playoffState,
+      seasonHistory: seasonHistory,
     );
     if (schemaVersion == 17) _validateNativeCareer(career);
     final migrated = schemaVersion == 17 ? _migrateV17(career) : career;

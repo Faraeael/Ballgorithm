@@ -377,7 +377,8 @@ void main() {
       for (var version = 1; version <= 9; version++) {
         final older = Map<String, dynamic>.from(base)
           ..['schemaVersion'] = version
-          ..remove('freeAgentOffers');
+          ..remove('freeAgentOffers')
+          ..remove('seasonHistory');
         final migrated = GmCareerCodec.decode(jsonEncode(older));
         expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
         expect(migrated.freeAgentOffers.isEmpty, isTrue);

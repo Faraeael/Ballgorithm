@@ -257,7 +257,8 @@ void main() {
         final rawV1Map = Map<String, dynamic>.from(rawV2Map)
           ..['schemaVersion'] = 1
           ..remove('draftOrder')
-          ..remove('draftClass');
+          ..remove('draftClass')
+          ..remove('seasonHistory');
 
         await careerStorage.write(jsonEncode(rawV1Map));
 

@@ -301,7 +301,8 @@ void main() {
           ..['schemaVersion'] = 1
           ..remove('draftOrder')
           ..remove('draftClass')
-          ..remove('rosterMemberships');
+          ..remove('rosterMemberships')
+          ..remove('seasonHistory');
 
         final decodedV1 = GmCareerCodec.decode(jsonEncode(v1Map));
         expect(decodedV1.schemaVersion, GmCareer.currentSchemaVersion);
@@ -317,7 +318,8 @@ void main() {
         // Simulate legacy v2 save
         final v2Map = Map<String, dynamic>.from(jsonV3)
           ..['schemaVersion'] = 2
-          ..remove('rosterMemberships');
+          ..remove('rosterMemberships')
+          ..remove('seasonHistory');
 
         final decodedV2 = GmCareerCodec.decode(jsonEncode(v2Map));
         expect(decodedV2.schemaVersion, GmCareer.currentSchemaVersion);
@@ -336,7 +338,8 @@ void main() {
             jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>;
         final v2Map = Map<String, dynamic>.from(jsonV3)
           ..['schemaVersion'] = 2
-          ..remove('rosterMemberships');
+          ..remove('rosterMemberships')
+          ..remove('seasonHistory');
 
         final migrated = GmCareerCodec.decode(jsonEncode(v2Map));
 

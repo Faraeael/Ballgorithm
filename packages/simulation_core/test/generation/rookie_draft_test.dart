@@ -393,7 +393,8 @@ void main() {
         final v1Map = Map<String, dynamic>.from(v2Map)
           ..['schemaVersion'] = 1
           ..remove('draftOrder')
-          ..remove('draftClass');
+          ..remove('draftClass')
+          ..remove('seasonHistory');
 
         final v1Json = jsonEncode(v1Map);
 

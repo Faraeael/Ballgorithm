@@ -62,6 +62,7 @@ export 'src/career/play_in_game_service.dart';
 export 'src/career/playoff_state.dart';
 export 'src/career/playoff_entry_service.dart';
 export 'src/career/playoff_game_service.dart';
+export 'src/career/season_history_record.dart';
 export 'src/career/regular_season_schedule.dart';
 export 'src/career/regular_season_schedule_generator.dart';
 export 'src/career/regular_season_schedule_service.dart';

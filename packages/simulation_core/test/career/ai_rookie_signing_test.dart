@@ -423,7 +423,8 @@ void main() {
           jsonDecode(GmCareerCodec.encode(advanced)) as Map<String, dynamic>;
       final v5 = Map<String, dynamic>.from(v6)
         ..['schemaVersion'] = 5
-        ..remove('aiRookieSigning');
+        ..remove('aiRookieSigning')
+        ..remove('seasonHistory');
       final migrated = GmCareerCodec.decode(jsonEncode(v5));
 
       expect(migrated.schemaVersion, GmCareer.currentSchemaVersion);

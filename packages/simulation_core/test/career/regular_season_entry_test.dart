@@ -48,7 +48,8 @@ void main() {
               jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>,
             )
             ..['schemaVersion'] = 14
-            ..remove('regularSeasonState');
+            ..remove('regularSeasonState')
+            ..remove('seasonHistory');
 
       final migrated = GmCareerCodec.decode(jsonEncode(v14));
       final encoded =
@@ -69,9 +70,12 @@ void main() {
     });
     test('v17 saves migrate without starting a season', () {
       final career = _career();
-      final v17 = Map<String, dynamic>.from(
-        jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>,
-      )..['schemaVersion'] = 17;
+      final v17 =
+          Map<String, dynamic>.from(
+              jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>,
+            )
+            ..['schemaVersion'] = 17
+            ..remove('seasonHistory');
 
       final migrated = GmCareerCodec.decode(jsonEncode(v17));
 
@@ -91,7 +95,8 @@ void main() {
             )
             ..['schemaVersion'] = 18
             ..remove('playInState')
-            ..remove('playoffState');
+            ..remove('playoffState')
+            ..remove('seasonHistory');
 
       final migrated = GmCareerCodec.decode(jsonEncode(v18));
 
@@ -109,7 +114,8 @@ void main() {
               jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>,
             )
             ..['schemaVersion'] = 19
-            ..remove('playoffState');
+            ..remove('playoffState')
+            ..remove('seasonHistory');
 
       final migrated = GmCareerCodec.decode(jsonEncode(v19));
 

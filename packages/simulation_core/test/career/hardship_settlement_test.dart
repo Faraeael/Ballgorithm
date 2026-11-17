@@ -336,7 +336,8 @@ void main() {
           jsonDecode(GmCareerCodec.encode(beforeHardship))
                 as Map<String, dynamic>
             ..['schemaVersion'] = 13
-            ..remove('hardshipSettlement');
+            ..remove('hardshipSettlement')
+            ..remove('seasonHistory');
       final migrated = GmCareerCodec.decode(jsonEncode(legacy));
       expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
       expect(

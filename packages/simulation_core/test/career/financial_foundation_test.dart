@@ -288,7 +288,8 @@ void main() {
       for (var version = 1; version <= 7; version++) {
         final older = Map<String, dynamic>.from(base)
           ..['schemaVersion'] = version
-          ..remove('finances');
+          ..remove('finances')
+          ..remove('seasonHistory');
         final migrated = GmCareerCodec.decode(jsonEncode(older));
         expect(
           migrated.schemaVersion,

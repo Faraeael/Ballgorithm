@@ -370,7 +370,8 @@ void main() {
       for (final version in [1, 2, 3]) {
         final legacy = Map<String, dynamic>.from(current)
           ..['schemaVersion'] = version
-          ..remove('draftExecutionState');
+          ..remove('draftExecutionState')
+          ..remove('seasonHistory');
         if (version == 1) {
           legacy.remove('draftOrder');
           legacy.remove('draftClass');

@@ -545,7 +545,8 @@ void main() {
           jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>;
       for (var version = 1; version <= 8; version++) {
         final older = Map<String, dynamic>.from(base)
-          ..['schemaVersion'] = version;
+          ..['schemaVersion'] = version
+          ..remove('seasonHistory');
         final pool = older['freeAgentPool'];
         if (pool is Map<String, dynamic>) {
           pool
