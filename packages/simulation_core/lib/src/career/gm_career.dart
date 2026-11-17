@@ -45,6 +45,7 @@ typedef _RegularSeasonResultValidationContext = ({
   int gameSeed,
   String snapshotId,
   String snapshotJson,
+  String openingTeamIdsKey,
 });
 
 /// The authoritative, persistent root state of a GM Career.
@@ -464,14 +465,8 @@ final class GmCareer {
     final openingTeamIds = {
       for (final team in state.openingTeams) team.teamId.value,
     };
-    final historicalLeagues = <String, League>{
-      for (final entry in state.gameInputSnapshots.entries)
-        entry.key: RegularSeasonGameInputEvidence.parseLeagueSnapshot(
-          snapshotId: entry.key,
-          leagueSnapshotJson: entry.value,
-          openingTeamIds: openingTeamIds,
-        ),
-    };
+    final openingTeamIdsKey = ([...openingTeamIds]..sort()).join('|');
+    final historicalLeagues = <String, League>{};
     for (final entry in state.gameResults.entries) {
       final fixture = fixturesById[entry.key]!;
       final result = entry.value;
@@ -485,8 +480,7 @@ final class GmCareer {
         );
       }
       final snapshotJson = state.gameInputSnapshots[evidence.leagueSnapshotId];
-      final historicalLeague = historicalLeagues[evidence.leagueSnapshotId];
-      if (snapshotJson == null || historicalLeague == null) {
+      if (snapshotJson == null) {
         throw const FormatException(
           'Historical game-time league snapshot is missing',
         );
@@ -502,11 +496,20 @@ final class GmCareer {
         gameSeed: fixture.gameSeed,
         snapshotId: evidence.leagueSnapshotId,
         snapshotJson: snapshotJson,
+        openingTeamIdsKey: openingTeamIdsKey,
       );
       if (_validatedRegularSeasonResults[result] == validationContext) {
         continue;
       }
 
+      final historicalLeague = historicalLeagues.putIfAbsent(
+        evidence.leagueSnapshotId,
+        () => RegularSeasonGameInputEvidence.parseLeagueSnapshot(
+          snapshotId: evidence.leagueSnapshotId,
+          leagueSnapshotJson: snapshotJson,
+          openingTeamIds: openingTeamIds,
+        ),
+      );
       final historicalInput = evidence.validate(
         leagueSnapshotId: evidence.leagueSnapshotId,
         leagueSnapshotJson: snapshotJson,

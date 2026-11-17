@@ -338,6 +338,17 @@ void main() {
             entry.value.summary.winnerTeamId,
             expected.summary.winnerTeamId,
           );
+          expect(
+            entry.value.summary.playerLines.length,
+            expected.summary.playerLines.length,
+          );
+          for (final pEntry in expected.summary.playerLines.entries) {
+            final actualLine = entry.value.summary.playerLines[pEntry.key]!;
+            expect(actualLine.points, pEntry.value.points);
+            expect(actualLine.rebounds, pEntry.value.rebounds);
+            expect(actualLine.assists, pEntry.value.assists);
+            expect(actualLine.secondsPlayed, pEntry.value.secondsPlayed);
+          }
           expect(entry.value.inputEvidence, isNotNull);
         }
 
@@ -350,6 +361,143 @@ void main() {
         );
       },
     );
+
+    test(
+      'full bracket parity from cold-start through partial series, round transitions, and championship',
+      () async {
+        final storage = _FaultyCareerStorage(InMemoryGmCareerStorage());
+        final controller = await loadedController(storage);
+        var expected = controller.career!;
+        var slates = 0;
+        var sawPartialSeries = false;
+        final seenRounds = <PlayoffRound>{};
+
+        while (!controller.career!.playoffState!.isComplete) {
+          final beforeRound = controller.career!.playoffState!.currentRound!;
+          seenRounds.add(beforeRound);
+
+          await controller.simulateNextPlayoffSlate(confirmed: true);
+          expected = const PlayoffSlateService().simulateNextSlate(expected);
+          slates++;
+
+          final actual = controller.career!;
+          final po = actual.playoffState!;
+          if (po.gameResults.isNotEmpty && !po.isComplete) {
+            sawPartialSeries = true;
+          }
+          expect(
+            po.gameResults.keys.toList(),
+            equals(expected.playoffState!.gameResults.keys.toList()),
+          );
+          if (slates == 1 ||
+              po.currentRound != beforeRound ||
+              po.isComplete) {
+            expect(
+              await storage.read(),
+              equals(GmCareerCodec.encode(expected)),
+            );
+          }
+        }
+
+        expect(slates, greaterThanOrEqualTo(16));
+        expect(sawPartialSeries, isTrue);
+        expect(seenRounds, equals(PlayoffRound.values.toSet()));
+        expect(controller.career!.playoffState!.champion, isNotNull);
+        await expectLater(
+          controller.simulateNextPlayoffSlate(confirmed: true),
+          throwsStateError,
+        );
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test('rejects tampered worker results and historical evidence', () {
+      const service = PlayoffSlateService();
+      final order = service.prepareSlate(basePlayoffCareer);
+      final validOutput = service.simulatePreparedSlate(order);
+
+      // 1. Tampered inputFingerprint
+      final first = validOutput.results.first;
+      final badFingerprint = RegularSeasonGameResult(
+        fixtureId: first.fixtureId,
+        seasonId: first.seasonId,
+        seasonYear: first.seasonYear,
+        homeTeamId: first.homeTeamId,
+        awayTeamId: first.awayTeamId,
+        gameSeed: first.gameSeed,
+        inputFingerprint: List.filled(64, 'a').join(),
+        simulationVersion: first.simulationVersion,
+        rulesVersion: first.rulesVersion,
+        eventSchemaVersion: first.eventSchemaVersion,
+        prngImplementationId: first.prngImplementationId,
+        fingerprintVersion: first.fingerprintVersion,
+        coreEngineVersion: first.coreEngineVersion,
+        leagueSchemaVersion: first.leagueSchemaVersion,
+        inputEvidence: first.inputEvidence,
+        periodsPlayed: first.periodsPlayed,
+        summary: first.summary,
+      );
+      expect(
+        () => service.applyPreparedSlate(
+          basePlayoffCareer,
+          order: order,
+          output: PlayoffSlateWorkerOutput(
+            results: [badFingerprint, ...validOutput.results.skip(1)],
+            snapshots: validOutput.snapshots,
+          ),
+        ),
+        throwsFormatException,
+      );
+
+      // 2. Tampered leagueSnapshotJson
+      final snapEntry = validOutput.snapshots.entries.first;
+      expect(
+        () => service.applyPreparedSlate(
+          basePlayoffCareer,
+          order: order,
+          output: PlayoffSlateWorkerOutput(
+            results: validOutput.results,
+            snapshots: {snapEntry.key: '${snapEntry.value} '},
+          ),
+        ),
+        throwsFormatException,
+      );
+
+      // 3. Tampered payloadTemplateJson
+      final badEvidenceResult = RegularSeasonGameResult(
+        fixtureId: first.fixtureId,
+        seasonId: first.seasonId,
+        seasonYear: first.seasonYear,
+        homeTeamId: first.homeTeamId,
+        awayTeamId: first.awayTeamId,
+        gameSeed: first.gameSeed,
+        inputFingerprint: first.inputFingerprint,
+        simulationVersion: first.simulationVersion,
+        rulesVersion: first.rulesVersion,
+        eventSchemaVersion: first.eventSchemaVersion,
+        prngImplementationId: first.prngImplementationId,
+        fingerprintVersion: first.fingerprintVersion,
+        coreEngineVersion: first.coreEngineVersion,
+        leagueSchemaVersion: first.leagueSchemaVersion,
+        inputEvidence: RegularSeasonGameInputEvidence(
+          leagueSnapshotId: first.inputEvidence!.leagueSnapshotId,
+          payloadTemplateJson: '${first.inputEvidence!.payloadTemplateJson} ',
+        ),
+        periodsPlayed: first.periodsPlayed,
+        summary: first.summary,
+      );
+      expect(
+        () => service.applyPreparedSlate(
+          basePlayoffCareer,
+          order: order,
+          output: PlayoffSlateWorkerOutput(
+            results: [badEvidenceResult, ...validOutput.results.skip(1)],
+            snapshots: validOutput.snapshots,
+          ),
+        ),
+        throwsFormatException,
+      );
+    });
 
     test('respects non-default storage slot when persisting playoff slate', () async {
       final storage = _FaultyCareerStorage(InMemoryGmCareerStorage());

@@ -229,6 +229,21 @@ final class PlayoffGameIdentity {
 
 /// Immutable 16-team bracket whose outcomes derive only from validated games.
 final class PlayoffState {
+  static final _validatedPlayoffResults =
+      Expando<
+        ({
+          String seasonId,
+          int seasonYear,
+          String fixtureId,
+          String homeTeamId,
+          String awayTeamId,
+          int gameSeed,
+          String snapshotId,
+          String snapshotJson,
+          String openingTeamIdsKey,
+        })
+      >();
+
   PlayoffState._({
     required this.seasonId,
     required this.seasonYear,
@@ -652,14 +667,8 @@ final class PlayoffState {
     final openingTeamIds = {
       for (final team in regularSeason.openingTeams) team.teamId.value,
     };
-    final historicalLeagues = <String, League>{
-      for (final entry in gameInputSnapshots.entries)
-        entry.key: RegularSeasonGameInputEvidence.parseLeagueSnapshot(
-          snapshotId: entry.key,
-          leagueSnapshotJson: entry.value,
-          openingTeamIds: openingTeamIds,
-        ),
-    };
+    final openingTeamIdsKey = ([...openingTeamIds]..sort()).join('|');
+    final historicalLeagues = <String, League>{};
     for (final slot in series) {
       if (!slot.isResolved) continue;
       for (
@@ -681,10 +690,31 @@ final class PlayoffState {
           );
         }
         final snapshotJson = gameInputSnapshots[evidence.leagueSnapshotId];
-        final historicalLeague = historicalLeagues[evidence.leagueSnapshotId];
-        if (snapshotJson == null || historicalLeague == null) {
+        if (snapshotJson == null) {
           throw const FormatException('Playoff historical snapshot is missing');
         }
+        final context = (
+          seasonId: seasonId,
+          seasonYear: seasonYear,
+          fixtureId: identity.id,
+          homeTeamId: identity.homeTeamId.value,
+          awayTeamId: identity.awayTeamId.value,
+          gameSeed: identity.gameSeed,
+          snapshotId: evidence.leagueSnapshotId,
+          snapshotJson: snapshotJson,
+          openingTeamIdsKey: openingTeamIdsKey,
+        );
+        if (_validatedPlayoffResults[result] == context) {
+          continue;
+        }
+        final historicalLeague = historicalLeagues.putIfAbsent(
+          evidence.leagueSnapshotId,
+          () => RegularSeasonGameInputEvidence.parseLeagueSnapshot(
+            snapshotId: evidence.leagueSnapshotId,
+            leagueSnapshotJson: snapshotJson,
+            openingTeamIds: openingTeamIds,
+          ),
+        );
         final historicalInput = evidence.validate(
           leagueSnapshotId: evidence.leagueSnapshotId,
           leagueSnapshotJson: snapshotJson,
@@ -725,6 +755,7 @@ final class PlayoffState {
           standardPlayers: playerTeams.keys.toSet(),
           playerTeams: playerTeams,
         );
+        _validatedPlayoffResults[result] = context;
       }
     }
     final referencedSnapshots = {

@@ -585,6 +585,21 @@ final class PlayInState {
     }
   }
 
+  static final _validatedPlayInResults =
+      Expando<
+        ({
+          String seasonId,
+          int seasonYear,
+          String fixtureId,
+          String homeTeamId,
+          String awayTeamId,
+          int gameSeed,
+          String snapshotId,
+          String snapshotJson,
+          String openingTeamIdsKey,
+        })
+      >();
+
   void _validateResult(
     RegularSeasonGameResult result,
     PlayInFixture fixture,
@@ -592,12 +607,27 @@ final class PlayInState {
   ) {
     final evidence = result.inputEvidence!;
     final snapshotJson = gameInputSnapshots[evidence.leagueSnapshotId]!;
+    final openingTeamIds = {
+      for (final team in regularSeasonState.openingTeams) team.teamId.value,
+    };
+    final context = (
+      seasonId: seasonId,
+      seasonYear: seasonYear,
+      fixtureId: fixture.id,
+      homeTeamId: fixture.homeTeamId.value,
+      awayTeamId: fixture.awayTeamId.value,
+      gameSeed: fixture.gameSeed,
+      snapshotId: evidence.leagueSnapshotId,
+      snapshotJson: snapshotJson,
+      openingTeamIdsKey: ([...openingTeamIds]..sort()).join('|'),
+    );
+    if (_validatedPlayInResults[result] == context) {
+      return;
+    }
     final historicalLeague = RegularSeasonGameInputEvidence.parseLeagueSnapshot(
       snapshotId: evidence.leagueSnapshotId,
       leagueSnapshotJson: snapshotJson,
-      openingTeamIds: {
-        for (final team in regularSeasonState.openingTeams) team.teamId.value,
-      },
+      openingTeamIds: openingTeamIds,
     );
     final historicalInput = evidence.validate(
       leagueSnapshotId: evidence.leagueSnapshotId,
@@ -638,6 +668,7 @@ final class PlayInState {
       standardPlayers: players,
       playerTeams: teams,
     );
+    _validatedPlayInResults[result] = context;
   }
 
   Map<String, Object?> toJson() => {

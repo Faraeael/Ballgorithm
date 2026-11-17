@@ -443,11 +443,15 @@ class GmCareerController extends ChangeNotifier {
       if (current.playoffState?.isComplete == true) {
         throw StateError('Playoffs are already complete');
       }
-      final result = await compute(
-        _simulatePlayoffSlate,
-        _PlayoffSlateSimulationRequest(current),
+      const service = PlayoffSlateService();
+      final order = service.prepareSlate(current);
+      final output = await compute(_simulatePlayoffSlateWorkOrder, order);
+      final next = service.applyPreparedSlate(
+        current,
+        order: order,
+        output: output,
       );
-      await _persistCareerState(result.career, result.encodedJson, slot);
+      await _saveCareerState(next, slot);
     });
   }
 
@@ -504,14 +508,7 @@ class GmCareerController extends ChangeNotifier {
 
   Future<void> _saveCareerState(GmCareer next, String slot) async {
     if (identical(next, _career)) return;
-    await _persistCareerState(next, GmCareerCodec.encode(next), slot);
-  }
-
-  Future<void> _persistCareerState(
-    GmCareer next,
-    String encoded,
-    String slot,
-  ) async {
+    final encoded = GmCareerCodec.encode(next);
     try {
       await storage.write(encoded, slot: slot);
     } catch (_) {
@@ -572,13 +569,9 @@ GmCareer _simulatePlayInGame(_PlayInSimulationRequest request) =>
       expectedGameId: request.expectedGameId,
     );
 
-_PlayoffSlateSimulationResult _simulatePlayoffSlate(
-  _PlayoffSlateSimulationRequest request,
-) {
-  final next = const PlayoffSlateService().simulateNextSlate(request.career);
-  final encodedJson = GmCareerCodec.encode(next);
-  return _PlayoffSlateSimulationResult(career: next, encodedJson: encodedJson);
-}
+PlayoffSlateWorkerOutput _simulatePlayoffSlateWorkOrder(
+  PlayoffSlateWorkOrder order,
+) => const PlayoffSlateService().simulatePreparedSlate(order);
 
 final class _RoundSimulationRequest {
   const _RoundSimulationRequest(this.career, this.expectedRoundNumber);
@@ -592,20 +585,4 @@ final class _PlayInSimulationRequest {
 
   final GmCareer career;
   final String expectedGameId;
-}
-
-final class _PlayoffSlateSimulationRequest {
-  const _PlayoffSlateSimulationRequest(this.career);
-
-  final GmCareer career;
-}
-
-final class _PlayoffSlateSimulationResult {
-  const _PlayoffSlateSimulationResult({
-    required this.career,
-    required this.encodedJson,
-  });
-
-  final GmCareer career;
-  final String encodedJson;
 }
