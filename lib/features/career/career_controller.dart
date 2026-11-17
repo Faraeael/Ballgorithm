@@ -443,11 +443,11 @@ class GmCareerController extends ChangeNotifier {
       if (current.playoffState?.isComplete == true) {
         throw StateError('Playoffs are already complete');
       }
-      final next = await compute(
+      final result = await compute(
         _simulatePlayoffSlate,
         _PlayoffSlateSimulationRequest(current),
       );
-      await _saveCareerState(next, slot);
+      await _persistCareerState(result.career, result.encodedJson, slot);
     });
   }
 
@@ -504,7 +504,14 @@ class GmCareerController extends ChangeNotifier {
 
   Future<void> _saveCareerState(GmCareer next, String slot) async {
     if (identical(next, _career)) return;
-    final encoded = GmCareerCodec.encode(next);
+    await _persistCareerState(next, GmCareerCodec.encode(next), slot);
+  }
+
+  Future<void> _persistCareerState(
+    GmCareer next,
+    String encoded,
+    String slot,
+  ) async {
     try {
       await storage.write(encoded, slot: slot);
     } catch (_) {
@@ -565,8 +572,13 @@ GmCareer _simulatePlayInGame(_PlayInSimulationRequest request) =>
       expectedGameId: request.expectedGameId,
     );
 
-GmCareer _simulatePlayoffSlate(_PlayoffSlateSimulationRequest request) =>
-    const PlayoffSlateService().simulateNextSlate(request.career);
+_PlayoffSlateSimulationResult _simulatePlayoffSlate(
+  _PlayoffSlateSimulationRequest request,
+) {
+  final next = const PlayoffSlateService().simulateNextSlate(request.career);
+  final encodedJson = GmCareerCodec.encode(next);
+  return _PlayoffSlateSimulationResult(career: next, encodedJson: encodedJson);
+}
 
 final class _RoundSimulationRequest {
   const _RoundSimulationRequest(this.career, this.expectedRoundNumber);
@@ -586,4 +598,14 @@ final class _PlayoffSlateSimulationRequest {
   const _PlayoffSlateSimulationRequest(this.career);
 
   final GmCareer career;
+}
+
+final class _PlayoffSlateSimulationResult {
+  const _PlayoffSlateSimulationResult({
+    required this.career,
+    required this.encodedJson,
+  });
+
+  final GmCareer career;
+  final String encodedJson;
 }
