@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
@@ -86,6 +87,8 @@ final class RegularSeasonGameInputEvidence {
   });
 
   static const _markerPrefix = '__BALLGORITHM_LEAGUE_SNAPSHOT_';
+  static final _snapshotUtf8Cache =
+      Expando<({String snapshotId, String snapshotJson, Uint8List bytes})>();
 
   factory RegularSeasonGameInputEvidence.fromJson(Map<String, dynamic> json) {
     final snapshotId = json['leagueSnapshotId'];
@@ -144,9 +147,9 @@ final class RegularSeasonGameInputEvidence {
     required String leagueSnapshotJson,
     required Set<String> openingTeamIds,
   }) {
+    final snapshotBytes = Uint8List.fromList(utf8.encode(leagueSnapshotJson));
     if (!_isDigest(snapshotId) ||
-        sha256.convert(utf8.encode(leagueSnapshotJson)).toString() !=
-            snapshotId) {
+        sha256.convert(snapshotBytes).toString() != snapshotId) {
       throw const FormatException('Invalid game-time league snapshot digest');
     }
     final Object? snapshotValue;
@@ -179,6 +182,11 @@ final class RegularSeasonGameInputEvidence {
         )) {
       throw const FormatException('Invalid historical game-time league roster');
     }
+    _snapshotUtf8Cache[league] = (
+      snapshotId: snapshotId,
+      snapshotJson: leagueSnapshotJson,
+      bytes: snapshotBytes,
+    );
     return league;
   }
 
@@ -249,14 +257,28 @@ final class RegularSeasonGameInputEvidence {
       throw const FormatException('Game-input snapshot marker is missing');
     }
     final leagueValueStart = leagueValueIndex + '"league":'.length;
-    final canonicalPayloadJson = payloadTemplateJson.replaceRange(
-      leagueValueStart,
+    final prefix = payloadTemplateJson.substring(0, leagueValueStart);
+    final suffix = payloadTemplateJson.substring(
       leagueValueStart + markerJson.length,
-      leagueSnapshotJson,
     );
+    final cachedSnapshot = _snapshotUtf8Cache[league];
+    final List<int> snapshotBytes =
+        (cachedSnapshot != null &&
+            cachedSnapshot.snapshotId == leagueSnapshotId &&
+            cachedSnapshot.snapshotJson == leagueSnapshotJson)
+        ? cachedSnapshot.bytes
+        : utf8.encode(leagueSnapshotJson);
+    late final Digest actualDigest;
+    final digestSink = ChunkedConversionSink<Digest>.withCallback(
+      (chunks) => actualDigest = chunks.single,
+    );
+    final inputSink = sha256.startChunkedConversion(digestSink);
+    inputSink.add(utf8.encode(prefix));
+    inputSink.add(snapshotBytes);
+    inputSink.add(utf8.encode(suffix));
+    inputSink.close();
     final payloadValue = templateValue;
-    if (sha256.convert(utf8.encode(canonicalPayloadJson)).toString() !=
-        inputFingerprint) {
+    if (actualDigest.toString() != inputFingerprint) {
       throw const FormatException('Historical game-input fingerprint mismatch');
     }
 
