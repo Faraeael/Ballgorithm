@@ -232,6 +232,7 @@ final class FreeAgentAcquisitionService {
       origin: origin,
     );
     final updatedPool = FreeAgentPool(
+      seasonYear: career.freeAgentPool.seasonYear,
       entries: [
         for (final candidate in career.freeAgentPool.entries)
           if (candidate.id != freeAgentId) candidate,
