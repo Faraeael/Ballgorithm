@@ -3,32 +3,59 @@ import 'package:simulation_core/simulation_core.dart';
 
 import 'career_controller.dart';
 
-class PlayoffTournamentScreen extends StatelessWidget {
-  const PlayoffTournamentScreen({super.key, required this.controller});
+class PlayoffTournamentScreen extends StatefulWidget {
+  const PlayoffTournamentScreen({
+    super.key,
+    required this.controller,
+    this.slot = 'default',
+  });
 
   final GmCareerController controller;
+  final String slot;
+
+  @override
+  State<PlayoffTournamentScreen> createState() =>
+      _PlayoffTournamentScreenState();
+}
+
+class _PlayoffTournamentScreenState extends State<PlayoffTournamentScreen> {
+  bool _isDialogOpen = false;
+  bool _isTransitioning = false;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: controller,
+    listenable: widget.controller,
     builder: (context, _) {
-      final career = controller.career;
-      if (career == null || career.phase != CareerPhase.playoffs) {
-        throw StateError('Playoff career is not loaded');
+      final career = widget.controller.career;
+      if (career == null ||
+          career.phase != CareerPhase.playoffs ||
+          career.playoffState == null) {
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
       }
       final state = career.playoffState!;
       final names = {
         for (final team in career.regularSeasonState!.openingTeams)
           team.teamId.value: team.name,
       };
+      final isBusy = widget.controller.isLoading || _isTransitioning;
       return PlayoffBracketContent(
         state: state,
         names: names,
         seasonYear: career.currentYear,
-        isLoading: controller.isLoading,
-        recoveryRequired: controller.draftRecoveryRequired,
-        errorMessage: controller.errorMessage,
-        onSimulate: state.isComplete ? null : () => _confirmNextSlate(context),
+        userFranchiseId: career.userFranchiseId,
+        isLoading: isBusy,
+        recoveryRequired: widget.controller.draftRecoveryRequired,
+        errorMessage: widget.controller.errorMessage,
+        onSimulate: state.isComplete || isBusy
+            ? null
+            : () => _confirmNextSlate(context),
+        onContinueToNextSeason:
+            state.isComplete &&
+                !isBusy &&
+                !widget.controller.draftRecoveryRequired &&
+                !_isDialogOpen
+            ? () => _confirmContinueToNextSeason(context)
+            : null,
         onViewFullBracket: () => Navigator.of(context).push<void>(
           MaterialPageRoute<void>(
             builder: (_) => PlayoffFullBracketScreen(career: career),
@@ -39,35 +66,102 @@ class PlayoffTournamentScreen extends StatelessWidget {
             builder: (_) => PlayoffGameResultsScreen(career: career),
           ),
         ),
-        onReload: controller.isLoading ? null : () => controller.loadCareer(),
+        onReload: isBusy
+            ? null
+            : () => widget.controller.loadCareer(slot: widget.slot),
       );
     },
   );
 
   Future<void> _confirmNextSlate(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Simulate next playoff slate?'),
-        content: const Text(
-          'Simulate and save one next game for each active series in the current round?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Confirm'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !context.mounted) return;
+    if (_isDialogOpen || _isTransitioning || widget.controller.isLoading) {
+      return;
+    }
+    _isDialogOpen = true;
     try {
-      await controller.simulateNextPlayoffSlate(confirmed: true);
-    } catch (_) {}
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Simulate next playoff slate?'),
+          content: const Text(
+            'Simulate and save one next game for each active series in the current round?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Confirm'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      try {
+        await widget.controller.simulateNextPlayoffSlate(confirmed: true);
+      } catch (_) {}
+    } finally {
+      _isDialogOpen = false;
+    }
+  }
+
+  Future<void> _confirmContinueToNextSeason(BuildContext context) async {
+    if (_isDialogOpen ||
+        _isTransitioning ||
+        widget.controller.isLoading ||
+        widget.controller.draftRecoveryRequired) {
+      return;
+    }
+    _isDialogOpen = true;
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Start Next Season?'),
+          content: const Text(
+            'The completed season will be archived and the next season\'s '
+            'offseason will begin.\n\n'
+            'Rosters, contracts, and financial obligations will carry forward, '
+            'and championship results and history will remain available.',
+          ),
+          actions: [
+            TextButton(
+              key: const ValueKey('cancel-next-season'),
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const ValueKey('confirm-next-season'),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Confirm & Continue'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      if (_isTransitioning ||
+          widget.controller.isLoading ||
+          widget.controller.draftRecoveryRequired) {
+        return;
+      }
+      setState(() => _isTransitioning = true);
+      try {
+        await widget.controller.continueToNextSeason(
+          confirmed: true,
+          slot: widget.slot,
+        );
+      } catch (_) {
+        // Error feedback is exposed via controller.errorMessage and draftRecoveryRequired.
+      } finally {
+        if (mounted) {
+          setState(() => _isTransitioning = false);
+        }
+      }
+    } finally {
+      _isDialogOpen = false;
+    }
   }
 }
 
@@ -82,6 +176,8 @@ class PlayoffBracketContent extends StatelessWidget {
     required this.onSimulate,
     required this.onViewFullBracket,
     required this.onViewResults,
+    this.userFranchiseId,
+    this.onContinueToNextSeason,
     this.errorMessage,
     this.onReload,
   });
@@ -89,10 +185,12 @@ class PlayoffBracketContent extends StatelessWidget {
   final PlayoffState state;
   final Map<String, String> names;
   final int seasonYear;
+  final TeamId? userFranchiseId;
   final bool isLoading;
   final bool recoveryRequired;
   final String? errorMessage;
   final VoidCallback? onSimulate;
+  final VoidCallback? onContinueToNextSeason;
   final VoidCallback onViewFullBracket;
   final VoidCallback onViewResults;
   final VoidCallback? onReload;
@@ -130,10 +228,17 @@ class PlayoffBracketContent extends StatelessWidget {
                         : currentRound?.displayName ?? 'Playoffs complete',
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
-                  if (state.isComplete)
+                  if (state.isComplete) ...[
                     const Text(
                       'Championship complete. No more games can be simulated.',
                     ),
+                    if (userFranchiseId != null)
+                      Text(
+                        state.champion == userFranchiseId
+                            ? 'Your franchise won the Season $seasonYear championship.'
+                            : 'Your franchise did not win the Season $seasonYear title.',
+                      ),
+                  ],
                 ],
               ),
             ),
@@ -184,6 +289,13 @@ class PlayoffBracketContent extends StatelessWidget {
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ],
+          if (recoveryRequired) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Save recovery required. Reload the saved career before continuing.',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ],
           if (!state.isComplete) ...[
             const SizedBox(height: 12),
             FilledButton.icon(
@@ -199,6 +311,23 @@ class PlayoffBracketContent extends StatelessWidget {
                 isLoading
                     ? 'Saving playoff slate…'
                     : 'Simulate Next Playoff Slate',
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              key: const ValueKey('continue-to-next-season'),
+              onPressed: isLoading || recoveryRequired
+                  ? null
+                  : onContinueToNextSeason,
+              icon: isLoading
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.arrow_forward),
+              label: Text(
+                isLoading ? 'Saving next season…' : 'Continue to Next Season',
               ),
             ),
           ],
