@@ -97,6 +97,8 @@ final class OffseasonClearanceService {
       ],
       staffCommitments: career.finances.staffCommitments.values,
       facilities: career.finances.facilities.values,
+      guaranteedLiabilities: career.finances.guaranteedLiabilities.values,
+      debtByTeam: career.finances.debtByTeam,
     );
     return career.copyWith(
       finances: updated,
