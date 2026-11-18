@@ -455,6 +455,21 @@ class GmCareerController extends ChangeNotifier {
     });
   }
 
+  /// Persists the completed Year N archive before writing and publishing Year N+1
+  /// via [SeasonRolloverService].
+  Future<void> continueToNextSeason({
+    required bool confirmed,
+    String slot = 'default',
+  }) => persistArchivedSeasonTransition(
+    buildNextCareer: (current, archiveRecord) =>
+        const SeasonRolloverService().rollover(
+          current: current,
+          archiveRecord: archiveRecord,
+        ),
+    confirmed: confirmed,
+    slot: slot,
+  );
+
   /// Persists the completed Year N archive before writing and publishing Year N+1.
   Future<void> persistArchivedSeasonTransition({
     required GmCareer Function(
