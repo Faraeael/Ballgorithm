@@ -73,6 +73,48 @@ final class FreeAgentGenerator {
     return pool;
   }
 
+  /// Generates one deterministic free-agent addition at [position] with [id].
+  ///
+  /// Used by Year 2+ rollover top-up without altering Year 1 [generate].
+  FreeAgentEntry generateEntry({
+    required DeterministicRandom random,
+    required PlayerId id,
+    required Position position,
+    required String firstName,
+    required String lastName,
+  }) {
+    final age = _age(random);
+    final targetBase = _targetBase(age, random);
+    final attributes = _attributes(
+      random: random,
+      position: position,
+      targetBase: targetBase,
+    );
+    final overall = attributes.overallRating;
+    final potential = (overall + _potentialMargin(age, random)).clamp(
+      overall,
+      100,
+    );
+    final trajectory = DevelopmentTrajectory
+        .values[random.nextInt(DevelopmentTrajectory.values.length)];
+    final player = Player(
+      id: id,
+      firstName: firstName,
+      lastName: lastName,
+      position: position,
+      attributes: attributes,
+    );
+    return FreeAgentEntry(
+      player: player,
+      profile: PlayerCareerProfile(
+        playerId: player.id,
+        age: age,
+        potential: potential,
+        trajectory: trajectory,
+      ),
+    );
+  }
+
   static int _age(DeterministicRandom random) {
     final roll = random.nextInt(100);
     if (roll < 35) return 20 + random.nextInt(4);
