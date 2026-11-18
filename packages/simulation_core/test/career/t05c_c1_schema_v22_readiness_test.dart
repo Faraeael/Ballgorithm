@@ -9,6 +9,7 @@ String _asV21Json(GmCareer career) {
   map.remove('retiredPlayers');
   map.remove('seasonSettlements');
   map.remove('careerDraftRights');
+  map.remove('carriedUnsignedProspects');
   (map['freeAgentPool'] as Map<String, dynamic>).remove('seasonYear');
   return jsonEncode(map);
 }
@@ -377,11 +378,27 @@ void main() {
           overallPick: 45,
           seasonYear: 1,
         );
+        final carriedProspect = CarriedUnsignedProspect(
+          playerId: rights.prospectId,
+          firstName: 'Unsigned',
+          lastName: 'Prospect',
+          position: Position.sg,
+          attributes: y2Base.league.teams.first.players.first.attributes,
+          age: 20,
+          potential: 85,
+          trajectory: DevelopmentTrajectory.steady,
+          draftSeasonYear: 1,
+          overallPick: 45,
+          projectedRank: 45,
+          estimatedPotentialGrade: 'B',
+          estimatedPotentialRange: '80-86',
+        );
 
         final y2Full = y2Base.copyWith(
           retiredPlayers: [retired],
           seasonSettlements: [settlement],
           careerDraftRights: {rights.prospectId.value: rights},
+          carriedUnsignedProspects: {rights.prospectId.value: carriedProspect},
         );
         final decoded = GmCareerCodec.decode(GmCareerCodec.encode(y2Full));
         expect(decoded.retiredPlayers, equals([retired]));

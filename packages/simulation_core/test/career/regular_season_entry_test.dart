@@ -52,7 +52,8 @@ void main() {
             ..remove('seasonHistory')
             ..remove('retiredPlayers')
             ..remove('seasonSettlements')
-            ..remove('careerDraftRights');
+            ..remove('careerDraftRights')
+            ..remove('carriedUnsignedProspects');
 
       final migrated = GmCareerCodec.decode(jsonEncode(v14));
       final encoded =
@@ -81,7 +82,8 @@ void main() {
             ..remove('seasonHistory')
             ..remove('retiredPlayers')
             ..remove('seasonSettlements')
-            ..remove('careerDraftRights');
+            ..remove('careerDraftRights')
+            ..remove('carriedUnsignedProspects');
 
       final migrated = GmCareerCodec.decode(jsonEncode(v17));
 
@@ -105,7 +107,8 @@ void main() {
             ..remove('seasonHistory')
             ..remove('retiredPlayers')
             ..remove('seasonSettlements')
-            ..remove('careerDraftRights');
+            ..remove('careerDraftRights')
+            ..remove('carriedUnsignedProspects');
 
       final migrated = GmCareerCodec.decode(jsonEncode(v18));
 
@@ -127,7 +130,8 @@ void main() {
             ..remove('seasonHistory')
             ..remove('retiredPlayers')
             ..remove('seasonSettlements')
-            ..remove('careerDraftRights');
+            ..remove('careerDraftRights')
+            ..remove('carriedUnsignedProspects');
 
       final migrated = GmCareerCodec.decode(jsonEncode(v19));
 

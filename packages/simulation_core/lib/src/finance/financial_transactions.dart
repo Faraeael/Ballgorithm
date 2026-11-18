@@ -62,6 +62,8 @@ abstract final class FinancialTransactions {
       teamFinances: finances.teamFinances.values,
       staffCommitments: finances.staffCommitments.values,
       facilities: finances.facilities.values,
+      guaranteedLiabilities: finances.guaranteedLiabilities.values,
+      debtByTeam: finances.debtByTeam,
     );
   }
 

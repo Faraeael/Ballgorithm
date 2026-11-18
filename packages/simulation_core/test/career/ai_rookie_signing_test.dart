@@ -427,7 +427,8 @@ void main() {
         ..remove('seasonHistory')
         ..remove('retiredPlayers')
         ..remove('seasonSettlements')
-        ..remove('careerDraftRights');
+        ..remove('careerDraftRights')
+        ..remove('carriedUnsignedProspects');
       final migrated = GmCareerCodec.decode(jsonEncode(v5));
 
       expect(migrated.schemaVersion, GmCareer.currentSchemaVersion);

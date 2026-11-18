@@ -1,4 +1,5 @@
 import '../models/contract_financials.dart';
+import '../models/carried_unsigned_prospect.dart';
 import '../models/draft_rights.dart';
 import '../models/ids.dart';
 import '../models/player.dart';
@@ -164,6 +165,8 @@ final class SeasonRolloverPlan {
     required List<AgedPlayerSnapshot> eligibleExpiringFreeAgents,
     required List<AgedPlayerSnapshot> carriedForwardFreeAgents,
     required Map<String, DraftRights> proposedDraftRightsCarryover,
+    Map<String, CarriedUnsignedProspect> proposedCarriedUnsignedProspects =
+        const {},
   }) : retirements = List.unmodifiable(
          List<RetiredPlayerRecord>.from(retirements)
            ..sort((a, b) => a.playerId.value.compareTo(b.playerId.value)),
@@ -203,6 +206,10 @@ final class SeasonRolloverPlan {
        proposedDraftRightsCarryover = Map.unmodifiable({
          for (final k in proposedDraftRightsCarryover.keys.toList()..sort())
            k: proposedDraftRightsCarryover[k]!,
+       }),
+       proposedCarriedUnsignedProspects = Map.unmodifiable({
+         for (final k in proposedCarriedUnsignedProspects.keys.toList()..sort())
+           k: proposedCarriedUnsignedProspects[k]!,
        }) {
     validate();
   }
@@ -220,6 +227,7 @@ final class SeasonRolloverPlan {
   final List<AgedPlayerSnapshot> eligibleExpiringFreeAgents;
   final List<AgedPlayerSnapshot> carriedForwardFreeAgents;
   final Map<String, DraftRights> proposedDraftRightsCarryover;
+  final Map<String, CarriedUnsignedProspect> proposedCarriedUnsignedProspects;
 
   int get totalContinuingPlayers => proposedRosters.values.fold(
     0,
@@ -341,6 +349,36 @@ final class SeasonRolloverPlan {
           retiredIds.contains(pid)) {
         throw FormatException(
           'Proposed draft rights $pid collides with roster, FA, or retirement',
+        );
+      }
+      final snapshot = proposedCarriedUnsignedProspects[pid];
+      if (snapshot == null) {
+        throw FormatException(
+          'Missing CarriedUnsignedProspect snapshot for proposed draft rights '
+          '$pid',
+        );
+      }
+      snapshot.validate();
+      if (snapshot.playerId != entry.value.prospectId ||
+          snapshot.draftSeasonYear != entry.value.seasonYear ||
+          snapshot.overallPick != entry.value.overallPick) {
+        throw FormatException(
+          'CarriedUnsignedProspect $pid does not match proposed draft rights '
+          'provenance',
+        );
+      }
+    }
+    for (final entry in proposedCarriedUnsignedProspects.entries) {
+      entry.value.validate();
+      if (entry.key != entry.value.playerId.value) {
+        throw const FormatException(
+          'Proposed carried unsigned prospect key does not match playerId',
+        );
+      }
+      if (!proposedDraftRightsCarryover.containsKey(entry.key)) {
+        throw FormatException(
+          'Proposed carried unsigned prospect ${entry.key} has no matching '
+          'draft rights',
         );
       }
     }

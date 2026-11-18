@@ -6,6 +6,7 @@ import '../finance/financial_migration.dart';
 import '../models/draft_execution_state.dart';
 import '../models/draft_order.dart';
 import '../models/draft_rights.dart';
+import '../models/carried_unsigned_prospect.dart';
 import '../models/ai_rookie_signing.dart';
 import '../models/franchise_situation.dart';
 import '../models/free_agent.dart';
@@ -88,6 +89,7 @@ final class GmCareer {
     List<RetiredPlayerRecord> retiredPlayers = const [],
     List<SeasonSettlementRecord> seasonSettlements = const [],
     Map<String, DraftRights> careerDraftRights = const {},
+    Map<String, CarriedUnsignedProspect> carriedUnsignedProspects = const {},
   }) : draftExecutionState =
            draftExecutionState ?? DraftExecutionState.initial(),
        rookieSigningLedger = rookieSigningLedger ?? RookieSigningLedger.empty(),
@@ -137,7 +139,14 @@ final class GmCareer {
        seasonHistory = List.unmodifiable(seasonHistory),
        retiredPlayers = List.unmodifiable(retiredPlayers),
        seasonSettlements = List.unmodifiable(seasonSettlements),
-       careerDraftRights = Map.unmodifiable(careerDraftRights) {
+       careerDraftRights = Map.unmodifiable({
+         for (final k in careerDraftRights.keys.toList()..sort())
+           k: careerDraftRights[k]!,
+       }),
+       carriedUnsignedProspects = Map.unmodifiable({
+         for (final k in carriedUnsignedProspects.keys.toList()..sort())
+           k: carriedUnsignedProspects[k]!,
+       }) {
     validate();
   }
 
@@ -162,7 +171,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 23;
+  static const int currentSchemaVersion = 24;
 
   final String id;
   final int schemaVersion;
@@ -220,6 +229,9 @@ final class GmCareer {
 
   /// Persistent unsigned draft rights carried across seasons.
   final Map<String, DraftRights> careerDraftRights;
+
+  /// Full immutable prospect snapshots for [careerDraftRights] holders.
+  final Map<String, CarriedUnsignedProspect> carriedUnsignedProspects;
 
   /// Draft rights whose prospect has not signed a rookie contract yet.
   ///
@@ -475,6 +487,42 @@ final class GmCareer {
       if (draftExecutionState.draftRights.containsKey(entry.key)) {
         throw FormatException(
           'careerDraftRights ${entry.key} duplicates active draftExecutionState rights',
+        );
+      }
+      if (careerProfiles.forPlayer(rights.prospectId) != null) {
+        throw FormatException(
+          'careerDraftRights ${entry.key} collides with careerProfiles',
+        );
+      }
+      final snapshot = carriedUnsignedProspects[entry.key];
+      if (snapshot == null) {
+        throw FormatException(
+          'Missing CarriedUnsignedProspect snapshot for careerDraftRights '
+          '${entry.key}',
+        );
+      }
+      snapshot.validate();
+      if (snapshot.playerId != rights.prospectId ||
+          snapshot.draftSeasonYear != rights.seasonYear ||
+          snapshot.overallPick != rights.overallPick) {
+        throw FormatException(
+          'CarriedUnsignedProspect ${entry.key} does not match '
+          'careerDraftRights provenance',
+        );
+      }
+    }
+    for (final entry in carriedUnsignedProspects.entries) {
+      final snapshot = entry.value;
+      snapshot.validate();
+      if (entry.key != snapshot.playerId.value) {
+        throw const FormatException(
+          'carriedUnsignedProspects key does not match playerId',
+        );
+      }
+      if (!careerDraftRights.containsKey(entry.key)) {
+        throw FormatException(
+          'carriedUnsignedProspects ${entry.key} has no matching '
+          'careerDraftRights',
         );
       }
     }
@@ -1675,6 +1723,7 @@ final class GmCareer {
     List<RetiredPlayerRecord>? retiredPlayers,
     List<SeasonSettlementRecord>? seasonSettlements,
     Map<String, DraftRights>? careerDraftRights,
+    Map<String, CarriedUnsignedProspect>? carriedUnsignedProspects,
   }) {
     return GmCareer(
       id: id ?? this.id,
@@ -1711,6 +1760,8 @@ final class GmCareer {
       retiredPlayers: retiredPlayers ?? this.retiredPlayers,
       seasonSettlements: seasonSettlements ?? this.seasonSettlements,
       careerDraftRights: careerDraftRights ?? this.careerDraftRights,
+      carriedUnsignedProspects:
+          carriedUnsignedProspects ?? this.carriedUnsignedProspects,
     );
   }
 }

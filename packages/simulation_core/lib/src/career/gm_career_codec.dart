@@ -4,6 +4,7 @@ import '../generation/draft_generator.dart';
 import '../models/draft_execution_state.dart';
 import '../models/draft_order.dart';
 import '../models/draft_rights.dart';
+import '../models/carried_unsigned_prospect.dart';
 import '../models/franchise_situation.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
@@ -40,7 +41,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 23;
+  static const int currentSchemaVersion = 24;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -82,6 +83,10 @@ final class GmCareerCodec {
       'careerDraftRights': {
         for (final key in career.careerDraftRights.keys.toList()..sort())
           key: career.careerDraftRights[key]!.toJson(),
+      },
+      'carriedUnsignedProspects': {
+        for (final key in career.carriedUnsignedProspects.keys.toList()..sort())
+          key: career.carriedUnsignedProspects[key]!.toJson(),
       },
       'rosterMemberships': {
         for (final team in career.league.teams)
@@ -649,6 +654,59 @@ final class GmCareerCodec {
       careerDraftRights = const {};
     }
 
+    final Map<String, CarriedUnsignedProspect> carriedUnsignedProspects;
+    final rawCarriedUnsignedProspects = raw['carriedUnsignedProspects'];
+    if (schemaVersion >= 24) {
+      if (!raw.containsKey('carriedUnsignedProspects') ||
+          rawCarriedUnsignedProspects is! Map<String, dynamic>) {
+        throw const FormatException(
+          'Missing or invalid carriedUnsignedProspects in career JSON v24',
+        );
+      }
+      carriedUnsignedProspects = <String, CarriedUnsignedProspect>{};
+      for (final entry in rawCarriedUnsignedProspects.entries) {
+        if (entry.value is! Map<String, dynamic>) {
+          throw const FormatException(
+            'Malformed carriedUnsignedProspects entry',
+          );
+        }
+        carriedUnsignedProspects[entry.key] = CarriedUnsignedProspect.fromJson(
+          entry.value as Map<String, dynamic>,
+        );
+      }
+    } else {
+      if (rawCarriedUnsignedProspects != null) {
+        throw const FormatException(
+          'carriedUnsignedProspects is not supported before career schema v24',
+        );
+      }
+      if (careerDraftRights.isEmpty) {
+        carriedUnsignedProspects = const {};
+      } else {
+        final reconstructed = <String, CarriedUnsignedProspect>{};
+        for (final entry in careerDraftRights.entries) {
+          final rights = entry.value;
+          final prospect = draftClass.seasonYear == rights.seasonYear
+              ? draftClass.byId(rights.prospectId)
+              : null;
+          if (prospect == null) {
+            throw FormatException(
+              'Legacy career schema v$schemaVersion has non-empty '
+              'careerDraftRights (${entry.key}) without reconstructible '
+              'prospect data',
+            );
+          }
+          final aged = prospect.age + (currentYear - rights.seasonYear);
+          reconstructed[entry.key] = CarriedUnsignedProspect.fromRookieProspect(
+            prospect: prospect,
+            rights: rights,
+            age: aged,
+          );
+        }
+        carriedUnsignedProspects = reconstructed;
+      }
+    }
+
     final career = GmCareer(
       id: id,
       schemaVersion: schemaVersion == 17 ? 17 : currentSchemaVersion,
@@ -678,6 +736,7 @@ final class GmCareerCodec {
       retiredPlayers: retiredPlayers,
       seasonSettlements: seasonSettlements,
       careerDraftRights: careerDraftRights,
+      carriedUnsignedProspects: carriedUnsignedProspects,
     );
     if (schemaVersion == 17) _validateNativeCareer(career);
     final migrated = schemaVersion == 17 ? _migrateV17(career) : career;

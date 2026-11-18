@@ -1,4 +1,6 @@
 import '../finance/financial_transactions.dart';
+import '../models/carried_unsigned_prospect.dart';
+import '../models/draft_rights.dart';
 import '../models/draft_selection.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
@@ -11,7 +13,9 @@ import 'gm_career.dart';
 
 /// Atomic, pure-domain signing of one drafted prospect into a franchise roster.
 ///
-/// The same command serves any franchise; AI signing policy is a later milestone.
+/// Supports both current-year drafted prospects (`draftExecutionState`) and
+/// multi-season carried unsigned prospects (`careerDraftRights` +
+/// `carriedUnsignedProspects`).
 final class RookieSigningService {
   const RookieSigningService();
 
@@ -27,27 +31,74 @@ final class RookieSigningService {
     required RosterCategory category,
     required int durationYears,
   }) {
-    final draft = career.draftExecutionState;
-    if (!draft.isCompleted) {
-      throw StateError('Cannot sign: rookie draft is not completed');
-    }
-    final prospect = career.draftClass.byId(prospectId);
-    if (prospect == null) {
-      throw ArgumentError(
-        'Prospect ${prospectId.value} not found in draft class',
+    final TeamId owningTeamId;
+    final int draftSeasonYear;
+    final int overallPick;
+    final Player player;
+    final PlayerCareerProfile profile;
+    final Map<String, CarriedUnsignedProspect> nextCarriedProspects;
+    final Map<String, DraftRights> nextCareerDraftRights;
+
+    if (career.careerDraftRights.containsKey(prospectId.value)) {
+      final rights = career.careerDraftRights[prospectId.value]!;
+      final carried = career.carriedUnsignedProspects[prospectId.value];
+      if (carried == null) {
+        throw StateError(
+          'Cannot sign: missing carried prospect snapshot for '
+          '${prospectId.value}',
+        );
+      }
+      owningTeamId = rights.owningTeamId;
+      draftSeasonYear = carried.draftSeasonYear;
+      overallPick = carried.overallPick;
+      player = carried.toPlayer();
+      profile = carried.toProfile();
+      nextCareerDraftRights = Map.of(career.careerDraftRights)
+        ..remove(prospectId.value);
+      nextCarriedProspects = Map.of(career.carriedUnsignedProspects)
+        ..remove(prospectId.value);
+    } else {
+      final draft = career.draftExecutionState;
+      if (!draft.isCompleted) {
+        throw StateError('Cannot sign: rookie draft is not completed');
+      }
+      final prospect = career.draftClass.byId(prospectId);
+      if (prospect == null) {
+        throw ArgumentError(
+          'Prospect ${prospectId.value} not found in draft class',
+        );
+      }
+      final rights = draft.draftRights[prospectId.value];
+      final selection = _selectionFor(draft.selections, prospectId);
+      if (rights == null || selection == null) {
+        throw StateError(
+          'Cannot sign: prospect ${prospectId.value} was not drafted',
+        );
+      }
+      owningTeamId = rights.owningTeamId;
+      draftSeasonYear = selection.seasonYear;
+      overallPick = selection.overallPick;
+      player = Player(
+        id: prospect.id,
+        firstName: prospect.firstName,
+        lastName: prospect.lastName,
+        position: prospect.position,
+        attributes: prospect.attributes,
       );
+      profile = PlayerCareerProfile(
+        playerId: prospect.id,
+        age: prospect.age,
+        potential: prospect.potential,
+        trajectory: prospect.trajectory,
+      )..validate(player);
+      nextCareerDraftRights = career.careerDraftRights;
+      nextCarriedProspects = career.carriedUnsignedProspects;
     }
-    final rights = draft.draftRights[prospectId.value];
-    final selection = _selectionFor(draft.selections, prospectId);
-    if (rights == null || selection == null) {
-      throw StateError(
-        'Cannot sign: prospect ${prospectId.value} was not drafted',
-      );
-    }
-    if (rights.owningTeamId != teamId) {
+
+    if (owningTeamId != teamId) {
       throw StateError(
         'Cannot sign: draft rights for ${prospectId.value} belong to '
-        '${rights.owningTeamId.value}',
+        '${owningTeamId.value}',
       );
     }
     final team = _teamById(career, teamId);
@@ -59,8 +110,18 @@ final class RookieSigningService {
         'Prospect ${prospectId.value} has already signed a rookie contract',
       );
     }
+    if (career.retiredPlayers.any((r) => r.playerId == prospectId)) {
+      throw StateError(
+        'Prospect ${prospectId.value} is retired and cannot be signed',
+      );
+    }
+    if (career.freeAgentPool.playerIds.contains(prospectId.value)) {
+      throw StateError(
+        'Prospect ${prospectId.value} is already in the free-agent pool',
+      );
+    }
     for (final candidate in career.league.teams) {
-      if (candidate.players.any((player) => player.id == prospectId)) {
+      if (candidate.players.any((p) => p.id == prospectId)) {
         throw StateError(
           'Prospect ${prospectId.value} is already on a contracted roster',
         );
@@ -90,19 +151,6 @@ final class RookieSigningService {
       );
     }
 
-    final player = Player(
-      id: prospect.id,
-      firstName: prospect.firstName,
-      lastName: prospect.lastName,
-      position: prospect.position,
-      attributes: prospect.attributes,
-    );
-    final profile = PlayerCareerProfile(
-      playerId: prospect.id,
-      age: prospect.age,
-      potential: prospect.potential,
-      trajectory: prospect.trajectory,
-    )..validate(player);
     final roster = team.roster.withPlayer(player, category: category);
     final capacity = roster.validateStructure(phase: career.phase);
     if (!capacity.isValid) {
@@ -118,8 +166,8 @@ final class RookieSigningService {
       category: category,
       startYear: career.currentYear,
       durationYears: durationYears,
-      draftSeasonYear: selection.seasonYear,
-      overallPick: selection.overallPick,
+      draftSeasonYear: draftSeasonYear,
+      overallPick: overallPick,
     );
     final updatedTeam = team.copyWith(roster: roster);
     final updatedLeague = League.create(
@@ -145,6 +193,8 @@ final class RookieSigningService {
         finances: career.finances,
         rookieContract: contract,
       ),
+      careerDraftRights: nextCareerDraftRights,
+      carriedUnsignedProspects: nextCarriedProspects,
     );
   }
 

@@ -381,7 +381,8 @@ void main() {
           ..remove('seasonHistory')
           ..remove('retiredPlayers')
           ..remove('seasonSettlements')
-          ..remove('careerDraftRights');
+          ..remove('careerDraftRights')
+          ..remove('carriedUnsignedProspects');
         final migrated = GmCareerCodec.decode(jsonEncode(older));
         expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
         expect(migrated.freeAgentOffers.isEmpty, isTrue);

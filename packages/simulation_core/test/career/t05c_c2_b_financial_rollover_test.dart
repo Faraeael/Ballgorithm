@@ -296,10 +296,10 @@ void main() {
     test(
       '1, 2, 3, 4: v23 construction, v22 -> v23 & legacy v21 migration, deterministic encode/decode',
       () {
-        expect(GmCareer.currentSchemaVersion, 23);
-        expect(GmCareerCodec.currentSchemaVersion, 23);
+        expect(GmCareer.currentSchemaVersion, greaterThanOrEqualTo(23));
+        expect(GmCareerCodec.currentSchemaVersion, greaterThanOrEqualTo(23));
         expect(FinancialRules.financialSchemaVersion, 2);
-        expect(completedChamp.schemaVersion, 23);
+        expect(completedChamp.schemaVersion, GmCareer.currentSchemaVersion);
         expect(completedChamp.finances.guaranteedLiabilities, isEmpty);
         expect(completedChamp.finances.debtByTeam, isEmpty);
 
@@ -308,13 +308,14 @@ void main() {
             jsonDecode(GmCareerCodec.encode(completedChamp))
                 as Map<String, dynamic>;
         v23Map['schemaVersion'] = 22;
+        v23Map.remove('carriedUnsignedProspects');
         final finMap = v23Map['finances'] as Map<String, dynamic>;
         finMap['schemaVersion'] = 1;
         finMap.remove('guaranteedLiabilities');
         finMap.remove('debtByTeam');
 
         final migrated = GmCareerCodec.decode(jsonEncode(v23Map));
-        expect(migrated.schemaVersion, 23);
+        expect(migrated.schemaVersion, GmCareer.currentSchemaVersion);
         expect(migrated.finances.guaranteedLiabilities, isEmpty);
         expect(migrated.finances.debtByTeam, isEmpty);
         expect(
@@ -742,6 +743,8 @@ void main() {
           eligibleExpiringFreeAgents: c2aPlan.eligibleExpiringFreeAgents,
           carriedForwardFreeAgents: c2aPlan.carriedForwardFreeAgents,
           proposedDraftRightsCarryover: c2aPlan.proposedDraftRightsCarryover,
+          proposedCarriedUnsignedProspects:
+              c2aPlan.proposedCarriedUnsignedProspects,
         );
         expect(
           () => financeService.plan(
@@ -785,6 +788,8 @@ void main() {
           eligibleExpiringFreeAgents: c2aPlan.eligibleExpiringFreeAgents,
           carriedForwardFreeAgents: c2aPlan.carriedForwardFreeAgents,
           proposedDraftRightsCarryover: c2aPlan.proposedDraftRightsCarryover,
+          proposedCarriedUnsignedProspects:
+              c2aPlan.proposedCarriedUnsignedProspects,
         );
         expect(
           () => financeService.plan(

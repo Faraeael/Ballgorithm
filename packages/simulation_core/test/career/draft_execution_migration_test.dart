@@ -56,7 +56,8 @@ void main() {
             ..remove('seasonHistory')
             ..remove('retiredPlayers')
             ..remove('seasonSettlements')
-            ..remove('careerDraftRights');
+            ..remove('careerDraftRights')
+            ..remove('carriedUnsignedProspects');
       final migrated = GmCareerCodec.decode(jsonEncode(legacy));
       final saved =
           jsonDecode(GmCareerCodec.encode(migrated)) as Map<String, dynamic>;

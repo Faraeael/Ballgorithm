@@ -83,6 +83,7 @@ export 'src/models/roster_membership.dart';
 export 'src/models/roster_rules.dart';
 export 'src/models/draft_selection.dart';
 export 'src/models/draft_rights.dart';
+export 'src/models/carried_unsigned_prospect.dart';
 export 'src/models/draft_execution_state.dart';
 export 'src/models/public_prospect_scouting_view.dart';
 export 'src/draft/ai_draft_strategy.dart';

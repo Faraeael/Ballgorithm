@@ -734,7 +734,8 @@ void main() {
             ..remove('seasonHistory')
             ..remove('retiredPlayers')
             ..remove('seasonSettlements')
-            ..remove('careerDraftRights');
+            ..remove('careerDraftRights')
+            ..remove('carriedUnsignedProspects');
       final migrated = GmCareerCodec.decode(jsonEncode(json));
       expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
       expect(migrated.freeAgentMarket.status, FreeAgentMarketStatus.notStarted);
@@ -753,7 +754,8 @@ void main() {
           ..remove('seasonHistory')
           ..remove('retiredPlayers')
           ..remove('seasonSettlements')
-          ..remove('careerDraftRights');
+          ..remove('careerDraftRights')
+          ..remove('carriedUnsignedProspects');
         final migrated = GmCareerCodec.decode(jsonEncode(older));
         expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
         expect(
@@ -766,7 +768,8 @@ void main() {
         ..remove('seasonHistory')
         ..remove('retiredPlayers')
         ..remove('seasonSettlements')
-        ..remove('careerDraftRights');
+        ..remove('careerDraftRights')
+        ..remove('carriedUnsignedProspects');
       ((legacyV11['freeAgentMarket'] as Map<String, dynamic>)).remove(
         'roundHistory',
       );

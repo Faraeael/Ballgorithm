@@ -1,4 +1,7 @@
+import '../models/carried_unsigned_prospect.dart';
 import '../models/draft_rights.dart';
+import '../models/draft_selection.dart';
+import '../models/ids.dart';
 import '../models/player_career_profile.dart';
 import '../models/roster_category.dart';
 import '../models/roster_rules.dart';
@@ -237,8 +240,31 @@ final class SeasonRolloverPlanner {
     }
 
     final proposedDraftRightsCarryover = <String, DraftRights>{};
-    void addCarryoverRights(DraftRights rights) {
+    final proposedCarriedUnsignedProspects =
+        <String, CarriedUnsignedProspect>{};
+
+    DraftSelection? selectionFor(PlayerId prospectId) {
+      for (final s in career.draftExecutionState.selections) {
+        if (s.prospectId == prospectId) return s;
+      }
+      return null;
+    }
+
+    void recordCarryover(
+      DraftRights rights,
+      CarriedUnsignedProspect agedSnapshot,
+    ) {
       final pid = rights.prospectId.value;
+      if (proposedDraftRightsCarryover.containsKey(pid) ||
+          proposedCarriedUnsignedProspects.containsKey(pid)) {
+        throw StateError('Duplicate draft rights detected for prospect $pid');
+      }
+      proposedDraftRightsCarryover[pid] = rights;
+      proposedCarriedUnsignedProspects[pid] = agedSnapshot;
+    }
+
+    for (final pid in career.careerDraftRights.keys.toList()..sort()) {
+      final rights = career.careerDraftRights[pid]!;
       if (!validTeamIds.contains(rights.owningTeamId.value)) {
         throw StateError(
           'Draft rights $pid reference unknown team ${rights.owningTeamId.value}',
@@ -246,20 +272,83 @@ final class SeasonRolloverPlanner {
       }
       if (career.rookieSigningLedger.isSigned(rights.prospectId) ||
           retiredPlayerIds.contains(pid)) {
-        return;
+        continue;
       }
-      if (proposedDraftRightsCarryover.containsKey(pid)) {
-        throw StateError('Duplicate draft rights detected for prospect $pid');
+      final carried = career.carriedUnsignedProspects[pid];
+      if (carried == null) {
+        throw StateError(
+          'Missing CarriedUnsignedProspect snapshot for carried draft rights '
+          '$pid',
+        );
       }
-      proposedDraftRightsCarryover[pid] = rights;
+      if (carried.age >= PlayerCareerProfile.maxAge) {
+        retiredPlayerIds.add(pid);
+        retirements.add(
+          RetiredPlayerRecord(
+            playerId: carried.playerId,
+            fullName: carried.fullName,
+            position: carried.position,
+            finalAge: carried.age,
+            retiredAfterYear: completedYear,
+            lastTeamId: null,
+            finalOverall: carried.attributes.overallRating,
+          ),
+        );
+        continue;
+      }
+      recordCarryover(rights, carried.withAge(carried.age + 1));
     }
 
-    for (final pid in career.careerDraftRights.keys.toList()..sort()) {
-      addCarryoverRights(career.careerDraftRights[pid]!);
-    }
     for (final pid
         in career.draftExecutionState.draftRights.keys.toList()..sort()) {
-      addCarryoverRights(career.draftExecutionState.draftRights[pid]!);
+      final rights = career.draftExecutionState.draftRights[pid]!;
+      if (!validTeamIds.contains(rights.owningTeamId.value)) {
+        throw StateError(
+          'Draft rights $pid reference unknown team ${rights.owningTeamId.value}',
+        );
+      }
+      if (career.rookieSigningLedger.isSigned(rights.prospectId) ||
+          retiredPlayerIds.contains(pid)) {
+        continue;
+      }
+      final prospect = career.draftClass.byId(rights.prospectId);
+      if (prospect == null) {
+        throw StateError(
+          'Draft rights $pid missing matching prospect in draftClass',
+        );
+      }
+      final selection = selectionFor(rights.prospectId);
+      if (selection == null ||
+          selection.selectingTeamId != rights.owningTeamId ||
+          selection.overallPick != rights.overallPick ||
+          selection.seasonYear != rights.seasonYear) {
+        throw StateError(
+          'Draft rights $pid lack matching selection provenance',
+        );
+      }
+      if (prospect.age >= PlayerCareerProfile.maxAge) {
+        retiredPlayerIds.add(pid);
+        retirements.add(
+          RetiredPlayerRecord(
+            playerId: prospect.id,
+            fullName: prospect.fullName,
+            position: prospect.position,
+            finalAge: prospect.age,
+            retiredAfterYear: completedYear,
+            lastTeamId: null,
+            finalOverall: prospect.attributes.overallRating,
+          ),
+        );
+        continue;
+      }
+      recordCarryover(
+        rights,
+        CarriedUnsignedProspect.fromRookieProspect(
+          prospect: prospect,
+          rights: rights,
+          age: prospect.age + 1,
+        ),
+      );
     }
 
     return SeasonRolloverPlan(
@@ -276,6 +365,7 @@ final class SeasonRolloverPlanner {
       eligibleExpiringFreeAgents: eligibleExpiringFreeAgents,
       carriedForwardFreeAgents: carriedForwardFreeAgents,
       proposedDraftRightsCarryover: proposedDraftRightsCarryover,
+      proposedCarriedUnsignedProspects: proposedCarriedUnsignedProspects,
     );
   }
 }

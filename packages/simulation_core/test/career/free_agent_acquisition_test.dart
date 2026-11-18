@@ -549,7 +549,8 @@ void main() {
           ..remove('seasonHistory')
           ..remove('retiredPlayers')
           ..remove('seasonSettlements')
-          ..remove('careerDraftRights');
+          ..remove('careerDraftRights')
+          ..remove('carriedUnsignedProspects');
         final pool = older['freeAgentPool'];
         if (pool is Map<String, dynamic>) {
           pool
