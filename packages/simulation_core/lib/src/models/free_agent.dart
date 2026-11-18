@@ -9,7 +9,11 @@ import 'position.dart';
 final class FreeAgentEntry {
   const FreeAgentEntry({required this.player, required this.profile});
 
-  factory FreeAgentEntry.fromJson(Map<String, dynamic> json) {
+  factory FreeAgentEntry.fromJson(
+    Map<String, dynamic> json, {
+    int minAge = FreeAgentPool.minAge,
+    int maxAge = FreeAgentPool.maxAge,
+  }) {
     final rawPlayer = json['player'];
     final rawProfile = json['profile'];
     if (rawPlayer is! Map<String, dynamic> ||
@@ -18,7 +22,8 @@ final class FreeAgentEntry {
     }
     final player = Player.fromJson(rawPlayer, path: 'freeAgent.player');
     final profile = PlayerCareerProfile.fromJson(rawProfile);
-    return FreeAgentEntry(player: player, profile: profile)..validate();
+    return FreeAgentEntry(player: player, profile: profile)
+      ..validate(minAge: minAge, maxAge: maxAge);
   }
 
   final Player player;
@@ -29,17 +34,18 @@ final class FreeAgentEntry {
   /// Public evaluation contract; hidden potential and trajectory are omitted.
   PublicFreeAgentView toPublicView() => PublicFreeAgentView.fromEntry(this);
 
-  void validate() {
+  void validate({
+    int minAge = FreeAgentPool.minAge,
+    int maxAge = FreeAgentPool.maxAge,
+  }) {
     try {
       profile.validate(player);
     } on StateError catch (error) {
       throw FormatException('Invalid free-agent profile: ${error.message}');
     }
-    if (profile.age < FreeAgentPool.minAge ||
-        profile.age > FreeAgentPool.maxAge) {
+    if (profile.age < minAge || profile.age > maxAge) {
       throw FormatException(
-        'Free agent age ${profile.age} outside '
-        '${FreeAgentPool.minAge}..${FreeAgentPool.maxAge}',
+        'Free agent age ${profile.age} outside $minAge..$maxAge',
       );
     }
   }
@@ -101,6 +107,7 @@ final class PublicFreeAgentView {
 /// position; ongoing market state may shrink after authorized acquisitions.
 final class FreeAgentPool {
   FreeAgentPool({
+    this.seasonYear = 1,
     required List<FreeAgentEntry> entries,
     List<PlayerId>? initialPlayerIds,
     FreeAgentAcquisitionLedger? acquisitions,
@@ -112,17 +119,33 @@ final class FreeAgentPool {
     validate();
   }
 
-  factory FreeAgentPool.fromJson(Map<String, dynamic> json) {
+  factory FreeAgentPool.fromJson(
+    Map<String, dynamic> json, {
+    int fallbackSeasonYear = 1,
+  }) {
+    final rawSeasonYear = json['seasonYear'];
+    if (rawSeasonYear != null && rawSeasonYear is! int) {
+      throw const FormatException('Malformed FreeAgentPool seasonYear');
+    }
+    final seasonYear = rawSeasonYear as int? ?? fallbackSeasonYear;
     final rawEntries = json['entries'];
     if (rawEntries is! List) {
       throw const FormatException('Malformed FreeAgentPool JSON');
     }
     final entries = <FreeAgentEntry>[];
+    final entryMinAge = seasonYear == 1 ? minAge : PlayerCareerProfile.minAge;
+    final entryMaxAge = seasonYear == 1 ? maxAge : PlayerCareerProfile.maxAge;
     for (final rawEntry in rawEntries) {
       if (rawEntry is! Map<String, dynamic>) {
         throw const FormatException('Malformed free-agent entry');
       }
-      entries.add(FreeAgentEntry.fromJson(rawEntry));
+      entries.add(
+        FreeAgentEntry.fromJson(
+          rawEntry,
+          minAge: entryMinAge,
+          maxAge: entryMaxAge,
+        ),
+      );
     }
     final rawInitialIds = json['initialPlayerIds'];
     List<PlayerId>? initialPlayerIds;
@@ -147,6 +170,7 @@ final class FreeAgentPool {
       acquisitions = FreeAgentAcquisitionLedger.fromJson(rawAcquisitions);
     }
     return FreeAgentPool(
+      seasonYear: seasonYear,
       entries: entries,
       initialPlayerIds: initialPlayerIds,
       acquisitions: acquisitions,
@@ -158,6 +182,7 @@ final class FreeAgentPool {
   static const int minAge = 20;
   static const int maxAge = 36;
 
+  final int seasonYear;
   final List<FreeAgentEntry> entries;
 
   /// The original generated free-agent identities, frozen at creation.
@@ -180,9 +205,16 @@ final class FreeAgentPool {
   bool contains(PlayerId id) => byId(id) != null;
 
   void validate() {
+    if (seasonYear < 1) {
+      throw FormatException(
+        'FreeAgentPool seasonYear must be >= 1, got $seasonYear',
+      );
+    }
     final seen = <String>{};
+    final entryMinAge = seasonYear == 1 ? minAge : PlayerCareerProfile.minAge;
+    final entryMaxAge = seasonYear == 1 ? maxAge : PlayerCareerProfile.maxAge;
     for (final entry in entries) {
-      entry.validate();
+      entry.validate(minAge: entryMinAge, maxAge: entryMaxAge);
       if (!seen.add(entry.id.value)) {
         throw FormatException('Duplicate free-agent ID: ${entry.id.value}');
       }
@@ -202,6 +234,12 @@ final class FreeAgentPool {
     }
     final acquiredPlayerIds = <String>{};
     for (final acquisition in acquisitions.entries.values) {
+      if (acquisition.seasonYear != seasonYear) {
+        throw FormatException(
+          'Acquisition ${acquisition.transactionId} season ${acquisition.seasonYear} '
+          'does not match FreeAgentPool season $seasonYear',
+        );
+      }
       final id = acquisition.playerId.value;
       if (!initialSeen.contains(id)) {
         throw FormatException(
@@ -260,6 +298,7 @@ final class FreeAgentPool {
   }
 
   Map<String, dynamic> toJson() => {
+    'seasonYear': seasonYear,
     'entries': [for (final entry in entries) entry.toJson()],
     'initialPlayerIds': [for (final id in initialPlayerIds) id.value],
     'acquisitions': acquisitions.toJson(),

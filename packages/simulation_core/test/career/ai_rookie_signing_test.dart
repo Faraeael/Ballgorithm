@@ -424,7 +424,10 @@ void main() {
       final v5 = Map<String, dynamic>.from(v6)
         ..['schemaVersion'] = 5
         ..remove('aiRookieSigning')
-        ..remove('seasonHistory');
+        ..remove('seasonHistory')
+        ..remove('retiredPlayers')
+        ..remove('seasonSettlements')
+        ..remove('careerDraftRights');
       final migrated = GmCareerCodec.decode(jsonEncode(v5));
 
       expect(migrated.schemaVersion, GmCareer.currentSchemaVersion);

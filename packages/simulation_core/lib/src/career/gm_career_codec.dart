@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../generation/draft_generator.dart';
 import '../models/draft_execution_state.dart';
 import '../models/draft_order.dart';
+import '../models/draft_rights.dart';
 import '../models/franchise_situation.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
@@ -30,14 +31,16 @@ import 'offseason_readiness_gate.dart';
 import 'play_in_state.dart';
 import 'playoff_state.dart';
 import 'regular_season_state.dart';
+import 'retired_player_record.dart';
 import 'season_history_record.dart';
+import 'season_settlement_record.dart';
 import 'gm_career.dart';
 
 /// Serialization and strict validation for persistent [GmCareer] state.
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 21;
+  static const int currentSchemaVersion = 22;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -70,6 +73,16 @@ final class GmCareerCodec {
       'seasonHistory': [
         for (final record in career.seasonHistory) record.toJson(),
       ],
+      'retiredPlayers': [
+        for (final retired in career.retiredPlayers) retired.toJson(),
+      ],
+      'seasonSettlements': [
+        for (final settlement in career.seasonSettlements) settlement.toJson(),
+      ],
+      'careerDraftRights': {
+        for (final key in career.careerDraftRights.keys.toList()..sort())
+          key: career.careerDraftRights[key]!.toJson(),
+      },
       'rosterMemberships': {
         for (final team in career.league.teams)
           team.id.value: [
@@ -396,7 +409,15 @@ final class GmCareerCodec {
           'career JSON v9',
         );
       }
-      freeAgentPool = FreeAgentPool.fromJson(rawFreeAgentPool);
+      if (schemaVersion >= 22 && !rawFreeAgentPool.containsKey('seasonYear')) {
+        throw const FormatException(
+          'Missing seasonYear in freeAgentPool in career JSON v22',
+        );
+      }
+      freeAgentPool = FreeAgentPool.fromJson(
+        rawFreeAgentPool,
+        fallbackSeasonYear: currentYear,
+      );
     } else {
       freeAgentPool = const FreeAgentGenerator().generate(seed: generationSeed);
     }
@@ -560,6 +581,68 @@ final class GmCareerCodec {
       seasonHistory = const [];
     }
 
+    final List<RetiredPlayerRecord> retiredPlayers;
+    final rawRetiredPlayers = raw['retiredPlayers'];
+    final List<SeasonSettlementRecord> seasonSettlements;
+    final rawSeasonSettlements = raw['seasonSettlements'];
+    final Map<String, DraftRights> careerDraftRights;
+    final rawCareerDraftRights = raw['careerDraftRights'];
+    if (schemaVersion >= 22) {
+      if (!raw.containsKey('retiredPlayers') || rawRetiredPlayers is! List) {
+        throw const FormatException(
+          'Missing or invalid retiredPlayers in career JSON v22',
+        );
+      }
+      retiredPlayers = [
+        for (final entry in rawRetiredPlayers)
+          if (entry is Map<String, dynamic>)
+            RetiredPlayerRecord.fromJson(entry)
+          else
+            throw const FormatException('Malformed RetiredPlayerRecord entry'),
+      ];
+      if (!raw.containsKey('seasonSettlements') ||
+          rawSeasonSettlements is! List) {
+        throw const FormatException(
+          'Missing or invalid seasonSettlements in career JSON v22',
+        );
+      }
+      seasonSettlements = [
+        for (final entry in rawSeasonSettlements)
+          if (entry is Map<String, dynamic>)
+            SeasonSettlementRecord.fromJson(entry)
+          else
+            throw const FormatException(
+              'Malformed SeasonSettlementRecord entry',
+            ),
+      ];
+      if (!raw.containsKey('careerDraftRights') ||
+          rawCareerDraftRights is! Map<String, dynamic>) {
+        throw const FormatException(
+          'Missing or invalid careerDraftRights in career JSON v22',
+        );
+      }
+      careerDraftRights = <String, DraftRights>{};
+      for (final entry in rawCareerDraftRights.entries) {
+        if (entry.value is! Map<String, dynamic>) {
+          throw const FormatException('Malformed careerDraftRights entry');
+        }
+        careerDraftRights[entry.key] = DraftRights.fromJson(
+          entry.value as Map<String, dynamic>,
+        );
+      }
+    } else {
+      if (rawRetiredPlayers != null ||
+          rawSeasonSettlements != null ||
+          rawCareerDraftRights != null) {
+        throw const FormatException(
+          'Multi-season rollover metadata is not supported before career schema v22',
+        );
+      }
+      retiredPlayers = const [];
+      seasonSettlements = const [];
+      careerDraftRights = const {};
+    }
+
     final career = GmCareer(
       id: id,
       schemaVersion: schemaVersion == 17 ? 17 : currentSchemaVersion,
@@ -586,6 +669,9 @@ final class GmCareerCodec {
       regularSeasonState: regularSeasonState,
       playoffState: playoffState,
       seasonHistory: seasonHistory,
+      retiredPlayers: retiredPlayers,
+      seasonSettlements: seasonSettlements,
+      careerDraftRights: careerDraftRights,
     );
     if (schemaVersion == 17) _validateNativeCareer(career);
     final migrated = schemaVersion == 17 ? _migrateV17(career) : career;

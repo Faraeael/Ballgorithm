@@ -258,7 +258,10 @@ void main() {
           ..['schemaVersion'] = 1
           ..remove('draftOrder')
           ..remove('draftClass')
-          ..remove('seasonHistory');
+          ..remove('seasonHistory')
+          ..remove('retiredPlayers')
+          ..remove('seasonSettlements')
+          ..remove('careerDraftRights');
 
         await careerStorage.write(jsonEncode(rawV1Map));
 

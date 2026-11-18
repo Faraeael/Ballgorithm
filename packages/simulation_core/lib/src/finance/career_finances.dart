@@ -532,7 +532,22 @@ final class CareerFinances {
     }
 
     for (final rookie in rookieSigningLedger.contracts.values) {
-      if (!linkedRookieContracts.contains(rookie.id)) {
+      if (rookie.startYear > currentYear) {
+        issues.add(
+          ValidationIssue(
+            code: ValidationCode.rookieLinkMismatch,
+            path: 'finances.contracts',
+            message:
+                'signed RookieContract ${rookie.id} starts in future year '
+                '${rookie.startYear} > $currentYear',
+          ),
+        );
+        continue;
+      }
+      final isStillActive =
+          currentYear >= rookie.startYear &&
+          currentYear < rookie.startYear + rookie.durationYears;
+      if (isStillActive && !linkedRookieContracts.contains(rookie.id)) {
         issues.add(
           ValidationIssue(
             code: ValidationCode.rookieLinkMismatch,

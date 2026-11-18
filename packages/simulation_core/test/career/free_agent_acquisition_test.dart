@@ -546,7 +546,10 @@ void main() {
       for (var version = 1; version <= 8; version++) {
         final older = Map<String, dynamic>.from(base)
           ..['schemaVersion'] = version
-          ..remove('seasonHistory');
+          ..remove('seasonHistory')
+          ..remove('retiredPlayers')
+          ..remove('seasonSettlements')
+          ..remove('careerDraftRights');
         final pool = older['freeAgentPool'];
         if (pool is Map<String, dynamic>) {
           pool

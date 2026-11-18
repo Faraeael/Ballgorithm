@@ -273,7 +273,10 @@ void main() {
       final v12 = Map<String, dynamic>.from(base)
         ..['schemaVersion'] = 12
         ..remove('offseasonClearance')
-        ..remove('seasonHistory');
+        ..remove('seasonHistory')
+        ..remove('retiredPlayers')
+        ..remove('seasonSettlements')
+        ..remove('careerDraftRights');
       final migrated = GmCareerCodec.decode(jsonEncode(v12));
       expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
       expect(

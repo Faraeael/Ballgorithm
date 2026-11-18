@@ -117,6 +117,8 @@ export 'src/models/staff_commitment.dart';
 export 'src/models/facility_state.dart';
 export 'src/models/ai_rookie_signing.dart';
 export 'src/models/free_agent.dart';
+export 'src/career/retired_player_record.dart';
+export 'src/career/season_settlement_record.dart';
 export 'src/generation/free_agent_generator.dart';
 export 'src/draft/ai_rookie_signing_policy.dart';
 export 'src/draft/ai_rookie_signing_service.dart';

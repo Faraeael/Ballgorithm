@@ -731,7 +731,10 @@ void main() {
                 as Map<String, dynamic>
             ..['schemaVersion'] = 10
             ..remove('freeAgentMarket')
-            ..remove('seasonHistory');
+            ..remove('seasonHistory')
+            ..remove('retiredPlayers')
+            ..remove('seasonSettlements')
+            ..remove('careerDraftRights');
       final migrated = GmCareerCodec.decode(jsonEncode(json));
       expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
       expect(migrated.freeAgentMarket.status, FreeAgentMarketStatus.notStarted);
@@ -747,7 +750,10 @@ void main() {
         final older = Map<String, dynamic>.from(base)
           ..['schemaVersion'] = version
           ..remove('freeAgentMarket')
-          ..remove('seasonHistory');
+          ..remove('seasonHistory')
+          ..remove('retiredPlayers')
+          ..remove('seasonSettlements')
+          ..remove('careerDraftRights');
         final migrated = GmCareerCodec.decode(jsonEncode(older));
         expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
         expect(
@@ -757,7 +763,10 @@ void main() {
       }
       final legacyV11 = jsonDecode(jsonEncode(base)) as Map<String, dynamic>
         ..['schemaVersion'] = 11
-        ..remove('seasonHistory');
+        ..remove('seasonHistory')
+        ..remove('retiredPlayers')
+        ..remove('seasonSettlements')
+        ..remove('careerDraftRights');
       ((legacyV11['freeAgentMarket'] as Map<String, dynamic>)).remove(
         'roundHistory',
       );

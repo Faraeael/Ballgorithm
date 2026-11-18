@@ -394,7 +394,10 @@ void main() {
           ..['schemaVersion'] = 1
           ..remove('draftOrder')
           ..remove('draftClass')
-          ..remove('seasonHistory');
+          ..remove('seasonHistory')
+          ..remove('retiredPlayers')
+          ..remove('seasonSettlements')
+          ..remove('careerDraftRights');
 
         final v1Json = jsonEncode(v1Map);
 

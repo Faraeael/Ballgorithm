@@ -28,7 +28,9 @@ import 'career_setup.dart';
 import 'regular_season_state.dart';
 import 'play_in_state.dart';
 import 'playoff_state.dart';
+import 'retired_player_record.dart';
 import 'season_history_record.dart';
+import 'season_settlement_record.dart';
 import 'regular_season_schedule_generator.dart';
 import '../simulation/game_fingerprint.dart';
 import 'regular_season_game_adapter.dart';
@@ -83,6 +85,9 @@ final class GmCareer {
     this.playInState,
     this.playoffState,
     List<SeasonHistoryRecord> seasonHistory = const [],
+    List<RetiredPlayerRecord> retiredPlayers = const [],
+    List<SeasonSettlementRecord> seasonSettlements = const [],
+    Map<String, DraftRights> careerDraftRights = const {},
   }) : draftExecutionState =
            draftExecutionState ?? DraftExecutionState.initial(),
        rookieSigningLedger = rookieSigningLedger ?? RookieSigningLedger.empty(),
@@ -108,7 +113,12 @@ final class GmCareer {
            ),
        freeAgentPool =
            freeAgentPool ??
-           const FreeAgentGenerator().generate(seed: generationSeed),
+           FreeAgentPool(
+             seasonYear: currentYear,
+             entries: const FreeAgentGenerator()
+                 .generate(seed: generationSeed)
+                 .entries,
+           ),
        draftOrder =
            draftOrder ??
            const DraftGenerator().generateDraftOrder(
@@ -124,7 +134,10 @@ final class GmCareer {
              seed: generationSeed,
              seasonYear: currentYear,
            ),
-       seasonHistory = List.unmodifiable(seasonHistory) {
+       seasonHistory = List.unmodifiable(seasonHistory),
+       retiredPlayers = List.unmodifiable(retiredPlayers),
+       seasonSettlements = List.unmodifiable(seasonSettlements),
+       careerDraftRights = Map.unmodifiable(careerDraftRights) {
     validate();
   }
 
@@ -149,7 +162,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 21;
+  static const int currentSchemaVersion = 22;
 
   final String id;
   final int schemaVersion;
@@ -198,6 +211,15 @@ final class GmCareer {
 
   /// Immutable chronological summaries of completed prior seasons.
   final List<SeasonHistoryRecord> seasonHistory;
+
+  /// Immutable historical records of retired players across completed seasons.
+  final List<RetiredPlayerRecord> retiredPlayers;
+
+  /// Immutable per-season financial settlement evidence preventing double settlement.
+  final List<SeasonSettlementRecord> seasonSettlements;
+
+  /// Persistent unsigned draft rights carried across seasons.
+  final Map<String, DraftRights> careerDraftRights;
 
   /// Draft rights whose prospect has not signed a rookie contract yet.
   ///
@@ -308,11 +330,13 @@ final class GmCareer {
       }
     }
 
-    final userRound1Pick = draftOrder.pickAt(userOpeningDraftPick);
-    if (userRound1Pick.originalOwnerTeamId != userFranchiseId) {
-      throw FormatException(
-        'User franchise ${userFranchiseId.value} lacks original entitlement to opening draft pick $userOpeningDraftPick',
-      );
+    if (currentYear == 1) {
+      final userRound1Pick = draftOrder.pickAt(userOpeningDraftPick);
+      if (userRound1Pick.originalOwnerTeamId != userFranchiseId) {
+        throw FormatException(
+          'User franchise ${userFranchiseId.value} lacks original entitlement to opening draft pick $userOpeningDraftPick',
+        );
+      }
     }
 
     draftExecutionState.validate(
@@ -338,6 +362,116 @@ final class GmCareer {
     );
     _validateRegularSeasonState();
     _validateSeasonHistory(teamIds);
+    _validateRetiredPlayers(playerIds);
+    _validateSeasonSettlements(teamIds);
+    _validateCareerDraftRights(teamIds, playerIds);
+  }
+
+  void _validateRetiredPlayers(Set<String> activePlayerIds) {
+    final seenIds = <String>{};
+    for (final retired in retiredPlayers) {
+      retired.validate();
+      final pid = retired.playerId.value;
+      if (!seenIds.add(pid)) {
+        throw FormatException('Duplicate retired player ID: $pid');
+      }
+      if (retired.retiredAfterYear >= currentYear) {
+        throw FormatException(
+          'RetiredPlayerRecord $pid retiredAfterYear ${retired.retiredAfterYear} '
+          'must be < currentYear $currentYear',
+        );
+      }
+      if (activePlayerIds.contains(pid)) {
+        throw FormatException(
+          'Retired player $pid cannot remain on an active roster',
+        );
+      }
+      if (freeAgentPool.playerIds.contains(pid)) {
+        throw FormatException(
+          'Retired player $pid cannot remain in the free-agent pool',
+        );
+      }
+    }
+  }
+
+  void _validateSeasonSettlements(Set<String> teamIds) {
+    var previousYear = 0;
+    final seenYears = <int>{};
+    for (final settlement in seasonSettlements) {
+      settlement.validate();
+      if (settlement.seasonYear >= currentYear) {
+        throw const FormatException(
+          'SeasonSettlementRecord cannot represent current or future season',
+        );
+      }
+      if (settlement.seasonYear <= previousYear ||
+          !seenYears.add(settlement.seasonYear)) {
+        throw const FormatException(
+          'SeasonSettlementRecord entries must be strictly chronological and unique',
+        );
+      }
+      for (final tid in settlement.settledTeamIds) {
+        if (!teamIds.contains(tid.value)) {
+          throw FormatException(
+            'SeasonSettlementRecord references unknown franchise ${tid.value}',
+          );
+        }
+      }
+      previousYear = settlement.seasonYear;
+    }
+  }
+
+  void _validateCareerDraftRights(
+    Set<String> teamIds,
+    Set<String> activePlayerIds,
+  ) {
+    final retiredIds = {for (final r in retiredPlayers) r.playerId.value};
+    for (final entry in careerDraftRights.entries) {
+      final rights = entry.value;
+      rights.validate();
+      if (entry.key != rights.prospectId.value) {
+        throw const FormatException(
+          'careerDraftRights key does not match prospectId',
+        );
+      }
+      if (!teamIds.contains(rights.owningTeamId.value)) {
+        throw FormatException(
+          'careerDraftRights ${entry.key} references unknown franchise '
+          '${rights.owningTeamId.value}',
+        );
+      }
+      if (rights.seasonYear > currentYear) {
+        throw FormatException(
+          'careerDraftRights ${entry.key} seasonYear ${rights.seasonYear} '
+          'cannot exceed currentYear $currentYear',
+        );
+      }
+      if (activePlayerIds.contains(entry.key)) {
+        throw FormatException(
+          'careerDraftRights ${entry.key} cannot remain for an active rostered player',
+        );
+      }
+      if (freeAgentPool.playerIds.contains(entry.key)) {
+        throw FormatException(
+          'careerDraftRights ${entry.key} cannot collide with freeAgentPool',
+        );
+      }
+      if (retiredIds.contains(entry.key)) {
+        throw FormatException(
+          'careerDraftRights ${entry.key} cannot remain for a retired player',
+        );
+      }
+      if (rookieSigningLedger.isSigned(rights.prospectId)) {
+        throw FormatException(
+          'careerDraftRights ${entry.key} cannot remain after rookie signing',
+        );
+      }
+      if (draftExecutionState.draftRights.containsKey(entry.key)) {
+        throw FormatException(
+          'careerDraftRights ${entry.key} duplicates active draftExecutionState rights',
+        );
+      }
+    }
   }
 
   void _validateSeasonHistory(Set<String> teamIds) {
@@ -613,7 +747,26 @@ final class GmCareer {
   /// Rejects free agents that collide with ownership, contracts or prospects.
   void _validateFreeAgentPool() {
     freeAgentPool.validate();
+    if (freeAgentPool.seasonYear != currentYear) {
+      throw FormatException(
+        'FreeAgentPool seasonYear ${freeAgentPool.seasonYear} does not match '
+        'career year $currentYear',
+      );
+    }
     final freeAgentIds = freeAgentPool.playerIds;
+    final rosterPlayerIds = <String>{};
+    for (final team in league.teams) {
+      for (final player in team.players) {
+        rosterPlayerIds.add(player.id.value);
+      }
+    }
+    for (final playerId in freeAgentIds) {
+      if (rosterPlayerIds.contains(playerId)) {
+        throw FormatException(
+          'Free agent $playerId cannot simultaneously belong to an active roster',
+        );
+      }
+    }
     for (final team in league.teams) {
       for (final player in team.players) {
         if (freeAgentIds.contains(player.id.value)) {
@@ -659,7 +812,8 @@ final class GmCareer {
       }
     }
 
-    if (freeAgentPool.initialPlayerIds.length != FreeAgentPool.expectedSize) {
+    if (currentYear == 1 &&
+        freeAgentPool.initialPlayerIds.length != FreeAgentPool.expectedSize) {
       throw FormatException(
         'Initial free-agent identity snapshot must contain '
         '${FreeAgentPool.expectedSize} IDs, got '
@@ -1398,51 +1552,66 @@ final class GmCareer {
     required Map<String, RosterCategory> rosterCategoryByPlayerId,
   }) {
     if (rookieSigningLedger.isEmpty) return;
-    if (!draftExecutionState.isCompleted) {
-      throw const FormatException(
-        'Rookie contracts require a completed rookie draft',
-      );
-    }
     final selectionsByProspect = {
       for (final selection in draftExecutionState.selections)
         selection.prospectId.value: selection,
     };
     for (final contract in rookieSigningLedger.contracts.values) {
       final pid = contract.playerId.value;
-      if (draftClass.byId(contract.playerId) == null) {
+      if (contract.draftSeasonYear > currentYear) {
         throw FormatException(
-          'Rookie contract references unknown prospect $pid',
+          'Rookie contract for $pid references future draft season '
+          '${contract.draftSeasonYear}',
         );
       }
-      final selection = selectionsByProspect[pid];
-      if (selection == null) {
-        throw FormatException('Signed rookie $pid was never drafted');
+      if (contract.draftSeasonYear == currentYear) {
+        if (!draftExecutionState.isCompleted) {
+          throw const FormatException(
+            'Rookie contracts require a completed rookie draft',
+          );
+        }
+        if (draftClass.byId(contract.playerId) == null) {
+          throw FormatException(
+            'Rookie contract references unknown prospect $pid',
+          );
+        }
+        final selection = selectionsByProspect[pid];
+        if (selection == null) {
+          throw FormatException('Signed rookie $pid was never drafted');
+        }
+        if (selection.selectingTeamId != contract.teamId ||
+            selection.seasonYear != contract.draftSeasonYear ||
+            selection.overallPick != contract.overallPick) {
+          throw FormatException(
+            'Rookie contract for $pid does not match its draft selection',
+          );
+        }
       }
-      if (selection.selectingTeamId != contract.teamId ||
-          selection.seasonYear != contract.draftSeasonYear ||
-          selection.overallPick != contract.overallPick) {
-        throw FormatException(
-          'Rookie contract for $pid does not match its draft selection',
-        );
-      }
-      final rosterTeam = rosterTeamByPlayerId[pid];
-      if (rosterTeam == null) {
-        throw FormatException(
-          'Signed rookie $pid is not on a franchise roster',
-        );
-      }
-      if (rosterTeam != contract.teamId) {
-        throw FormatException(
-          'Signed rookie $pid roster franchise does not match contract',
-        );
-      }
-      if (rosterCategoryByPlayerId[pid] != contract.category) {
-        throw FormatException(
-          'Roster category for signed rookie $pid does not match contract',
-        );
-      }
-      if (careerProfiles.forPlayer(contract.playerId) == null) {
-        throw FormatException('Missing career profile for signed rookie $pid');
+      final isActiveEmployment =
+          currentYear >= contract.startYear &&
+          currentYear < contract.startYear + contract.durationYears;
+      if (isActiveEmployment) {
+        final rosterTeam = rosterTeamByPlayerId[pid];
+        if (rosterTeam == null) {
+          throw FormatException(
+            'Signed rookie $pid is not on a franchise roster',
+          );
+        }
+        if (rosterTeam != contract.teamId) {
+          throw FormatException(
+            'Signed rookie $pid roster franchise does not match contract',
+          );
+        }
+        if (rosterCategoryByPlayerId[pid] != contract.category) {
+          throw FormatException(
+            'Roster category for signed rookie $pid does not match contract',
+          );
+        }
+        if (careerProfiles.forPlayer(contract.playerId) == null) {
+          throw FormatException(
+            'Missing career profile for signed rookie $pid',
+          );
+        }
       }
     }
   }
@@ -1497,6 +1666,9 @@ final class GmCareer {
     Object? playoffState = _unset,
     CareerFinances? finances,
     List<SeasonHistoryRecord>? seasonHistory,
+    List<RetiredPlayerRecord>? retiredPlayers,
+    List<SeasonSettlementRecord>? seasonSettlements,
+    Map<String, DraftRights>? careerDraftRights,
   }) {
     return GmCareer(
       id: id ?? this.id,
@@ -1530,6 +1702,9 @@ final class GmCareer {
           : playoffState as PlayoffState?,
       finances: finances ?? this.finances,
       seasonHistory: seasonHistory ?? this.seasonHistory,
+      retiredPlayers: retiredPlayers ?? this.retiredPlayers,
+      seasonSettlements: seasonSettlements ?? this.seasonSettlements,
+      careerDraftRights: careerDraftRights ?? this.careerDraftRights,
     );
   }
 }

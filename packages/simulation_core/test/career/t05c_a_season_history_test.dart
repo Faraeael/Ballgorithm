@@ -351,6 +351,9 @@ String _asV20Json(GmCareer career) {
   final map = jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>;
   map['schemaVersion'] = 20;
   map.remove('seasonHistory');
+  map.remove('retiredPlayers');
+  map.remove('seasonSettlements');
+  map.remove('careerDraftRights');
   return jsonEncode(map);
 }
 
@@ -383,7 +386,7 @@ void main() {
         for (final c in [opening, completedRs, playInCareer, completedChamp]) {
           final v20Json = _asV20Json(c);
           final decoded = GmCareerCodec.decode(v20Json);
-          expect(decoded.schemaVersion, 21);
+          expect(decoded.schemaVersion, GmCareerCodec.currentSchemaVersion);
           expect(decoded.seasonHistory, isEmpty);
           expect(decoded.phase, c.phase);
           expect(
@@ -436,7 +439,10 @@ void main() {
         // v21 save missing seasonHistory is rejected
         final missingV21 =
             jsonDecode(GmCareerCodec.encode(opening)) as Map<String, dynamic>
-              ..remove('seasonHistory');
+              ..remove('seasonHistory')
+              ..remove('retiredPlayers')
+              ..remove('seasonSettlements')
+              ..remove('careerDraftRights');
         expect(
           () => GmCareerCodec.decode(jsonEncode(missingV21)),
           throwsFormatException,
@@ -626,6 +632,9 @@ void main() {
       final v17Map = jsonDecode(v21Json) as Map<String, dynamic>;
       v17Map['schemaVersion'] = 17;
       v17Map.remove('seasonHistory');
+      v17Map.remove('retiredPlayers');
+      v17Map.remove('seasonSettlements');
+      v17Map.remove('careerDraftRights');
       final rsMap = v17Map['regularSeasonState'] as Map<String, dynamic>;
       rsMap.remove('gameInputSnapshots');
       final grMap = rsMap['gameResults'] as Map<String, dynamic>;
@@ -637,7 +646,7 @@ void main() {
           ..remove('leagueSchemaVersion');
       }
       final migrated = GmCareerCodec.decode(jsonEncode(v17Map));
-      expect(migrated.schemaVersion, 21);
+      expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
       expect(migrated.seasonHistory, isEmpty);
       expect(GmCareerCodec.encode(migrated), equals(v21Json));
     });

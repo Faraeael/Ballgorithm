@@ -160,7 +160,10 @@ void main() {
       final v6 = Map<String, dynamic>.from(encoded)
         ..['schemaVersion'] = 6
         ..remove('freeAgentPool')
-        ..remove('seasonHistory');
+        ..remove('seasonHistory')
+        ..remove('retiredPlayers')
+        ..remove('seasonSettlements')
+        ..remove('careerDraftRights');
       final migrated = GmCareerCodec.decode(jsonEncode(v6));
 
       final expected = const FreeAgentGenerator().generate(seed: _seed);
@@ -202,7 +205,10 @@ void main() {
         ..remove('rosterMemberships')
         ..remove('draftOrder')
         ..remove('draftClass')
-        ..remove('seasonHistory');
+        ..remove('seasonHistory')
+        ..remove('retiredPlayers')
+        ..remove('seasonSettlements')
+        ..remove('careerDraftRights');
       final migrated = GmCareerCodec.decode(jsonEncode(v1));
       expect(migrated.freeAgentPool.length, 90);
       expect(

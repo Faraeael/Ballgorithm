@@ -49,7 +49,10 @@ void main() {
             )
             ..['schemaVersion'] = 14
             ..remove('regularSeasonState')
-            ..remove('seasonHistory');
+            ..remove('seasonHistory')
+            ..remove('retiredPlayers')
+            ..remove('seasonSettlements')
+            ..remove('careerDraftRights');
 
       final migrated = GmCareerCodec.decode(jsonEncode(v14));
       final encoded =
@@ -75,7 +78,10 @@ void main() {
               jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>,
             )
             ..['schemaVersion'] = 17
-            ..remove('seasonHistory');
+            ..remove('seasonHistory')
+            ..remove('retiredPlayers')
+            ..remove('seasonSettlements')
+            ..remove('careerDraftRights');
 
       final migrated = GmCareerCodec.decode(jsonEncode(v17));
 
@@ -96,7 +102,10 @@ void main() {
             ..['schemaVersion'] = 18
             ..remove('playInState')
             ..remove('playoffState')
-            ..remove('seasonHistory');
+            ..remove('seasonHistory')
+            ..remove('retiredPlayers')
+            ..remove('seasonSettlements')
+            ..remove('careerDraftRights');
 
       final migrated = GmCareerCodec.decode(jsonEncode(v18));
 
@@ -115,7 +124,10 @@ void main() {
             )
             ..['schemaVersion'] = 19
             ..remove('playoffState')
-            ..remove('seasonHistory');
+            ..remove('seasonHistory')
+            ..remove('retiredPlayers')
+            ..remove('seasonSettlements')
+            ..remove('careerDraftRights');
 
       final migrated = GmCareerCodec.decode(jsonEncode(v19));
 

@@ -216,7 +216,10 @@ void main() {
           final migratedV15 =
               jsonDecode(GmCareerCodec.encode(entered)) as Map<String, dynamic>
                 ..['schemaVersion'] = 15
-                ..remove('seasonHistory');
+                ..remove('seasonHistory')
+                ..remove('retiredPlayers')
+                ..remove('seasonSettlements')
+                ..remove('careerDraftRights');
           (migratedV15['regularSeasonState'] as Map<String, dynamic>).remove(
             'schedule',
           );
@@ -300,7 +303,10 @@ void main() {
           final scheduledV16 =
               Map<String, dynamic>.from(jsonDecode(scheduledSave))
                 ..['schemaVersion'] = 16
-                ..remove('seasonHistory');
+                ..remove('seasonHistory')
+                ..remove('retiredPlayers')
+                ..remove('seasonSettlements')
+                ..remove('careerDraftRights');
           (scheduledV16['regularSeasonState'] as Map<String, dynamic>).remove(
             'gameInputSnapshots',
           );
@@ -483,7 +489,10 @@ void main() {
           final legacyV17 =
               Map<String, dynamic>.from(jsonDecode(playedSave!) as Map)
                 ..['schemaVersion'] = 17
-                ..remove('seasonHistory');
+                ..remove('seasonHistory')
+                ..remove('retiredPlayers')
+                ..remove('seasonSettlements')
+                ..remove('careerDraftRights');
           final legacySeason =
               legacyV17['regularSeasonState'] as Map<String, dynamic>;
           legacySeason.remove('gameInputSnapshots');
@@ -2656,7 +2665,10 @@ Future<GmCareer?> _reportStartingSituationSeasons(
             )
             ..['schemaVersion'] = 19
             ..remove('playoffState')
-            ..remove('seasonHistory');
+            ..remove('seasonHistory')
+            ..remove('retiredPlayers')
+            ..remove('seasonSettlements')
+            ..remove('careerDraftRights');
       final migratedPartialV19 = GmCareerCodec.decode(
         jsonEncode(partialV19Save),
       );
@@ -2719,7 +2731,10 @@ Future<GmCareer?> _reportStartingSituationSeasons(
             )
             ..['schemaVersion'] = 19
             ..remove('playoffState')
-            ..remove('seasonHistory');
+            ..remove('seasonHistory')
+            ..remove('retiredPlayers')
+            ..remove('seasonSettlements')
+            ..remove('careerDraftRights');
       final migratedV19PlayIn = GmCareerCodec.decode(jsonEncode(v19PlayInSave));
       expect(migratedV19PlayIn.schemaVersion, GmCareer.currentSchemaVersion);
       expect(migratedV19PlayIn.phase, CareerPhase.playIn);
@@ -3218,7 +3233,10 @@ String _v18Json(GmCareer career) {
     ..['schemaVersion'] = 18
     ..remove('playInState')
     ..remove('playoffState')
-    ..remove('seasonHistory');
+    ..remove('seasonHistory')
+    ..remove('retiredPlayers')
+    ..remove('seasonSettlements')
+    ..remove('careerDraftRights');
   return jsonEncode(save);
 }
 
@@ -3226,6 +3244,9 @@ String _v19Json(GmCareer career) {
   final save = jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>
     ..['schemaVersion'] = 19
     ..remove('playoffState')
-    ..remove('seasonHistory');
+    ..remove('seasonHistory')
+    ..remove('retiredPlayers')
+    ..remove('seasonSettlements')
+    ..remove('careerDraftRights');
   return jsonEncode(save);
 }

@@ -367,6 +367,10 @@ void main() {
             seed: base.generationSeed,
             seasonYear: 2,
           ),
+          freeAgentPool: FreeAgentPool(
+            seasonYear: 2,
+            entries: base.freeAgentPool.entries,
+          ),
           freeAgentMarket: FreeAgentMarketState.initial(seasonYear: 2),
           offseasonClearance: OffseasonClearanceState.initial(seasonYear: 2),
           hardshipSettlement: HardshipSettlement.initial(seasonYear: 2),
@@ -477,6 +481,10 @@ void main() {
             league: base.league,
             seed: base.generationSeed,
             seasonYear: 2,
+          ),
+          freeAgentPool: FreeAgentPool(
+            seasonYear: 2,
+            entries: base.freeAgentPool.entries,
           ),
           freeAgentMarket: FreeAgentMarketState.initial(seasonYear: 2),
           offseasonClearance: OffseasonClearanceState.initial(seasonYear: 2),
