@@ -18,6 +18,7 @@ import '../models/hardship_settlement.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
 import '../models/player_career_profile.dart';
+import '../models/position.dart';
 import '../models/rookie_draft_class.dart';
 import '../models/rookie_signing_ledger.dart';
 import '../models/player_contract.dart';
@@ -31,6 +32,7 @@ import 'play_in_state.dart';
 import 'playoff_state.dart';
 import 'retired_player_record.dart';
 import 'season_history_record.dart';
+import 'season_market_history_record.dart';
 import 'season_settlement_record.dart';
 import 'regular_season_schedule_generator.dart';
 import '../simulation/game_fingerprint.dart';
@@ -90,6 +92,7 @@ final class GmCareer {
     List<SeasonSettlementRecord> seasonSettlements = const [],
     Map<String, DraftRights> careerDraftRights = const {},
     Map<String, CarriedUnsignedProspect> carriedUnsignedProspects = const {},
+    List<SeasonMarketHistoryRecord> marketHistory = const [],
   }) : draftExecutionState =
            draftExecutionState ?? DraftExecutionState.initial(),
        rookieSigningLedger = rookieSigningLedger ?? RookieSigningLedger.empty(),
@@ -146,7 +149,8 @@ final class GmCareer {
        carriedUnsignedProspects = Map.unmodifiable({
          for (final k in carriedUnsignedProspects.keys.toList()..sort())
            k: carriedUnsignedProspects[k]!,
-       }) {
+       }),
+       marketHistory = List.unmodifiable(marketHistory) {
     validate();
   }
 
@@ -171,7 +175,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 24;
+  static const int currentSchemaVersion = 25;
 
   final String id;
   final int schemaVersion;
@@ -233,6 +237,9 @@ final class GmCareer {
   /// Full immutable prospect snapshots for [careerDraftRights] holders.
   final Map<String, CarriedUnsignedProspect> carriedUnsignedProspects;
 
+  /// Append-only chronological historical market/draft/clearance/hardship records.
+  final List<SeasonMarketHistoryRecord> marketHistory;
+
   /// Draft rights whose prospect has not signed a rookie contract yet.
   ///
   /// Derived from authoritative draft history and the signing ledger; never
@@ -279,10 +286,19 @@ final class GmCareer {
       if (!teamIds.add(team.id.value)) {
         throw FormatException('Duplicate team ID in league: ${team.id.value}');
       }
-      if (team.roster.players.length < 5) {
-        throw FormatException(
-          'Team ${team.id.value} must have at least 5 players, found ${team.roster.players.length}',
-        );
+      if (phase != CareerPhase.openingOffseason) {
+        if (team.roster.players.length < 5) {
+          throw FormatException(
+            'Team ${team.id.value} must have at least 5 players, found ${team.roster.players.length}',
+          );
+        }
+        for (final position in Position.values) {
+          if (!team.roster.covers(position)) {
+            throw FormatException(
+              'Team ${team.id.value} must cover ${position.shortName} outside openingOffseason',
+            );
+          }
+        }
       }
       team.roster.validateStructure(phase: phase).throwIfInvalid();
       for (final player in team.players) {
@@ -383,6 +399,7 @@ final class GmCareer {
     _validateRetiredPlayers(playerIds);
     _validateSeasonSettlements(teamIds);
     _validateCareerDraftRights(teamIds, playerIds);
+    _validateMarketHistory();
   }
 
   void _validateRetiredPlayers(Set<String> activePlayerIds) {
@@ -525,6 +542,35 @@ final class GmCareer {
           'careerDraftRights',
         );
       }
+    }
+  }
+
+  void _validateMarketHistory() {
+    var previousYear = 0;
+    final seenYears = <int>{};
+    final historyYears = {for (final h in seasonHistory) h.seasonYear};
+    final settlementYears = {for (final s in seasonSettlements) s.seasonYear};
+    for (final record in marketHistory) {
+      record.validate();
+      if (record.seasonYear >= currentYear) {
+        throw const FormatException(
+          'SeasonMarketHistoryRecord cannot represent current or future season',
+        );
+      }
+      if (record.seasonYear <= previousYear ||
+          !seenYears.add(record.seasonYear)) {
+        throw const FormatException(
+          'SeasonMarketHistoryRecord entries must be strictly chronological and unique',
+        );
+      }
+      if (!historyYears.contains(record.seasonYear) ||
+          !settlementYears.contains(record.seasonYear)) {
+        throw FormatException(
+          'SeasonMarketHistoryRecord year ${record.seasonYear} must reconcile '
+          'with seasonHistory and seasonSettlements',
+        );
+      }
+      previousYear = record.seasonYear;
     }
   }
 
@@ -838,9 +884,13 @@ final class GmCareer {
       }
     }
     for (final contract in rookieSigningLedger.contracts.values) {
-      if (freeAgentIds.contains(contract.playerId.value)) {
+      final isActiveEmployment =
+          currentYear >= contract.startYear &&
+          currentYear < contract.startYear + contract.durationYears;
+      if (isActiveEmployment &&
+          freeAgentIds.contains(contract.playerId.value)) {
         throw FormatException(
-          'Free agent ${contract.playerId.value} has a rookie contract',
+          'Free agent ${contract.playerId.value} has an active rookie contract',
         );
       }
     }
@@ -1686,6 +1736,7 @@ final class GmCareer {
       config: league.config,
       teams: updatedTeams,
       enforceRosterSize: false,
+      enforcePositionCoverage: phase != CareerPhase.openingOffseason,
     );
     return copyWith(
       league: updatedLeague,
@@ -1724,6 +1775,7 @@ final class GmCareer {
     List<SeasonSettlementRecord>? seasonSettlements,
     Map<String, DraftRights>? careerDraftRights,
     Map<String, CarriedUnsignedProspect>? carriedUnsignedProspects,
+    List<SeasonMarketHistoryRecord>? marketHistory,
   }) {
     return GmCareer(
       id: id ?? this.id,
@@ -1762,6 +1814,7 @@ final class GmCareer {
       careerDraftRights: careerDraftRights ?? this.careerDraftRights,
       carriedUnsignedProspects:
           carriedUnsignedProspects ?? this.carriedUnsignedProspects,
+      marketHistory: marketHistory ?? this.marketHistory,
     );
   }
 }

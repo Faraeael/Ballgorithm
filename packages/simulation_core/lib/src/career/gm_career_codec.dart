@@ -34,6 +34,7 @@ import 'playoff_state.dart';
 import 'regular_season_state.dart';
 import 'retired_player_record.dart';
 import 'season_history_record.dart';
+import 'season_market_history_record.dart';
 import 'season_settlement_record.dart';
 import 'gm_career.dart';
 
@@ -41,7 +42,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 24;
+  static const int currentSchemaVersion = 25;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -88,6 +89,9 @@ final class GmCareerCodec {
         for (final key in career.carriedUnsignedProspects.keys.toList()..sort())
           key: career.carriedUnsignedProspects[key]!.toJson(),
       },
+      'marketHistory': [
+        for (final record in career.marketHistory) record.toJson(),
+      ],
       'rosterMemberships': {
         for (final team in career.league.teams)
           team.id.value: [
@@ -173,7 +177,11 @@ final class GmCareerCodec {
     if (rawLeague is! Map<String, dynamic>) {
       throw const FormatException('Missing or invalid league in career JSON');
     }
-    final baseLeague = League.fromJson(rawLeague, enforceRosterSize: false);
+    final baseLeague = League.fromJson(
+      rawLeague,
+      enforceRosterSize: false,
+      enforcePositionCoverage: phase != CareerPhase.openingOffseason,
+    );
 
     // Extract redundant inline roster categories from rawLeague if present
     final rawTeamsList = rawLeague['teams'];
@@ -312,6 +320,7 @@ final class GmCareerCodec {
       config: baseLeague.config,
       teams: leagueTeams,
       enforceRosterSize: false,
+      enforcePositionCoverage: phase != CareerPhase.openingOffseason,
     );
     final rawCareerProfiles = raw['careerProfiles'];
     if (rawCareerProfiles is! Map<String, dynamic>) {
@@ -707,6 +716,32 @@ final class GmCareerCodec {
       }
     }
 
+    final List<SeasonMarketHistoryRecord> marketHistory;
+    final rawMarketHistory = raw['marketHistory'];
+    if (schemaVersion >= 25) {
+      if (!raw.containsKey('marketHistory') || rawMarketHistory is! List) {
+        throw const FormatException(
+          'Missing or invalid marketHistory in career JSON v25',
+        );
+      }
+      marketHistory = [
+        for (final entry in rawMarketHistory)
+          if (entry is Map<String, dynamic>)
+            SeasonMarketHistoryRecord.fromJson(entry)
+          else
+            throw const FormatException(
+              'Malformed SeasonMarketHistoryRecord entry',
+            ),
+      ];
+    } else {
+      if (rawMarketHistory != null) {
+        throw const FormatException(
+          'marketHistory is not supported before career schema v25',
+        );
+      }
+      marketHistory = const [];
+    }
+
     final career = GmCareer(
       id: id,
       schemaVersion: schemaVersion == 17 ? 17 : currentSchemaVersion,
@@ -737,6 +772,7 @@ final class GmCareerCodec {
       seasonSettlements: seasonSettlements,
       careerDraftRights: careerDraftRights,
       carriedUnsignedProspects: carriedUnsignedProspects,
+      marketHistory: marketHistory,
     );
     if (schemaVersion == 17) _validateNativeCareer(career);
     final migrated = schemaVersion == 17 ? _migrateV17(career) : career;

@@ -250,6 +250,7 @@ final class FreeAgentAcquisitionService {
           candidate.id == teamId ? updatedTeam : candidate,
       ],
       enforceRosterSize: false,
+      enforcePositionCoverage: career.phase != CareerPhase.openingOffseason,
     );
     final updatedProfiles = LeagueCareerProfiles(
       schemaVersion: career.careerProfiles.schemaVersion,

@@ -9,6 +9,7 @@ abstract final class LeagueValidator {
   static ValidationResult validate(
     League league, {
     bool enforceRosterSize = true,
+    bool enforcePositionCoverage = true,
   }) {
     final issues = <ValidationIssue>[];
     final config = league.config;
@@ -42,15 +43,17 @@ abstract final class LeagueValidator {
         );
       }
 
-      for (final position in Position.values) {
-        if (!roster.covers(position)) {
-          issues.add(
-            ValidationIssue(
-              code: ValidationCode.positionCoverageMissing,
-              path: rosterPath,
-              message: 'team ${team.id.value} has no ${position.shortName}',
-            ),
-          );
+      if (enforcePositionCoverage) {
+        for (final position in Position.values) {
+          if (!roster.covers(position)) {
+            issues.add(
+              ValidationIssue(
+                code: ValidationCode.positionCoverageMissing,
+                path: rosterPath,
+                message: 'team ${team.id.value} has no ${position.shortName}',
+              ),
+            );
+          }
         }
       }
 

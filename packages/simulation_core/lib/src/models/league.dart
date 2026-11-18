@@ -58,12 +58,14 @@ final class League {
     required GenerationConfig config,
     required List<Team> teams,
     bool enforceRosterSize = true,
+    bool enforcePositionCoverage = true,
   }) {
     config.validateForEngine().throwIfInvalid();
     final league = League._(id: id, name: name, config: config, teams: teams);
     LeagueValidator.validate(
       league,
       enforceRosterSize: enforceRosterSize,
+      enforcePositionCoverage: enforcePositionCoverage,
     ).throwIfInvalid();
     return league;
   }
@@ -71,6 +73,7 @@ final class League {
   factory League.fromJson(
     Map<String, Object?> json, {
     bool? enforceRosterSize,
+    bool enforcePositionCoverage = true,
   }) {
     final schemaVersion = json['schemaVersion'];
     if (schemaVersion != snapshotSchemaVersion) {
@@ -189,6 +192,7 @@ final class League {
       config: config,
       teams: teams,
       enforceRosterSize: shouldEnforceRosterSize,
+      enforcePositionCoverage: enforcePositionCoverage,
     );
   }
 

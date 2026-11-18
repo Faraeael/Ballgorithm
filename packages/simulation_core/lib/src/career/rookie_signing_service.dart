@@ -9,6 +9,7 @@ import '../models/player_career_profile.dart';
 import '../models/rookie_contract.dart';
 import '../models/roster_category.dart';
 import '../models/team.dart';
+import 'career_phase.dart';
 import 'gm_career.dart';
 
 /// Atomic, pure-domain signing of one drafted prospect into a franchise roster.
@@ -179,6 +180,7 @@ final class RookieSigningService {
           candidate.id == teamId ? updatedTeam : candidate,
       ],
       enforceRosterSize: false,
+      enforcePositionCoverage: career.phase != CareerPhase.openingOffseason,
     );
     final updatedProfiles = LeagueCareerProfiles(
       schemaVersion: career.careerProfiles.schemaVersion,

@@ -126,6 +126,8 @@ export 'src/career/season_rollover_plan.dart';
 export 'src/career/season_rollover_planner.dart';
 export 'src/career/next_season_population_plan.dart';
 export 'src/career/next_season_population_service.dart';
+export 'src/career/season_market_history_record.dart';
+export 'src/career/season_rollover_service.dart';
 export 'src/career/season_settlement_record.dart';
 export 'src/generation/free_agent_generator.dart';
 export 'src/draft/ai_rookie_signing_policy.dart';

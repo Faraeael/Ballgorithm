@@ -309,6 +309,7 @@ void main() {
                 as Map<String, dynamic>;
         v23Map['schemaVersion'] = 22;
         v23Map.remove('carriedUnsignedProspects');
+        v23Map.remove('marketHistory');
         final finMap = v23Map['finances'] as Map<String, dynamic>;
         finMap['schemaVersion'] = 1;
         finMap.remove('guaranteedLiabilities');

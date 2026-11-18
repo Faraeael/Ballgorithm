@@ -398,7 +398,8 @@ void main() {
           ..remove('retiredPlayers')
           ..remove('seasonSettlements')
           ..remove('careerDraftRights')
-          ..remove('carriedUnsignedProspects');
+          ..remove('carriedUnsignedProspects')
+          ..remove('marketHistory');
 
         final v1Json = jsonEncode(v1Map);
 

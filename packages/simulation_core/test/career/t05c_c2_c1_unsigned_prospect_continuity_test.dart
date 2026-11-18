@@ -331,8 +331,8 @@ void main() {
     test(
       '1, 2, 3, 4: v24 construction, lossless v23->v24 migration, legacy failure on unreconstructible rights, deterministic codec',
       () {
-        expect(GmCareer.currentSchemaVersion, 24);
-        expect(GmCareerCodec.currentSchemaVersion, 24);
+        expect(GmCareer.currentSchemaVersion, greaterThanOrEqualTo(24));
+        expect(GmCareerCodec.currentSchemaVersion, greaterThanOrEqualTo(24));
         expect(completedChamp.carriedUnsignedProspects, isEmpty);
 
         // Lossless v23 -> v24 migration when careerDraftRights is empty
@@ -341,8 +341,9 @@ void main() {
                 as Map<String, dynamic>;
         v23Map['schemaVersion'] = 23;
         v23Map.remove('carriedUnsignedProspects');
+        v23Map.remove('marketHistory');
         final migratedFromV23 = GmCareerCodec.decode(jsonEncode(v23Map));
-        expect(migratedFromV23.schemaVersion, 24);
+        expect(migratedFromV23.schemaVersion, GmCareer.currentSchemaVersion);
         expect(migratedFromV23.carriedUnsignedProspects, isEmpty);
         expect(
           GmCareerCodec.encode(migratedFromV23),

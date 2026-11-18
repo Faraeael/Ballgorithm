@@ -306,7 +306,8 @@ void main() {
           ..remove('retiredPlayers')
           ..remove('seasonSettlements')
           ..remove('careerDraftRights')
-          ..remove('carriedUnsignedProspects');
+          ..remove('carriedUnsignedProspects')
+          ..remove('marketHistory');
 
         final decodedV1 = GmCareerCodec.decode(jsonEncode(v1Map));
         expect(decodedV1.schemaVersion, GmCareer.currentSchemaVersion);
@@ -327,7 +328,8 @@ void main() {
           ..remove('retiredPlayers')
           ..remove('seasonSettlements')
           ..remove('careerDraftRights')
-          ..remove('carriedUnsignedProspects');
+          ..remove('carriedUnsignedProspects')
+          ..remove('marketHistory');
 
         final decodedV2 = GmCareerCodec.decode(jsonEncode(v2Map));
         expect(decodedV2.schemaVersion, GmCareer.currentSchemaVersion);
@@ -351,7 +353,8 @@ void main() {
           ..remove('retiredPlayers')
           ..remove('seasonSettlements')
           ..remove('careerDraftRights')
-          ..remove('carriedUnsignedProspects');
+          ..remove('carriedUnsignedProspects')
+          ..remove('marketHistory');
 
         final migrated = GmCareerCodec.decode(jsonEncode(v2Map));
 

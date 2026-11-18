@@ -355,6 +355,7 @@ String _asV20Json(GmCareer career) {
   map.remove('seasonSettlements');
   map.remove('careerDraftRights');
   map.remove('carriedUnsignedProspects');
+  map.remove('marketHistory');
   return jsonEncode(map);
 }
 
@@ -444,7 +445,8 @@ void main() {
               ..remove('retiredPlayers')
               ..remove('seasonSettlements')
               ..remove('careerDraftRights')
-              ..remove('carriedUnsignedProspects');
+              ..remove('carriedUnsignedProspects')
+              ..remove('marketHistory');
         expect(
           () => GmCareerCodec.decode(jsonEncode(missingV21)),
           throwsFormatException,
@@ -638,6 +640,7 @@ void main() {
       v17Map.remove('seasonSettlements');
       v17Map.remove('careerDraftRights');
       v17Map.remove('carriedUnsignedProspects');
+      v17Map.remove('marketHistory');
       final rsMap = v17Map['regularSeasonState'] as Map<String, dynamic>;
       rsMap.remove('gameInputSnapshots');
       final grMap = rsMap['gameResults'] as Map<String, dynamic>;
