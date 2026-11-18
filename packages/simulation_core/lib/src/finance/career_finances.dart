@@ -1,5 +1,6 @@
 import '../models/contract_financials.dart';
 import '../models/facility_state.dart';
+import '../models/guaranteed_liability.dart';
 import '../models/ids.dart';
 import '../models/league.dart';
 import '../models/player_contract.dart';
@@ -23,11 +24,15 @@ final class CareerFinances {
     required Map<String, TeamFinances> teamFinances,
     required Map<String, StaffCommitment> staffCommitments,
     required Map<String, FacilityState> facilityByKey,
+    required Map<String, GuaranteedLiability> guaranteedLiabilities,
+    required Map<String, int> debtByTeam,
   }) : contracts = Map.unmodifiable(contracts),
        schedules = Map.unmodifiable(schedules),
        teamFinances = Map.unmodifiable(teamFinances),
        staffCommitments = Map.unmodifiable(staffCommitments),
-       facilities = Map.unmodifiable(facilityByKey);
+       facilities = Map.unmodifiable(facilityByKey),
+       guaranteedLiabilities = Map.unmodifiable(guaranteedLiabilities),
+       debtByTeam = Map.unmodifiable(debtByTeam);
 
   factory CareerFinances({
     required Iterable<PlayerContract> contracts,
@@ -35,6 +40,8 @@ final class CareerFinances {
     required Iterable<TeamFinances> teamFinances,
     required Iterable<StaffCommitment> staffCommitments,
     required Iterable<FacilityState> facilities,
+    Iterable<GuaranteedLiability> guaranteedLiabilities = const [],
+    Map<String, int> debtByTeam = const {},
   }) {
     final issues = <ValidationIssue>[];
     final contractsById = <String, PlayerContract>{};
@@ -105,6 +112,49 @@ final class CareerFinances {
       }
       facilityByKey[key] = facility;
     }
+    final liabilitiesById = <String, GuaranteedLiability>{};
+    final seenLiabilityContracts = <String>{};
+    for (final liability in guaranteedLiabilities) {
+      if (liabilitiesById.containsKey(liability.id) ||
+          !seenLiabilityContracts.add(liability.originalContractId)) {
+        issues.add(
+          ValidationIssue(
+            code: ValidationCode.financialDuplicate,
+            path: 'finances.guaranteedLiabilities',
+            message:
+                'duplicate guaranteed liability ${liability.id} / '
+                '${liability.originalContractId}',
+          ),
+        );
+      }
+      liabilitiesById[liability.id] = liability;
+    }
+    final normalizedDebt = <String, int>{};
+    for (final key in debtByTeam.keys.toList()..sort()) {
+      final debt = debtByTeam[key]!;
+      if (key.trim().isEmpty) {
+        issues.add(
+          const ValidationIssue(
+            code: ValidationCode.financialTeamInvalid,
+            path: 'finances.debtByTeam',
+            message: 'debtByTeam key must not be empty',
+          ),
+        );
+      }
+      if (debt < 0 || debt > FinancialRules.maximumBalance) {
+        issues.add(
+          ValidationIssue(
+            code: ValidationCode.moneyInvalid,
+            path: 'finances.debtByTeam',
+            message:
+                'franchise debt for $key must be 0..${FinancialRules.maximumBalance}, got $debt',
+          ),
+        );
+      }
+      if (debt > 0) {
+        normalizedDebt[key] = debt;
+      }
+    }
     ValidationResult(issues).throwIfInvalid();
     return CareerFinances._(
       contracts: contractsById,
@@ -112,6 +162,8 @@ final class CareerFinances {
       teamFinances: teamsById,
       staffCommitments: staffById,
       facilityByKey: facilityByKey,
+      guaranteedLiabilities: liabilitiesById,
+      debtByTeam: normalizedDebt,
     );
   }
 
@@ -144,6 +196,43 @@ final class CareerFinances {
       return parser(raw);
     }
 
+    final List<GuaranteedLiability> guaranteedLiabilities;
+    final Map<String, int> debtByTeam;
+    if (schemaVersion >= 2) {
+      guaranteedLiabilities = [
+        for (final raw in requireList('guaranteedLiabilities'))
+          parse(raw, GuaranteedLiability.fromJson, 'guaranteedLiabilities'),
+      ];
+      final rawDebt = json['debtByTeam'];
+      if (rawDebt is! Map<String, dynamic>) {
+        throw const FormatException(
+          'Missing or invalid debtByTeam in finances',
+        );
+      }
+      debtByTeam = <String, int>{};
+      for (final entry in rawDebt.entries) {
+        if (entry.value is! int) {
+          throw const FormatException('Malformed debtByTeam entry in finances');
+        }
+        final amount = entry.value as int;
+        if (amount < 0 || amount > FinancialRules.maximumBalance) {
+          throw FormatException(
+            'Invalid debtByTeam amount $amount for ${entry.key}',
+          );
+        }
+        debtByTeam[entry.key] = amount;
+      }
+    } else {
+      if (json.containsKey('guaranteedLiabilities') ||
+          json.containsKey('debtByTeam')) {
+        throw const FormatException(
+          'guaranteedLiabilities/debtByTeam not supported in financial schema v1',
+        );
+      }
+      guaranteedLiabilities = const [];
+      debtByTeam = const {};
+    }
+
     return CareerFinances(
       contracts: [
         for (final raw in requireList('contracts'))
@@ -165,6 +254,8 @@ final class CareerFinances {
         for (final raw in requireList('facilities'))
           parse(raw, FacilityState.fromJson, 'facilities'),
       ],
+      guaranteedLiabilities: guaranteedLiabilities,
+      debtByTeam: debtByTeam,
     );
   }
 
@@ -175,6 +266,14 @@ final class CareerFinances {
 
   /// Keyed by `facilityKey(teamId, kind)`.
   final Map<String, FacilityState> facilities;
+
+  /// Durable guaranteed salary obligations for retired players.
+  final Map<String, GuaranteedLiability> guaranteedLiabilities;
+
+  /// Durable non-negative franchise debt balances, keyed by `teamId.value`.
+  final Map<String, int> debtByTeam;
+
+  int debtFor(TeamId teamId) => debtByTeam[teamId.value] ?? 0;
 
   static String facilityKey(TeamId teamId, FacilityKind kind) =>
       '${teamId.value}:${kind.jsonValue}';
@@ -195,15 +294,41 @@ final class CareerFinances {
   Iterable<ContractFinancials> schedulesForTeam(TeamId teamId) =>
       schedules.values.where((schedule) => schedule.teamId == teamId);
 
-  int capPayrollFor(TeamId teamId, int year) => schedulesForTeam(teamId)
-      .where((schedule) {
-        final contract = contracts[schedule.contractId];
-        return contract != null && contract.category == RosterCategory.standard;
-      })
-      .fold<int>(
-        0,
-        (sum, schedule) => sum + (schedule.salaryForYear(year) ?? 0),
-      );
+  int activeStandardPayrollFor(TeamId teamId, int year) =>
+      schedulesForTeam(teamId)
+          .where((schedule) {
+            final contract = contracts[schedule.contractId];
+            return contract != null &&
+                contract.category == RosterCategory.standard;
+          })
+          .fold<int>(
+            0,
+            (sum, schedule) => sum + (schedule.salaryForYear(year) ?? 0),
+          );
+
+  int guaranteedLiabilityCapFor(TeamId teamId, int year) =>
+      guaranteedLiabilities.values
+          .where(
+            (liability) =>
+                liability.teamId == teamId &&
+                liability.originalCategory == RosterCategory.standard,
+          )
+          .fold<int>(
+            0,
+            (sum, liability) => sum + liability.salaryForYear(year),
+          );
+
+  int guaranteedLiabilityCashFor(TeamId teamId, int year) =>
+      guaranteedLiabilities.values
+          .where((liability) => liability.teamId == teamId)
+          .fold<int>(
+            0,
+            (sum, liability) => sum + liability.salaryForYear(year),
+          );
+
+  int capPayrollFor(TeamId teamId, int year) =>
+      activeStandardPayrollFor(teamId, year) +
+      guaranteedLiabilityCapFor(teamId, year);
 
   int twoWayPayrollFor(TeamId teamId, int year) => schedulesForTeam(teamId)
       .where((schedule) {
@@ -216,7 +341,9 @@ final class CareerFinances {
       );
 
   int cashPayrollFor(TeamId teamId, int year) =>
-      capPayrollFor(teamId, year) + twoWayPayrollFor(teamId, year);
+      activeStandardPayrollFor(teamId, year) +
+      twoWayPayrollFor(teamId, year) +
+      guaranteedLiabilityCashFor(teamId, year);
 
   int operatingCommitmentsFor(TeamId teamId) {
     var total = 0;
@@ -243,6 +370,7 @@ final class CareerFinances {
     required RookieSigningLedger rookieSigningLedger,
     required int currentYear,
     Map<String, int> hardshipCapReliefByTeam = const {},
+    bool allowRolloverDeficit = false,
   }) {
     final issues = <ValidationIssue>[];
     final teamsById = {for (final team in league.teams) team.id.value: team};
@@ -297,6 +425,66 @@ final class CareerFinances {
     }
     for (final facility in facilities.values) {
       checkRecord(facility.validationIssues());
+    }
+    final activePlayerIds = {
+      for (final c in contracts.values) c.playerId.value,
+    };
+    for (final liability in guaranteedLiabilities.values) {
+      checkRecord(liability.validationIssues());
+      if (!teamsById.containsKey(liability.teamId.value)) {
+        issues.add(
+          ValidationIssue(
+            code: ValidationCode.financialTeamInvalid,
+            path: 'finances.guaranteedLiabilities',
+            message:
+                'guaranteed liability ${liability.id} references unknown team '
+                '${liability.teamId.value}',
+          ),
+        );
+      }
+      if (contracts.containsKey(liability.originalContractId) ||
+          activePlayerIds.contains(liability.playerId.value)) {
+        issues.add(
+          ValidationIssue(
+            code: ValidationCode.financialDuplicate,
+            path: 'finances.guaranteedLiabilities',
+            message:
+                'guaranteed liability ${liability.id} duplicates active '
+                'contract ${liability.originalContractId}',
+          ),
+        );
+      }
+    }
+    for (final entry in debtByTeam.entries) {
+      if (!teamsById.containsKey(entry.key)) {
+        issues.add(
+          ValidationIssue(
+            code: ValidationCode.financialTeamInvalid,
+            path: 'finances.debtByTeam',
+            message: 'debt entry references unknown team ${entry.key}',
+          ),
+        );
+      }
+      if (entry.value < 0 || entry.value > FinancialRules.maximumBalance) {
+        issues.add(
+          ValidationIssue(
+            code: ValidationCode.moneyInvalid,
+            path: 'finances.debtByTeam',
+            message: 'invalid debt ${entry.value} for team ${entry.key}',
+          ),
+        );
+      }
+      final tf = teamFinances[entry.key];
+      if (entry.value > 0 && tf != null && tf.cash > 0) {
+        issues.add(
+          ValidationIssue(
+            code: ValidationCode.moneyInvalid,
+            path: 'finances.debtByTeam',
+            message:
+                'team ${entry.key} cannot hold both positive cash and debt',
+          ),
+        );
+      }
     }
 
     for (final team in league.teams) {
@@ -623,7 +811,11 @@ final class CareerFinances {
         );
       }
       final twoWayPayroll = twoWayPayrollFor(team.id, currentYear);
-      final cashPayroll = capPayroll + twoWayPayroll;
+      final cashPayroll =
+          capPayroll +
+          twoWayPayroll +
+          guaranteedLiabilityCashFor(team.id, currentYear) -
+          guaranteedLiabilityCapFor(team.id, currentYear);
       final operating = operatingCommitmentsFor(team.id);
       if (operating > finances.operatingBudget) {
         issues.add(
@@ -637,8 +829,12 @@ final class CareerFinances {
         );
       }
       final projected =
-          finances.cash + finances.revenueBaseline - cashPayroll - operating;
-      if (projected < 0) {
+          finances.cash -
+          debtFor(team.id) +
+          finances.revenueBaseline -
+          cashPayroll -
+          operating;
+      if (!allowRolloverDeficit && projected < 0) {
         issues.add(
           ValidationIssue(
             code: ValidationCode.cashInsufficient,
@@ -785,6 +981,9 @@ final class CareerFinances {
         final byTeam = a.teamId.value.compareTo(b.teamId.value);
         return byTeam != 0 ? byTeam : a.kind.index.compareTo(b.kind.index);
       });
+    final liabilityList = guaranteedLiabilities.values.toList()
+      ..sort((a, b) => a.id.compareTo(b.id));
+    final sortedDebtKeys = debtByTeam.keys.toList()..sort();
     return {
       'schemaVersion': FinancialRules.financialSchemaVersion,
       'teamFinances': [for (final entry in teamList) entry.toJson()],
@@ -792,6 +991,10 @@ final class CareerFinances {
       'schedules': [for (final entry in scheduleList) entry.toJson()],
       'staffCommitments': [for (final entry in staffList) entry.toJson()],
       'facilities': [for (final entry in facilityList) entry.toJson()],
+      'guaranteedLiabilities': [
+        for (final entry in liabilityList) entry.toJson(),
+      ],
+      'debtByTeam': {for (final key in sortedDebtKeys) key: debtByTeam[key]!},
     };
   }
 }

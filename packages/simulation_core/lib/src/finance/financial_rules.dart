@@ -38,8 +38,8 @@ abstract final class FinancialRules {
     return overage > maximumReliefOverage ? maximumReliefOverage : overage;
   }
 
-  /// Version of the financial section inside career schema v8.
-  static const int financialSchemaVersion = 1;
+  /// Version of the financial section inside career schema v23.
+  static const int financialSchemaVersion = 2;
 
   static const int minimumBalance = 0;
   static const int maximumBalance = 1000000;

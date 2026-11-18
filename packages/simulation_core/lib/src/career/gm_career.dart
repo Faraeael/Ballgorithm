@@ -162,7 +162,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 22;
+  static const int currentSchemaVersion = 23;
 
   final String id;
   final int schemaVersion;
@@ -354,11 +354,17 @@ final class GmCareer {
     _validateFreeAgentOffers();
     _validateHardshipSettlement();
     _validateOffseasonClearance();
+    if (currentYear == 1 && finances.debtByTeam.isNotEmpty) {
+      throw const FormatException(
+        'Year 1 career cannot carry franchise rollover debt',
+      );
+    }
     finances.validate(
       league: league,
       rookieSigningLedger: rookieSigningLedger,
       currentYear: currentYear,
       hardshipCapReliefByTeam: _hardshipCapReliefByTeam,
+      allowRolloverDeficit: currentYear >= 2,
     );
     _validateRegularSeasonState();
     _validateSeasonHistory(teamIds);

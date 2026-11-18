@@ -85,7 +85,7 @@ void main() {
       () {
         final career = _newOpeningCareer();
         expect(career.schemaVersion, GmCareerCodec.currentSchemaVersion);
-        expect(GmCareerCodec.currentSchemaVersion, 22);
+        expect(GmCareerCodec.currentSchemaVersion, greaterThanOrEqualTo(22));
         expect(career.retiredPlayers, isEmpty);
         expect(career.seasonSettlements, isEmpty);
         expect(career.careerDraftRights, isEmpty);
@@ -105,7 +105,7 @@ void main() {
         final v21Json = _asV21Json(career);
         final migrated = GmCareerCodec.decode(v21Json);
 
-        expect(migrated.schemaVersion, 22);
+        expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
         expect(migrated.currentYear, career.currentYear);
         expect(migrated.phase, career.phase);
         expect(migrated.id, career.id);
@@ -149,7 +149,7 @@ void main() {
         final career = _newOpeningCareer();
         final v20Json = _asV20Json(career);
         final migrated = GmCareerCodec.decode(v20Json);
-        expect(migrated.schemaVersion, 22);
+        expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
         expect(migrated.seasonHistory, isEmpty);
         expect(migrated.retiredPlayers, isEmpty);
 

@@ -40,7 +40,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 22;
+  static const int currentSchemaVersion = 23;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -550,6 +550,12 @@ final class GmCareerCodec {
       if (rawFinances is! Map<String, dynamic>) {
         throw const FormatException(
           'Missing or invalid finances in career JSON v8',
+        );
+      }
+      final finSchema = rawFinances['schemaVersion'];
+      if (schemaVersion >= 23 && (finSchema is! int || finSchema < 2)) {
+        throw const FormatException(
+          'Career schema v23 requires financial schema v2+',
         );
       }
       finances = CareerFinances.fromJson(rawFinances);
