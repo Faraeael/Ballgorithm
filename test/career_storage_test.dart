@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:basketball_manager/features/career/career_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:simulation_core/simulation_core.dart';
 
 void main() {
   group('M008-T04: GmCareerStorage File & In-Memory Isolation', () {
@@ -41,7 +42,16 @@ void main() {
         final savePath = '${tempDir.path}/ballgorithm_gm_career.json';
         final storage = FileGmCareerStorage(filePath: savePath);
 
-        const saveV1 = '{"schemaVersion":1,"id":"save-v1"}';
+        final setup = const CareerSetupService().generate(
+          const CareerSetupRequest(
+            selectedTeamId: TeamId('team-1'),
+            selectedSituation: FranchiseSituation.tanking,
+            seed: 20261028,
+          ),
+        );
+        final saveV1 = GmCareerCodec.encode(
+          GmCareer.fromSetupResult(setup, id: 'career-scope-12'),
+        );
         await storage.write(saveV1);
 
         // Simulate a previous verified save moved to .bak

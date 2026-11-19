@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:simulation_core/simulation_core.dart';
 
 class GmCareerStorageException implements Exception {
@@ -148,17 +149,94 @@ class InMemoryGmCareerStorage
   }
 }
 
-/// File-backed persistent storage for GM Career saves with atomic promotion,
-/// backup recovery, and strict isolation from M007 season saves.
+/// Narrow filesystem operations seam for deterministic durability fault injection.
+@visibleForTesting
+abstract interface class CareerStorageFileOps {
+  Future<bool> exists(File file);
+  Future<int> length(File file);
+  Future<String> readAsString(File file);
+  Future<void> writeAsString(File file, String contents, {bool flush = false});
+  Future<void> rename(File source, String newPath);
+  Future<void> copy(File source, String newPath);
+  Future<void> delete(File file);
+  Future<void> createParentDir(File file);
+}
+
+final class _DartCareerStorageFileOps implements CareerStorageFileOps {
+  const _DartCareerStorageFileOps();
+
+  @override
+  Future<bool> exists(File file) => file.exists();
+
+  @override
+  Future<int> length(File file) => file.length();
+
+  @override
+  Future<String> readAsString(File file) => file.readAsString();
+
+  @override
+  Future<void> writeAsString(
+    File file,
+    String contents, {
+    bool flush = false,
+  }) => file.writeAsString(contents, flush: flush);
+
+  @override
+  Future<void> rename(File source, String newPath) => source.rename(newPath);
+
+  @override
+  Future<void> copy(File source, String newPath) => source.copy(newPath);
+
+  @override
+  Future<void> delete(File file) => file.delete();
+
+  @override
+  Future<void> createParentDir(File file) =>
+      file.parent.create(recursive: true);
+}
+
+/// File-backed persistent storage for GM Career saves with validated recovery,
+/// staged promotion, and strict isolation from M007 season saves.
 class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
-  FileGmCareerStorage({this.filePath, this.directoryPath})
-    : assert(
-        filePath != null || directoryPath != null,
-        'Either filePath or directoryPath must be provided',
-      );
+  FileGmCareerStorage({
+    this.filePath,
+    this.directoryPath,
+    @visibleForTesting CareerStorageFileOps? fileOps,
+  }) : assert(
+         filePath != null || directoryPath != null,
+         'Either filePath or directoryPath must be provided',
+       ),
+       _fileOps = fileOps ?? const _DartCareerStorageFileOps();
 
   final String? filePath;
   final String? directoryPath;
+  final CareerStorageFileOps _fileOps;
+
+  static const List<Duration> _transientRetryDelays = [
+    Duration(milliseconds: 15),
+    Duration(milliseconds: 30),
+    Duration(milliseconds: 60),
+  ];
+
+  static bool _isTransientLockError(FileSystemException e) {
+    final code = e.osError?.errorCode;
+    // Windows ERROR_SHARING_VIOLATION (32) and ERROR_LOCK_VIOLATION (33).
+    return code == 32 || code == 33;
+  }
+
+  Future<T> _withTransientRetry<T>(Future<T> Function() operation) async {
+    for (var attempt = 0; ; attempt++) {
+      try {
+        return await operation();
+      } on FileSystemException catch (e) {
+        if (!_isTransientLockError(e) ||
+            attempt >= _transientRetryDelays.length) {
+          rethrow;
+        }
+        await Future<void>.delayed(_transientRetryDelays[attempt]);
+      }
+    }
+  }
 
   String resolvePath([String slot = 'default']) {
     _validateSlot(slot);
@@ -176,16 +254,59 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
   File _file(String slot) => File(resolvePath(slot));
   File _tempFile(String slot) => File('${resolvePath(slot)}.tmp');
   File _backupFile(String slot) => File('${resolvePath(slot)}.bak');
+  File _corruptFile(String slot, int stamp) =>
+      File('${resolvePath(slot)}.corrupt.$stamp');
 
-  /// Attempts to restore the previous verified save from backup if present and non-empty.
+  bool _isValidCareerJson(String content) {
+    if (content.trim().isEmpty) return false;
+    try {
+      GmCareerCodec.decode(content);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _quarantineIfPresent(File file, String slot) async {
+    if (!await _fileOps.exists(file)) return;
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    final quarantine = _corruptFile(slot, stamp);
+    try {
+      await _withTransientRetry(() => _fileOps.rename(file, quarantine.path));
+    } catch (_) {
+      try {
+        await _withTransientRetry(() => _fileOps.copy(file, quarantine.path));
+        await _withTransientRetry(() => _fileOps.delete(file));
+      } catch (_) {}
+    }
+  }
+
+  /// Attempts to restore a [GmCareerCodec]-validated backup if the active save
+  /// is missing, empty, or invalid. Never overwrites a valid active career.
   Future<String?> recoverBackup({String slot = 'default'}) async {
     final file = _file(slot);
     final backup = _backupFile(slot);
-    if (await backup.exists()) {
+    if (await _fileOps.exists(file)) {
       try {
-        final backupContent = await backup.readAsString();
-        if (backupContent.trim().isNotEmpty) {
-          await _replaceFile(backup, file);
+        final activeContent = await _fileOps.readAsString(file);
+        if (_isValidCareerJson(activeContent)) {
+          return null;
+        }
+      } catch (_) {}
+    }
+    if (await _fileOps.exists(backup)) {
+      try {
+        final backupContent = await _fileOps.readAsString(backup);
+        if (_isValidCareerJson(backupContent)) {
+          if (await _fileOps.exists(file)) {
+            final activeContent = await _fileOps.readAsString(file);
+            if (activeContent.trim().isNotEmpty) {
+              await _quarantineIfPresent(file, slot);
+            } else {
+              await _withTransientRetry(() => _fileOps.delete(file));
+            }
+          }
+          await _promoteActiveFile(backup, file);
           return backupContent;
         }
       } catch (_) {}
@@ -198,17 +319,29 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
     _validateSlot(slot);
     try {
       final file = _file(slot);
-      if (await file.exists()) {
-        final len = await file.length();
-        if (len > 0) return true;
+      if (await _fileOps.exists(file)) {
+        return true;
       }
       final backup = _backupFile(slot);
-      if (await backup.exists() && await backup.length() > 0) {
+      if (await _fileOps.exists(backup)) {
+        return true;
+      }
+      final temp = _tempFile(slot);
+      if (await _fileOps.exists(temp)) {
         return true;
       }
       return false;
-    } catch (_) {
-      return false;
+    } on FileSystemException catch (e) {
+      throw GmCareerStorageException(
+        'File system error checking career save: ${e.message}',
+        e,
+      );
+    } catch (e) {
+      if (e is GmCareerStorageException) rethrow;
+      throw GmCareerStorageException(
+        'Unexpected error checking career save: $e',
+        e,
+      );
     }
   }
 
@@ -218,54 +351,69 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
       final file = _file(slot);
       final temp = _tempFile(slot);
 
-      if (await file.exists()) {
-        final content = await file.readAsString();
-        if (content.trim().isNotEmpty) {
+      if (await _fileOps.exists(file)) {
+        final content = await _fileOps.readAsString(file);
+        if (_isValidCareerJson(content)) {
           return content;
         }
 
-        // Active file exists but is empty/whitespace.
-        // Attempt recovery from valid backup before returning unreadable content.
+        // Active file is empty or fails career validation:
+        // 1. Prefer validated backup (last known-good committed save).
         final recovered = await recoverBackup(slot: slot);
         if (recovered != null) {
           return recovered;
         }
 
-        // Recovery check: did an interrupted save leave a valid temp file?
-        if (await temp.exists()) {
+        // 2. Fall back to validated temp only if no valid backup exists.
+        if (await _fileOps.exists(temp)) {
           try {
-            final tempContent = await temp.readAsString();
-            if (tempContent.trim().isNotEmpty) {
-              await _replaceFile(temp, file);
+            final tempContent = await _fileOps.readAsString(temp);
+            if (_isValidCareerJson(tempContent)) {
+              if (content.trim().isNotEmpty) {
+                await _quarantineIfPresent(file, slot);
+              } else {
+                await _withTransientRetry(() => _fileOps.delete(file));
+              }
+              await _promoteActiveFile(temp, file);
               return tempContent;
             }
           } catch (_) {}
         }
 
-        // Active file exists but is empty, and no backup was recoverable.
-        // Return raw content so caller handles it as corrupted/empty save, NOT missing.
+        // 3. Preserve non-empty active bytes (including legacy/corrupt fixtures)
+        // or return empty string so caller treats it as corrupt/empty, not missing.
         return content;
       }
 
       // Active file does NOT exist.
-      // Recovery check 1: backup exists
+      // Recovery check 1: validated backup exists.
       final recovered = await recoverBackup(slot: slot);
       if (recovered != null) {
         return recovered;
       }
 
-      // Recovery check 2: temp exists
-      if (await temp.exists()) {
+      // Recovery check 2: validated temp exists.
+      if (await _fileOps.exists(temp)) {
         try {
-          final tempContent = await temp.readAsString();
-          if (tempContent.trim().isNotEmpty) {
-            await _replaceFile(temp, file);
+          final tempContent = await _fileOps.readAsString(temp);
+          if (_isValidCareerJson(tempContent)) {
+            await _promoteActiveFile(temp, file);
             return tempContent;
           }
         } catch (_) {}
       }
 
-      // Genuinely missing save
+      // If any save artifacts remain on disk when active is missing and none
+      // are valid, surface an explicit storage error instead of presenting the
+      // slot as genuinely empty.
+      if (await _fileOps.exists(_backupFile(slot)) ||
+          await _fileOps.exists(temp)) {
+        throw GmCareerStorageException(
+          'Save artifacts exist for slot "$slot" but no valid career could be recovered',
+        );
+      }
+
+      // Genuinely missing save (active, backup, and temp are all absent).
       return null;
     } on FileSystemException catch (e) {
       throw GmCareerStorageException(
@@ -288,40 +436,63 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
     final backup = _backupFile(slot);
 
     try {
-      // 1. Ensure directory exists
-      await file.parent.create(recursive: true);
+      // 1. Ensure directory exists.
+      await _fileOps.createParentDir(file);
 
-      // 2. Write completely to temp file in same directory and flush
-      await temp.writeAsString(data, flush: true);
+      // 2. Write completely to temp file in same directory, flush, and verify.
+      await _fileOps.writeAsString(temp, data, flush: true);
+      if (!await _fileOps.exists(temp) || await _fileOps.length(temp) <= 0) {
+        throw const GmCareerStorageException(
+          'Staged career temp file is missing or empty after flush',
+        );
+      }
 
-      // 3. Atomic promotion with backup preservation
-      final fileExists = await file.exists();
+      // 3. Promote staged temp with backup preservation.
+      final fileExists = await _fileOps.exists(file);
       if (fileExists) {
-        // Move current verified save to backup
-        await _replaceFile(file, backup);
+        var movedActiveToBackup = false;
+        var preserveExistingValidBackup = false;
+        if (await _fileOps.exists(backup)) {
+          try {
+            final backupContent = await _fileOps.readAsString(backup);
+            final activeContent = await _fileOps.readAsString(file);
+            if (_isValidCareerJson(backupContent) &&
+                !_isValidCareerJson(activeContent)) {
+              preserveExistingValidBackup = true;
+            }
+          } catch (_) {}
+        }
+
+        if (preserveExistingValidBackup) {
+          await _withTransientRetry(() => _fileOps.delete(file));
+        } else {
+          await _promoteActiveFile(file, backup);
+          movedActiveToBackup = true;
+        }
 
         try {
-          // Promote temp to active file
-          await _replaceFile(temp, file);
-
-          // Verify destination is non-empty before deleting backup
-          if (await file.exists() && await file.length() > 0) {
-            if (await backup.exists()) {
-              try {
-                await backup.delete();
-              } catch (_) {}
-            }
+          await _promoteActiveFile(temp, file);
+          if (!await _fileOps.exists(file) ||
+              await _fileOps.length(file) <= 0) {
+            throw const GmCareerStorageException(
+              'Promoted career save file is missing or empty',
+            );
           }
-        } catch (promoteError) {
-          // Promotion failed: clean up partial destination and restore backup
-          if (await file.exists()) {
+          if (await _fileOps.exists(backup)) {
             try {
-              await file.delete();
+              await _withTransientRetry(() => _fileOps.delete(backup));
             } catch (_) {}
           }
-          if (await backup.exists()) {
+        } catch (promoteError) {
+          if (await _fileOps.exists(file)) {
             try {
-              await _replaceFile(backup, file);
+              await _withTransientRetry(() => _fileOps.delete(file));
+            } catch (_) {}
+          }
+          if ((movedActiveToBackup || preserveExistingValidBackup) &&
+              await _fileOps.exists(backup)) {
+            try {
+              await _promoteActiveFile(backup, file);
             } catch (_) {}
           }
           throw GmCareerStorageException(
@@ -330,8 +501,17 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
           );
         }
       } else {
-        // No existing active file: promote temp directly
-        await _replaceFile(temp, file);
+        await _promoteActiveFile(temp, file);
+        if (!await _fileOps.exists(file) || await _fileOps.length(file) <= 0) {
+          throw const GmCareerStorageException(
+            'Promoted career save file is missing or empty',
+          );
+        }
+        if (await _fileOps.exists(backup)) {
+          try {
+            await _withTransientRetry(() => _fileOps.delete(backup));
+          } catch (_) {}
+        }
       }
     } on FileSystemException catch (e) {
       throw GmCareerStorageException(
@@ -344,6 +524,33 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
         'Unexpected error writing career save: $e',
         e,
       );
+    }
+  }
+
+  /// Promotes [source] to [target] using bounded transient-lock retries.
+  ///
+  /// Deletes any existing [target] before rename on Windows; if rename fails,
+  /// falls back to copy-then-delete and cleans up partial [target] on error.
+  Future<void> _promoteActiveFile(File source, File target) async {
+    if (await _fileOps.exists(target)) {
+      await _withTransientRetry(() => _fileOps.delete(target));
+    }
+    try {
+      await _withTransientRetry(() => _fileOps.rename(source, target.path));
+    } on FileSystemException {
+      try {
+        await _withTransientRetry(() => _fileOps.copy(source, target.path));
+        try {
+          await _withTransientRetry(() => _fileOps.delete(source));
+        } catch (_) {}
+      } catch (copyError) {
+        if (await _fileOps.exists(target)) {
+          try {
+            await _withTransientRetry(() => _fileOps.delete(target));
+          } catch (_) {}
+        }
+        rethrow;
+      }
     }
   }
 

@@ -1,9 +1,33 @@
+import 'dart:io';
+
 import 'package:basketball_manager/app.dart';
 import 'package:basketball_manager/features/career/career_storage.dart';
 import 'package:basketball_manager/features/season/season_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simulation_core/simulation_core.dart';
+
+class _HasSaveFaultCareerStorage extends InMemoryGmCareerStorage {
+  bool throwOnHasSave = false;
+  int writeAttempts = 0;
+
+  @override
+  Future<bool> hasSave({String slot = 'default'}) async {
+    if (throwOnHasSave) {
+      throw const GmCareerStorageException(
+        'File system error checking career save: Permission denied',
+        FileSystemException('Permission denied'),
+      );
+    }
+    return super.hasSave(slot: slot);
+  }
+
+  @override
+  Future<void> write(String data, {String slot = 'default'}) async {
+    writeAttempts++;
+    return super.write(data, slot: slot);
+  }
+}
 
 const _config = GenerationConfig(seed: 20261028);
 
@@ -277,6 +301,84 @@ void main() {
         expect(find.text('AUR Offseason'), findsOneWidget);
         expect(find.text('Starting Situation:'), findsOneWidget);
         expect(find.text('Play-In Contender'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'FIX2: FranchiseSelectScreen surfaces error and CareerSetupReviewScreen refuses to write when hasSave fails',
+      (tester) async {
+        _useSmallViewport(tester);
+
+        final existingSetup = const CareerSetupService().generate(
+          const CareerSetupRequest(
+            selectedTeamId: TeamId('team-1'),
+            selectedSituation: FranchiseSituation.tanking,
+            seed: 20261028,
+          ),
+        );
+        final existingJson = GmCareerCodec.encode(
+          GmCareer.fromSetupResult(existingSetup, id: 'existing-fix2'),
+        );
+
+        final seasonStorage = InMemorySeasonStorage();
+        final careerStorage = _HasSaveFaultCareerStorage();
+        await careerStorage.write(existingJson);
+        careerStorage.writeAttempts = 0;
+        careerStorage.throwOnHasSave = true;
+        careerStorage.shouldThrowOnRead = true;
+
+        // 1. Launch app -> FranchiseSelectScreen._checkCareerSave catches hasSave error
+        await tester.pumpWidget(
+          BasketballManagerApp(
+            league: league,
+            storage: seasonStorage,
+            careerStorage: careerStorage,
+            seasonMode: true,
+            seedProvider: () => 20261028,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.textContaining('Failed to load GM Career:'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Save file preserved.'), findsOneWidget);
+
+        // 2. Navigate to CareerSetupReviewScreen and attempt Start GM Career
+        await tester.tap(find.byKey(const ValueKey('open-career-preview')));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('career-team-option-team-1')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('next-situation-button')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('situation-card-tanking')));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('generate-career-preview-button')),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.drag(
+          find.byKey(const ValueKey('career-preview-scroll')),
+          const Offset(0, -1500),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('start-career-button')));
+        await tester.pumpAndSettle();
+
+        // Normal creation & overwrite confirmations must NOT appear; write() never called
+        expect(find.text('Confirm GM Career Creation'), findsNothing);
+        expect(find.text('Replace Existing Career?'), findsNothing);
+        expect(find.text('Career Save Error'), findsOneWidget);
+        expect(careerStorage.writeAttempts, 0);
+
+        // Existing save on disk remains completely untouched
+        careerStorage.throwOnHasSave = false;
+        careerStorage.shouldThrowOnRead = false;
+        expect(await careerStorage.read(), equals(existingJson));
       },
     );
   });
