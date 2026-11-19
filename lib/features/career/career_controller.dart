@@ -461,11 +461,8 @@ class GmCareerController extends ChangeNotifier {
     required bool confirmed,
     String slot = 'default',
   }) => persistArchivedSeasonTransition(
-    buildNextCareer: (current, archiveRecord) =>
-        const SeasonRolloverService().rollover(
-          current: current,
-          archiveRecord: archiveRecord,
-        ),
+    buildNextCareer: (current, archiveRecord) => const SeasonRolloverService()
+        .rollover(current: current, archiveRecord: archiveRecord),
     confirmed: confirmed,
     slot: slot,
   );
@@ -612,6 +609,52 @@ class GmCareerController extends ChangeNotifier {
     try {
       final imported = const CareerBundleService().importBundle(bundleJson);
       final archiveStorage = _requireArchiveStorage();
+
+      // Preflight active career ownership and all archive conflicts before
+      // mutating any persistent files in [slot].
+      if (await storage.hasSave(slot: slot)) {
+        final existingActiveRaw = await storage.read(slot: slot);
+        if (existingActiveRaw != null && existingActiveRaw.trim().isNotEmpty) {
+          final existingCareer = GmCareerCodec.decode(existingActiveRaw);
+          if (existingCareer.id != imported.career.id) {
+            throw GmCareerStorageException(
+              'Cannot import bundle for career "${imported.career.id}" into '
+              'slot "$slot" owned by "${existingCareer.id}"',
+            );
+          }
+        }
+      }
+      for (final record in imported.career.seasonHistory) {
+        if (await archiveStorage.hasArchive(
+          seasonYear: record.seasonYear,
+          slot: slot,
+        )) {
+          final existingRaw = await archiveStorage.readArchive(
+            seasonYear: record.seasonYear,
+            slot: slot,
+          );
+          if (existingRaw != null &&
+              SeasonArchiveCodec.digestOf(existingRaw) !=
+                  record.archiveDigest) {
+            var existingValid = false;
+            try {
+              SeasonArchiveCodec.decodeAndVerify(
+                existingRaw,
+                expectedDigest: SeasonArchiveCodec.digestOf(existingRaw),
+                expectedSeasonYear: record.seasonYear,
+              );
+              existingValid = true;
+            } catch (_) {}
+            if (existingValid) {
+              throw GmCareerStorageException(
+                'Conflicting historical archive already exists for slot "$slot" '
+                'year ${record.seasonYear}',
+              );
+            }
+          }
+        }
+      }
+
       for (final record in imported.career.seasonHistory) {
         final rawArchive = imported.verifiedArchivesByYear[record.seasonYear]!;
         wrotePersistentState = true;

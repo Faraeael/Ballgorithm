@@ -583,6 +583,84 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
   File _archiveTempFile(int seasonYear, String slot) =>
       File('${resolveArchivePath(seasonYear, slot)}.tmp');
 
+  Future<File> _nextArchiveQuarantineFile(int seasonYear, String slot) async {
+    final basePath = resolveArchivePath(seasonYear, slot);
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    var candidate = File('$basePath.corrupt.$stamp');
+    var counter = 0;
+    while (await _fileOps.exists(candidate)) {
+      counter++;
+      candidate = File('$basePath.corrupt.$stamp.$counter');
+    }
+    return candidate;
+  }
+
+  Future<GmCareer?> _readValidActiveCareerForSlot(String slot) async {
+    final file = _file(slot);
+    if (await _fileOps.exists(file)) {
+      final raw = await _fileOps.readAsString(file);
+      if (raw.trim().isNotEmpty) {
+        try {
+          return GmCareerCodec.decode(raw);
+        } catch (_) {}
+      }
+    }
+    final backup = _backupFile(slot);
+    if (await _fileOps.exists(backup)) {
+      final raw = await _fileOps.readAsString(backup);
+      if (raw.trim().isNotEmpty) {
+        try {
+          return GmCareerCodec.decode(raw);
+        } catch (_) {}
+      }
+    }
+    return null;
+  }
+
+  Future<void> _quarantineArchiveFile(
+    File file, {
+    required int seasonYear,
+    required String slot,
+  }) async {
+    final quarantine = await _nextArchiveQuarantineFile(seasonYear, slot);
+    try {
+      await _withTransientRetry(() => _fileOps.rename(file, quarantine.path));
+    } on FileSystemException {
+      await _withTransientRetry(() => _fileOps.copy(file, quarantine.path));
+      await _withTransientRetry(() => _fileOps.delete(file));
+    }
+    if (await _fileOps.exists(file) || !await _fileOps.exists(quarantine)) {
+      throw GmCareerStorageException(
+        'Failed to quarantine corrupt archive for slot "$slot" year $seasonYear',
+      );
+    }
+  }
+
+  Future<void> _promoteArchiveFile(File source, File target) async {
+    if (await _fileOps.exists(target)) {
+      throw GmCareerStorageException(
+        'Refusing to overwrite existing archive destination: ${target.path}',
+      );
+    }
+    try {
+      await _withTransientRetry(() => _fileOps.rename(source, target.path));
+    } on FileSystemException {
+      try {
+        await _withTransientRetry(() => _fileOps.copy(source, target.path));
+        try {
+          await _withTransientRetry(() => _fileOps.delete(source));
+        } catch (_) {}
+      } catch (copyError) {
+        if (await _fileOps.exists(target)) {
+          try {
+            await _withTransientRetry(() => _fileOps.delete(target));
+          } catch (_) {}
+        }
+        rethrow;
+      }
+    }
+  }
+
   @override
   Future<void> writeArchive({
     required int seasonYear,
@@ -591,37 +669,113 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
     String slot = 'default',
   }) async {
     try {
-      _validateSlot(slot);
+      resolveArchivePath(seasonYear, slot);
       if (SeasonArchiveCodec.digestOf(archiveJson) != expectedDigest) {
         throw const GmCareerStorageException(
           'Archive payload digest does not match expectedDigest',
         );
       }
+
+      // 1. Validate full incoming SeasonArchive before touching disk.
+      try {
+        SeasonArchiveCodec.decodeAndVerify(
+          archiveJson,
+          expectedDigest: expectedDigest,
+          expectedSeasonYear: seasonYear,
+        );
+      } catch (e) {
+        throw GmCareerStorageException(
+          'Invalid incoming season archive for slot "$slot" year $seasonYear: $e',
+          e,
+        );
+      }
+
+      // 2. Verify active career history digest if present in slot.
+      final activeCareer = await _readValidActiveCareerForSlot(slot);
+      if (activeCareer != null) {
+        for (final record in activeCareer.seasonHistory) {
+          if (record.seasonYear == seasonYear &&
+              record.archiveDigest != expectedDigest) {
+            throw GmCareerStorageException(
+              'Active career in slot "$slot" references a different archive '
+              'digest for year $seasonYear',
+            );
+          }
+        }
+      }
+
       final file = _archiveFile(seasonYear, slot);
       final temp = _archiveTempFile(seasonYear, slot);
-      await file.parent.create(recursive: true);
-      if (await file.exists()) {
-        final existing = await file.readAsString();
-        if (SeasonArchiveCodec.digestOf(existing) == expectedDigest) {
-          if (await temp.exists()) {
-            await temp.delete();
+      await _fileOps.createParentDir(file);
+
+      // 3. Classify existing destination archive.
+      if (await _fileOps.exists(file)) {
+        final existing = await _fileOps.readAsString(file);
+        final existingDigest = SeasonArchiveCodec.digestOf(existing);
+        if (existingDigest == expectedDigest) {
+          if (await _fileOps.exists(temp)) {
+            await _withTransientRetry(() => _fileOps.delete(temp));
           }
           return;
         }
-        throw GmCareerStorageException(
-          'Conflicting historical archive already exists for slot "$slot" year $seasonYear',
-        );
+
+        SeasonArchive? existingArchive;
+        var existingStructurallyValid = false;
+        try {
+          existingArchive = SeasonArchiveCodec.decodeAndVerify(
+            existing,
+            expectedDigest: existingDigest,
+            expectedSeasonYear: seasonYear,
+          );
+          existingStructurallyValid = true;
+        } catch (_) {}
+
+        if (existingStructurallyValid) {
+          throw GmCareerStorageException(
+            'Conflicting historical archive already exists for slot "$slot" '
+            'year $seasonYear (career "${existingArchive!.careerId}")',
+          );
+        }
+
+        // Corrupt/partial archive: quarantine with evidence preservation.
+        await _quarantineArchiveFile(file, seasonYear: seasonYear, slot: slot);
       }
-      if (await temp.exists()) {
-        await temp.delete();
+
+      // 4. Stage, flush, verify, and promote without deleting a valid target.
+      if (await _fileOps.exists(temp)) {
+        await _withTransientRetry(() => _fileOps.delete(temp));
       }
       try {
-        await temp.writeAsString(archiveJson, flush: true);
-        await _replaceFile(temp, file);
+        await _fileOps.writeAsString(temp, archiveJson, flush: true);
+        if (!await _fileOps.exists(temp) || await _fileOps.length(temp) <= 0) {
+          throw const GmCareerStorageException(
+            'Staged archive temp file is missing or empty after flush',
+          );
+        }
+        final stagedContent = await _fileOps.readAsString(temp);
+        if (SeasonArchiveCodec.digestOf(stagedContent) != expectedDigest) {
+          throw const GmCareerStorageException(
+            'Staged archive temp file digest mismatch after flush',
+          );
+        }
+
+        await _promoteArchiveFile(temp, file);
+
+        if (!await _fileOps.exists(file)) {
+          throw const GmCareerStorageException(
+            'Promoted season archive file is missing',
+          );
+        }
+        final promotedContent = await _fileOps.readAsString(file);
+        if (SeasonArchiveCodec.digestOf(promotedContent) != expectedDigest) {
+          throw const GmCareerStorageException(
+            'Promoted season archive digest verification failed',
+          );
+        }
       } finally {
-        if (await temp.exists()) {
+        if (await _fileOps.exists(temp)) {
           try {
-            await temp.delete();
+            await _withTransientRetry(() => _fileOps.delete(temp));
           } catch (_) {}
         }
       }
@@ -646,8 +800,8 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
   }) async {
     try {
       final file = _archiveFile(seasonYear, slot);
-      if (await file.exists()) {
-        return await file.readAsString();
+      if (await _fileOps.exists(file)) {
+        return await _fileOps.readAsString(file);
       }
       return null;
     } on FileSystemException catch (e) {
@@ -669,12 +823,21 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
     required int seasonYear,
     String slot = 'default',
   }) async {
-    _validateSlot(slot);
+    resolveArchivePath(seasonYear, slot);
     try {
       final file = _archiveFile(seasonYear, slot);
-      return await file.exists() && await file.length() > 0;
-    } catch (_) {
-      return false;
+      return await _fileOps.exists(file);
+    } on FileSystemException catch (e) {
+      throw GmCareerStorageException(
+        'File system error checking season archive: ${e.message}',
+        e,
+      );
+    } catch (e) {
+      if (e is GmCareerStorageException) rethrow;
+      throw GmCareerStorageException(
+        'Unexpected error checking season archive: $e',
+        e,
+      );
     }
   }
 
@@ -739,30 +902,6 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
         'Unexpected error clearing career save: $e',
         e,
       );
-    }
-  }
-
-  /// Platform-safe file replace: handles Windows replace semantics where
-  /// File.rename throws when target exists.
-  Future<void> _replaceFile(File source, File target) async {
-    if (await target.exists()) {
-      await target.delete();
-    }
-    try {
-      await source.rename(target.path);
-    } on FileSystemException {
-      // Non-atomic copy fallback (handles cross-mount or rename locks)
-      try {
-        await source.copy(target.path);
-        await source.delete();
-      } catch (copyError) {
-        if (await target.exists()) {
-          try {
-            await target.delete();
-          } catch (_) {}
-        }
-        rethrow;
-      }
     }
   }
 }
