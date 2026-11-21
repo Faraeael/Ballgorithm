@@ -157,6 +157,11 @@ void main() {
       );
       expect(find.text('Season 1 → Season 2'), findsOneWidget);
       expect(find.text('Preparing next season'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('continue-to-next-season')),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(
         tester
             .widget<FilledButton>(
@@ -171,6 +176,12 @@ void main() {
         warnIfMissed: false,
       );
       expect(workerCalls, 1);
+      // Bring progress card back into the built viewport for later stages.
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('season-transition-progress-card')),
+        -300,
+        scrollable: find.byType(Scrollable).first,
+      );
 
       // Release worker -> Stage 2: Verifying and archiving completed season
       workerGate.complete();
