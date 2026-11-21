@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:simulation_core/simulation_core.dart';
 
+import 'rollover_isolate_workers.dart';
+
 class GmCareerStorageException implements Exception {
   const GmCareerStorageException(this.message, [this.cause]);
   final String message;
@@ -202,15 +204,57 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
     this.filePath,
     this.directoryPath,
     @visibleForTesting CareerStorageFileOps? fileOps,
+    @visibleForTesting
+    Future<void> Function(ArchiveVerifyRequest)? verifyArchiveWorker,
+    @visibleForTesting
+    Future<ExistingArchiveClassification> Function(
+      ExistingArchiveClassifyRequest,
+    )?
+    classifyArchiveWorker,
+    @visibleForTesting Future<String> Function(String)? digestArchiveWorker,
+    @visibleForTesting
+    Future<List<ActiveCareerArchiveRef>?> Function(String)?
+    extractActiveRefsWorker,
   }) : assert(
          filePath != null || directoryPath != null,
          'Either filePath or directoryPath must be provided',
        ),
-       _fileOps = fileOps ?? const _DartCareerStorageFileOps();
+       _fileOps = fileOps ?? const _DartCareerStorageFileOps(),
+       _verifyArchiveWorker =
+           verifyArchiveWorker ?? _defaultVerifyArchiveWorker,
+       _classifyArchiveWorker =
+           classifyArchiveWorker ?? _defaultClassifyArchiveWorker,
+       _digestArchiveWorker =
+           digestArchiveWorker ?? _defaultDigestArchiveWorker,
+       _extractActiveRefsWorker =
+           extractActiveRefsWorker ?? _defaultExtractActiveRefsWorker;
 
   final String? filePath;
   final String? directoryPath;
   final CareerStorageFileOps _fileOps;
+  final Future<void> Function(ArchiveVerifyRequest) _verifyArchiveWorker;
+  final Future<ExistingArchiveClassification> Function(
+    ExistingArchiveClassifyRequest,
+  )
+  _classifyArchiveWorker;
+  final Future<String> Function(String) _digestArchiveWorker;
+  final Future<List<ActiveCareerArchiveRef>?> Function(String)
+  _extractActiveRefsWorker;
+
+  static Future<void> _defaultVerifyArchiveWorker(
+    ArchiveVerifyRequest request,
+  ) => compute(verifySeasonArchiveWorker, request);
+
+  static Future<ExistingArchiveClassification> _defaultClassifyArchiveWorker(
+    ExistingArchiveClassifyRequest request,
+  ) => compute(classifyExistingArchiveWorker, request);
+
+  static Future<String> _defaultDigestArchiveWorker(String archiveJson) =>
+      compute(digestSeasonArchiveWorker, archiveJson);
+
+  static Future<List<ActiveCareerArchiveRef>?> _defaultExtractActiveRefsWorker(
+    String rawCareerJson,
+  ) => compute(extractActiveCareerArchiveRefsWorker, rawCareerJson);
 
   static const List<Duration> _transientRetryDelays = [
     Duration(milliseconds: 15),
@@ -595,23 +639,22 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
     return candidate;
   }
 
-  Future<GmCareer?> _readValidActiveCareerForSlot(String slot) async {
+  Future<List<ActiveCareerArchiveRef>?>
+  _readValidActiveCareerArchiveRefsForSlot(String slot) async {
     final file = _file(slot);
     if (await _fileOps.exists(file)) {
       final raw = await _fileOps.readAsString(file);
       if (raw.trim().isNotEmpty) {
-        try {
-          return GmCareerCodec.decode(raw);
-        } catch (_) {}
+        final refs = await _extractActiveRefsWorker(raw);
+        if (refs != null) return refs;
       }
     }
     final backup = _backupFile(slot);
     if (await _fileOps.exists(backup)) {
       final raw = await _fileOps.readAsString(backup);
       if (raw.trim().isNotEmpty) {
-        try {
-          return GmCareerCodec.decode(raw);
-        } catch (_) {}
+        final refs = await _extractActiveRefsWorker(raw);
+        if (refs != null) return refs;
       }
     }
     return null;
@@ -671,12 +714,14 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
     try {
       resolveArchivePath(seasonYear, slot);
 
-      // 1. Validate full incoming SeasonArchive (including SHA-256 digest) before touching disk.
+      // 1. Validate full incoming SeasonArchive (including SHA-256 digest) off main isolate before touching disk.
       try {
-        SeasonArchiveCodec.decodeAndVerify(
-          archiveJson,
-          expectedDigest: expectedDigest,
-          expectedSeasonYear: seasonYear,
+        await _verifyArchiveWorker(
+          ArchiveVerifyRequest(
+            archiveJson: archiveJson,
+            expectedDigest: expectedDigest,
+            expectedSeasonYear: seasonYear,
+          ),
         );
       } catch (e) {
         throw GmCareerStorageException(
@@ -686,9 +731,9 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
       }
 
       // 2. Verify active career history digest if present in slot.
-      final activeCareer = await _readValidActiveCareerForSlot(slot);
-      if (activeCareer != null) {
-        for (final record in activeCareer.seasonHistory) {
+      final activeRefs = await _readValidActiveCareerArchiveRefsForSlot(slot);
+      if (activeRefs != null) {
+        for (final record in activeRefs) {
           if (record.seasonYear == seasonYear &&
               record.archiveDigest != expectedDigest) {
             throw GmCareerStorageException(
@@ -703,32 +748,27 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
       final temp = _archiveTempFile(seasonYear, slot);
       await _fileOps.createParentDir(file);
 
-      // 3. Classify existing destination archive.
+      // 3. Classify existing destination archive off main isolate.
       if (await _fileOps.exists(file)) {
         final existing = await _fileOps.readAsString(file);
-        final existingDigest = SeasonArchiveCodec.digestOf(existing);
-        if (existingDigest == expectedDigest) {
+        final classification = await _classifyArchiveWorker(
+          ExistingArchiveClassifyRequest(
+            existingJson: existing,
+            expectedDigest: expectedDigest,
+            expectedSeasonYear: seasonYear,
+          ),
+        );
+        if (classification.matchesExpected) {
           if (await _fileOps.exists(temp)) {
             await _withTransientRetry(() => _fileOps.delete(temp));
           }
           return;
         }
 
-        SeasonArchive? existingArchive;
-        var existingStructurallyValid = false;
-        try {
-          existingArchive = SeasonArchiveCodec.decodeAndVerify(
-            existing,
-            expectedDigest: existingDigest,
-            expectedSeasonYear: seasonYear,
-          );
-          existingStructurallyValid = true;
-        } catch (_) {}
-
-        if (existingStructurallyValid) {
+        if (classification.isStructurallyValid) {
           throw GmCareerStorageException(
             'Conflicting historical archive already exists for slot "$slot" '
-            'year $seasonYear (career "${existingArchive!.careerId}")',
+            'year $seasonYear (career "${classification.careerId}")',
           );
         }
 
@@ -748,7 +788,7 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
           );
         }
         final stagedContent = await _fileOps.readAsString(temp);
-        if (SeasonArchiveCodec.digestOf(stagedContent) != expectedDigest) {
+        if (await _digestArchiveWorker(stagedContent) != expectedDigest) {
           throw const GmCareerStorageException(
             'Staged archive temp file digest mismatch after flush',
           );
@@ -762,7 +802,7 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
           );
         }
         final promotedContent = await _fileOps.readAsString(file);
-        if (SeasonArchiveCodec.digestOf(promotedContent) != expectedDigest) {
+        if (await _digestArchiveWorker(promotedContent) != expectedDigest) {
           throw const GmCareerStorageException(
             'Promoted season archive digest verification failed',
           );

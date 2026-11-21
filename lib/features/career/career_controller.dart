@@ -2,18 +2,28 @@ import 'package:flutter/foundation.dart';
 import 'package:simulation_core/simulation_core.dart';
 
 import 'career_storage.dart';
+import 'rollover_isolate_workers.dart';
 
 /// Manages loading, saving, and active runtime state for a persistent [GmCareer].
 class GmCareerController extends ChangeNotifier {
-  GmCareerController({required this.storage});
+  GmCareerController({
+    required this.storage,
+    @visibleForTesting
+    Future<RolloverPrepareOutput> Function(RolloverPrepareRequest)?
+    prepareRolloverWorker,
+  }) : _prepareRolloverWorker =
+           prepareRolloverWorker ?? _defaultPrepareRolloverWorker;
 
   final GmCareerStorage storage;
+  final Future<RolloverPrepareOutput> Function(RolloverPrepareRequest)
+  _prepareRolloverWorker;
 
   GmCareer? _career;
   bool _isLoading = false;
   String? _errorMessage;
   Future<void> _pendingCommand = Future<void>.value();
   bool _draftRecoveryRequired = false;
+  bool _disposed = false;
   static const _draftService = DraftExecutionService();
   static const _signingService = RookieSigningService();
   static const _marketService = FreeAgentMarketService();
@@ -462,6 +472,9 @@ class GmCareerController extends ChangeNotifier {
     String slot = 'default',
   }) {
     final submittedCareer = _career;
+    final expectedCareerId = submittedCareer?.id;
+    final expectedYear = submittedCareer?.currentYear;
+    final expectedSlot = slot;
     return _runCareerCommand(action: 'archive completed season', () async {
       if (!confirmed) {
         throw StateError('Explicit human confirmation is required');
@@ -471,16 +484,40 @@ class GmCareerController extends ChangeNotifier {
         throw StateError('Career changed before season archive executed');
       }
       final archiveStorage = _requireArchiveStorage();
-      final prepared = const SeasonRolloverService().prepareArchiveAndRollover(
-        current: current,
+      final prepared = await _prepareRolloverWorker(
+        RolloverPrepareRequest(current),
       );
+      if (_disposed) {
+        throw StateError(
+          'GmCareerController was disposed before season archive persisted',
+        );
+      }
+      final postWorkerCareer = _career;
+      if (!identical(postWorkerCareer, current) ||
+          !identical(postWorkerCareer, submittedCareer) ||
+          postWorkerCareer == null ||
+          postWorkerCareer.id != expectedCareerId ||
+          postWorkerCareer.currentYear != expectedYear ||
+          slot != expectedSlot) {
+        throw StateError(
+          'Career or slot changed while season archive was preparing',
+        );
+      }
+      if (prepared.archiveRecord.seasonYear != expectedYear ||
+          prepared.nextCareer.id != expectedCareerId ||
+          prepared.nextCareer.currentYear != expectedYear! + 1) {
+        throw StateError(
+          'Prepared rollover output does not match requested career or year',
+        );
+      }
       await _persistPreparedTransition(
         current: current,
         archiveStorage: archiveStorage,
         archiveJson: prepared.archiveJson,
         archiveDigest: prepared.archiveDigest,
         record: prepared.archiveRecord,
-        next: prepared.rolloverResult.nextCareer,
+        next: prepared.nextCareer,
+        preEncodedNext: prepared.encodedNextCareer,
         slot: slot,
       );
     });
@@ -529,6 +566,7 @@ class GmCareerController extends ChangeNotifier {
     required String archiveDigest,
     required SeasonHistoryRecord record,
     required GmCareer next,
+    String? preEncodedNext,
     required String slot,
   }) async {
     if (next.id != current.id) {
@@ -556,7 +594,7 @@ class GmCareerController extends ChangeNotifier {
         'Archived transition seasonHistory.last must match archived season',
       );
     }
-    final encodedNext = GmCareerCodec.encode(next);
+    final encodedNext = preEncodedNext ?? GmCareerCodec.encode(next);
     try {
       await archiveStorage.writeArchive(
         seasonYear: current.currentYear,
@@ -570,7 +608,9 @@ class GmCareerController extends ChangeNotifier {
       rethrow;
     }
     _career = next;
-    notifyListeners();
+    if (!_disposed) {
+      notifyListeners();
+    }
   }
 
   /// Reads and cryptographically verifies an archived season for the active career.
@@ -796,6 +836,9 @@ class GmCareerController extends ChangeNotifier {
     Future<void> Function() command, {
     required String action,
   }) => _serialize(() async {
+    if (_disposed) {
+      throw StateError('GmCareerController was disposed');
+    }
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
@@ -807,13 +850,23 @@ class GmCareerController extends ChangeNotifier {
       }
       await command();
     } catch (e) {
-      _errorMessage = 'Failed to $action: $e';
+      if (!_disposed) {
+        _errorMessage = 'Failed to $action: $e';
+      }
       rethrow;
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      if (!_disposed) {
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   });
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   Future<void> _serialize(Future<void> Function() command) {
     final result = _pendingCommand.then((_) => command());
@@ -829,6 +882,10 @@ class GmCareerController extends ChangeNotifier {
     return await storage.hasSave(slot: slot);
   }
 }
+
+Future<RolloverPrepareOutput> _defaultPrepareRolloverWorker(
+  RolloverPrepareRequest request,
+) => compute(prepareSeasonRolloverWorker, request);
 
 GmCareer _simulateRegularSeasonRound(_RoundSimulationRequest request) =>
     const RegularSeasonRoundService().simulateNextRound(
