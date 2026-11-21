@@ -9,6 +9,7 @@ import 'career_phase.dart';
 import 'gm_career.dart';
 import 'next_season_population_plan.dart';
 import 'next_season_population_service.dart';
+import 'rollover_validation_proof.dart';
 import 'season_archive.dart';
 import 'season_history_record.dart';
 import 'season_market_history_record.dart';
@@ -32,6 +33,23 @@ final class SeasonRolloverResult {
   final SeasonMarketHistoryRecord marketHistoryRecord;
 }
 
+/// Complete archive + rollover bundle computed in a single validated pass.
+final class PreparedSeasonArchiveTransition {
+  const PreparedSeasonArchiveTransition({
+    required this.archive,
+    required this.archiveJson,
+    required this.archiveDigest,
+    required this.archiveRecord,
+    required this.rolloverResult,
+  });
+
+  final SeasonArchive archive;
+  final String archiveJson;
+  final String archiveDigest;
+  final SeasonHistoryRecord archiveRecord;
+  final SeasonRolloverResult rolloverResult;
+}
+
 /// Pure, deterministic, authoritative Year N -> Year N+1 career assembly service
 /// (M009-T05C-C2-C2C).
 ///
@@ -50,12 +68,63 @@ final class SeasonRolloverService {
     archiveRecord: archiveRecord,
   ).nextCareer;
 
+  /// Validates [current] once, extracts and encodes its canonical [SeasonArchive],
+  /// derives the bound [SeasonHistoryRecord], and computes the Year N+1 rollover.
+  PreparedSeasonArchiveTransition prepareArchiveAndRollover({
+    required GmCareer current,
+  }) {
+    _checkPreconditions(current);
+    final proof = RolloverValidationProof.validateCompletedSeason(current);
+    final encoded = SeasonArchiveCodec.encodeWithDigestWithProof(
+      proof.archive,
+      proof,
+    );
+    final record = proof.archive.toHistoryRecordWithProof(
+      encoded.digest,
+      proof,
+    );
+    final rolloverResult = _rolloverFromProof(
+      proof: proof,
+      archiveRecord: record,
+    );
+    return PreparedSeasonArchiveTransition(
+      archive: proof.archive,
+      archiveJson: encoded.json,
+      archiveDigest: encoded.digest,
+      archiveRecord: record,
+      rolloverResult: rolloverResult,
+    );
+  }
+
   SeasonRolloverResult rolloverWithPlans({
     required GmCareer current,
     required SeasonHistoryRecord archiveRecord,
   }) {
-    current.validate();
+    _checkPreconditions(current);
+    final proof = RolloverValidationProof.validateCompletedSeason(current);
 
+    // Reconstruct canonical digest and verify caller-supplied archiveRecord.
+    final encoded = SeasonArchiveCodec.encodeWithDigestWithProof(
+      proof.archive,
+      proof,
+    );
+    final expectedRecord = proof.archive.toHistoryRecordWithProof(
+      encoded.digest,
+      proof,
+    );
+    final teamIds = {for (final t in current.league.teams) t.id.value};
+    archiveRecord.validate(validTeamIds: teamIds, expectedCareerId: current.id);
+    if (!_recordsMatch(archiveRecord, expectedRecord)) {
+      throw StateError(
+        'Supplied SeasonHistoryRecord does not match canonical SeasonArchive '
+        'for ${current.id} year ${current.currentYear}',
+      );
+    }
+
+    return _rolloverFromProof(proof: proof, archiveRecord: archiveRecord);
+  }
+
+  void _checkPreconditions(GmCareer current) {
     final completedYear = current.currentYear;
     if (current.phase != CareerPhase.playoffs) {
       throw StateError(
@@ -78,29 +147,30 @@ final class SeasonRolloverService {
         'Season $completedYear has already been recorded in marketHistory',
       );
     }
+  }
 
-    // Reconstruct archive, recompute canonical SHA-256 digest, and verify record.
-    final archive = SeasonArchive.fromCareer(current);
-    final encoded = SeasonArchiveCodec.encodeWithDigest(archive);
-    final expectedRecord = archive.toHistoryRecord(encoded.digest);
-    final teamIds = {for (final t in current.league.teams) t.id.value};
-    archiveRecord.validate(validTeamIds: teamIds, expectedCareerId: current.id);
-    if (!_recordsMatch(archiveRecord, expectedRecord)) {
-      throw StateError(
-        'Supplied SeasonHistoryRecord does not match canonical SeasonArchive '
-        'for ${current.id} year $completedYear',
-      );
-    }
+  SeasonRolloverResult _rolloverFromProof({
+    required RolloverValidationProof proof,
+    required SeasonHistoryRecord archiveRecord,
+  }) {
+    final current = proof.career;
+    final completedYear = current.currentYear;
 
-    // Recompute all three rollover plans internally (zero trust in caller plans).
-    final rolloverPlan = const SeasonRolloverPlanner().plan(current);
-    final financialPlan = const FinancialRolloverService().plan(
-      career: current,
-      rolloverPlan: rolloverPlan,
+    // Recompute all three rollover plans internally using validated proof.
+    final rolloverPlan = const SeasonRolloverPlanner().planWithProof(
+      current,
+      proof,
     );
-    final populationPlan = const NextSeasonPopulationService().plan(
+    final financialPlan = const FinancialRolloverService().planWithProof(
       career: current,
       rolloverPlan: rolloverPlan,
+      proof: proof,
+    );
+    final populationPlan = const NextSeasonPopulationService().planWithProof(
+      career: current,
+      rolloverPlan: rolloverPlan,
+      proof: proof,
+      completedStandings: archiveRecord.regularSeasonStandings,
     );
 
     // Rebuild 30-team league with continuing contracted players & categories.

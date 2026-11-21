@@ -8,6 +8,7 @@ import '../models/roster_rules.dart';
 import 'career_phase.dart';
 import 'gm_career.dart';
 import 'retired_player_record.dart';
+import 'rollover_validation_proof.dart';
 import 'season_archive.dart';
 import 'season_rollover_plan.dart';
 
@@ -21,6 +22,23 @@ final class SeasonRolloverPlanner {
   /// Validates eligibility of [career] and computes its deterministic [SeasonRolloverPlan].
   SeasonRolloverPlan plan(GmCareer career) {
     career.validate();
+    // Enforces complete 1,230-game regular season, Play-In, and championship.
+    SeasonArchive.fromCareer(career);
+    return _planValidated(career);
+  }
+
+  /// Package-internal planner reusing a [RolloverValidationProof].
+  SeasonRolloverPlan planWithProof(
+    GmCareer career,
+    RolloverValidationProof proof,
+  ) {
+    if (!identical(proof.career, career)) {
+      throw StateError('RolloverValidationProof does not match career');
+    }
+    return _planValidated(career);
+  }
+
+  SeasonRolloverPlan _planValidated(GmCareer career) {
     final completedYear = career.currentYear;
     final targetYear = completedYear + 1;
 
@@ -39,8 +57,6 @@ final class SeasonRolloverPlanner {
         'Season $completedYear has already been settled in seasonSettlements',
       );
     }
-    // Enforces complete 1,230-game regular season, Play-In, and championship.
-    SeasonArchive.fromCareer(career);
 
     final retirements = <RetiredPlayerRecord>[];
     final retiredPlayerIds = <String>{};

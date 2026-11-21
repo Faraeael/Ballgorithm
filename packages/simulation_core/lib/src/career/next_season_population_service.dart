@@ -17,6 +17,7 @@ import 'career_phase.dart';
 import 'gm_career.dart';
 import 'next_season_population_plan.dart';
 import 'play_in_state.dart';
+import 'rollover_validation_proof.dart';
 import 'season_archive.dart';
 import 'season_history_record.dart';
 import 'season_rollover_plan.dart';
@@ -44,7 +45,38 @@ final class NextSeasonPopulationService {
   }) {
     career.validate();
     rolloverPlan.validate();
+    _checkEligibility(career, rolloverPlan);
 
+    // Validates complete 1,230-game regular season, Play-In, and playoff championship.
+    SeasonArchive.fromCareer(career);
+
+    return _planValidated(
+      career: career,
+      rolloverPlan: rolloverPlan,
+      completedStandings: completedStandings,
+    );
+  }
+
+  /// Package-internal planner reusing a [RolloverValidationProof].
+  NextSeasonPopulationPlan planWithProof({
+    required GmCareer career,
+    required SeasonRolloverPlan rolloverPlan,
+    required RolloverValidationProof proof,
+    List<SeasonStandingSummary>? completedStandings,
+  }) {
+    if (!identical(proof.career, career)) {
+      throw StateError('RolloverValidationProof does not match career');
+    }
+    rolloverPlan.validate();
+    _checkEligibility(career, rolloverPlan);
+    return _planValidated(
+      career: career,
+      rolloverPlan: rolloverPlan,
+      completedStandings: completedStandings,
+    );
+  }
+
+  void _checkEligibility(GmCareer career, SeasonRolloverPlan rolloverPlan) {
     final completedYear = career.currentYear;
     final targetYear = completedYear + 1;
 
@@ -62,9 +94,15 @@ final class NextSeasonPopulationService {
         'does not match career (${career.id} y$completedYear)',
       );
     }
+  }
 
-    // Validates complete 1,230-game regular season, Play-In, and playoff championship.
-    SeasonArchive.fromCareer(career);
+  NextSeasonPopulationPlan _planValidated({
+    required GmCareer career,
+    required SeasonRolloverPlan rolloverPlan,
+    List<SeasonStandingSummary>? completedStandings,
+  }) {
+    final completedYear = career.currentYear;
+    final targetYear = completedYear + 1;
 
     final standings =
         completedStandings ?? _extractRegularSeasonStandings(career);

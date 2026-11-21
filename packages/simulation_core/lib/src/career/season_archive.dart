@@ -10,6 +10,7 @@ import 'play_in_state.dart';
 import 'playoff_state.dart';
 import 'regular_season_game_input_evidence.dart';
 import 'regular_season_state.dart';
+import 'rollover_validation_proof.dart';
 import 'season_history_record.dart';
 
 /// Immutable, complete per-season historical archive payload.
@@ -120,6 +121,21 @@ final class SeasonArchive {
   /// Derives the compact [SeasonHistoryRecord] summary bound to [archiveDigest].
   SeasonHistoryRecord toHistoryRecord(String archiveDigest) {
     validate();
+    return _buildHistoryRecord(archiveDigest);
+  }
+
+  /// Package-internal derivation reusing a [RolloverValidationProof].
+  SeasonHistoryRecord toHistoryRecordWithProof(
+    String archiveDigest,
+    RolloverValidationProof proof,
+  ) {
+    if (!identical(proof.archive, this)) {
+      throw StateError('RolloverValidationProof does not match this archive');
+    }
+    return _buildHistoryRecord(archiveDigest);
+  }
+
+  SeasonHistoryRecord _buildHistoryRecord(String archiveDigest) {
     final ranked = PlayInRanking.rank(regularSeasonState);
     final table = regularSeasonState.standings.table;
     final standings = [
@@ -285,6 +301,23 @@ final class SeasonArchiveCodec {
     SeasonArchive archive,
   ) {
     archive.validate();
+    return _encodeWithDigestUnchecked(archive);
+  }
+
+  /// Package-internal encoding reusing a [RolloverValidationProof].
+  static ({String json, String digest}) encodeWithDigestWithProof(
+    SeasonArchive archive,
+    RolloverValidationProof proof,
+  ) {
+    if (!identical(proof.archive, archive)) {
+      throw StateError('RolloverValidationProof does not match this archive');
+    }
+    return _encodeWithDigestUnchecked(archive);
+  }
+
+  static ({String json, String digest}) _encodeWithDigestUnchecked(
+    SeasonArchive archive,
+  ) {
     final encoded = jsonEncode(archive.toJson());
     final digest = digestOf(encoded);
     return (json: encoded, digest: digest);

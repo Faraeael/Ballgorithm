@@ -670,13 +670,8 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
   }) async {
     try {
       resolveArchivePath(seasonYear, slot);
-      if (SeasonArchiveCodec.digestOf(archiveJson) != expectedDigest) {
-        throw const GmCareerStorageException(
-          'Archive payload digest does not match expectedDigest',
-        );
-      }
 
-      // 1. Validate full incoming SeasonArchive before touching disk.
+      // 1. Validate full incoming SeasonArchive (including SHA-256 digest) before touching disk.
       try {
         SeasonArchiveCodec.decodeAndVerify(
           archiveJson,

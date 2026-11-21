@@ -1,5 +1,6 @@
 import '../career/career_phase.dart';
 import '../career/gm_career.dart';
+import '../career/rollover_validation_proof.dart';
 import '../career/season_archive.dart';
 import '../career/season_rollover_plan.dart';
 import '../career/season_settlement_record.dart';
@@ -26,7 +27,26 @@ final class FinancialRolloverService {
   }) {
     career.validate();
     rolloverPlan.validate();
+    _checkEligibility(career, rolloverPlan);
+    SeasonArchive.fromCareer(career);
+    return _planValidated(career: career, rolloverPlan: rolloverPlan);
+  }
 
+  /// Package-internal planner reusing a [RolloverValidationProof].
+  FinancialRolloverPlan planWithProof({
+    required GmCareer career,
+    required SeasonRolloverPlan rolloverPlan,
+    required RolloverValidationProof proof,
+  }) {
+    if (!identical(proof.career, career)) {
+      throw StateError('RolloverValidationProof does not match career');
+    }
+    rolloverPlan.validate();
+    _checkEligibility(career, rolloverPlan);
+    return _planValidated(career: career, rolloverPlan: rolloverPlan);
+  }
+
+  void _checkEligibility(GmCareer career, SeasonRolloverPlan rolloverPlan) {
     final completedYear = career.currentYear;
     final targetYear = completedYear + 1;
 
@@ -53,7 +73,14 @@ final class FinancialRolloverService {
         'Season $completedYear has already been archived in seasonHistory',
       );
     }
-    SeasonArchive.fromCareer(career);
+  }
+
+  FinancialRolloverPlan _planValidated({
+    required GmCareer career,
+    required SeasonRolloverPlan rolloverPlan,
+  }) {
+    final completedYear = career.currentYear;
+    final targetYear = completedYear + 1;
 
     // 1. Validate & extract newly retired guaranteed liabilities (starting Year N+1).
     final existingLiabilities = career.finances.guaranteedLiabilities;

@@ -460,12 +460,31 @@ class GmCareerController extends ChangeNotifier {
   Future<void> continueToNextSeason({
     required bool confirmed,
     String slot = 'default',
-  }) => persistArchivedSeasonTransition(
-    buildNextCareer: (current, archiveRecord) => const SeasonRolloverService()
-        .rollover(current: current, archiveRecord: archiveRecord),
-    confirmed: confirmed,
-    slot: slot,
-  );
+  }) {
+    final submittedCareer = _career;
+    return _runCareerCommand(action: 'archive completed season', () async {
+      if (!confirmed) {
+        throw StateError('Explicit human confirmation is required');
+      }
+      final current = _requireCareer();
+      if (!identical(current, submittedCareer)) {
+        throw StateError('Career changed before season archive executed');
+      }
+      final archiveStorage = _requireArchiveStorage();
+      final prepared = const SeasonRolloverService().prepareArchiveAndRollover(
+        current: current,
+      );
+      await _persistPreparedTransition(
+        current: current,
+        archiveStorage: archiveStorage,
+        archiveJson: prepared.archiveJson,
+        archiveDigest: prepared.archiveDigest,
+        record: prepared.archiveRecord,
+        next: prepared.rolloverResult.nextCareer,
+        slot: slot,
+      );
+    });
+  }
 
   /// Persists the completed Year N archive before writing and publishing Year N+1.
   Future<void> persistArchivedSeasonTransition({
@@ -491,47 +510,67 @@ class GmCareerController extends ChangeNotifier {
       final encodedArchive = SeasonArchiveCodec.encodeWithDigest(archive);
       final record = archive.toHistoryRecord(encodedArchive.digest);
       final next = buildNextCareer(current, record);
-      if (next.id != current.id) {
-        throw StateError('Archived transition must preserve career id');
-      }
-      if (next.currentYear != current.currentYear + 1) {
-        throw StateError(
-          'Archived transition must advance currentYear by exactly 1',
-        );
-      }
-      if (next.seasonHistory.length != current.seasonHistory.length + 1) {
-        throw StateError(
-          'Archived transition must append exactly one SeasonHistoryRecord',
-        );
-      }
-      for (var i = 0; i < current.seasonHistory.length; i++) {
-        if (next.seasonHistory[i] != current.seasonHistory[i]) {
-          throw StateError(
-            'Archived transition must preserve prior seasonHistory records',
-          );
-        }
-      }
-      if (next.seasonHistory.last != record) {
-        throw StateError(
-          'Archived transition seasonHistory.last must match archived season',
-        );
-      }
-      final encodedNext = GmCareerCodec.encode(next);
-      try {
-        await archiveStorage.writeArchive(
-          seasonYear: current.currentYear,
-          archiveJson: encodedArchive.json,
-          expectedDigest: encodedArchive.digest,
-          slot: slot,
-        );
-        await storage.write(encodedNext, slot: slot);
-      } catch (_) {
-        _draftRecoveryRequired = true;
-        rethrow;
-      }
-      _career = next;
-      notifyListeners();
+      await _persistPreparedTransition(
+        current: current,
+        archiveStorage: archiveStorage,
+        archiveJson: encodedArchive.json,
+        archiveDigest: encodedArchive.digest,
+        record: record,
+        next: next,
+        slot: slot,
+      );
     });
+  }
+
+  Future<void> _persistPreparedTransition({
+    required GmCareer current,
+    required GmCareerArchiveStorage archiveStorage,
+    required String archiveJson,
+    required String archiveDigest,
+    required SeasonHistoryRecord record,
+    required GmCareer next,
+    required String slot,
+  }) async {
+    if (next.id != current.id) {
+      throw StateError('Archived transition must preserve career id');
+    }
+    if (next.currentYear != current.currentYear + 1) {
+      throw StateError(
+        'Archived transition must advance currentYear by exactly 1',
+      );
+    }
+    if (next.seasonHistory.length != current.seasonHistory.length + 1) {
+      throw StateError(
+        'Archived transition must append exactly one SeasonHistoryRecord',
+      );
+    }
+    for (var i = 0; i < current.seasonHistory.length; i++) {
+      if (next.seasonHistory[i] != current.seasonHistory[i]) {
+        throw StateError(
+          'Archived transition must preserve prior seasonHistory records',
+        );
+      }
+    }
+    if (next.seasonHistory.last != record) {
+      throw StateError(
+        'Archived transition seasonHistory.last must match archived season',
+      );
+    }
+    final encodedNext = GmCareerCodec.encode(next);
+    try {
+      await archiveStorage.writeArchive(
+        seasonYear: current.currentYear,
+        archiveJson: archiveJson,
+        expectedDigest: archiveDigest,
+        slot: slot,
+      );
+      await storage.write(encodedNext, slot: slot);
+    } catch (_) {
+      _draftRecoveryRequired = true;
+      rethrow;
+    }
+    _career = next;
+    notifyListeners();
   }
 
   /// Reads and cryptographically verifies an archived season for the active career.
