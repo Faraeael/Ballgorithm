@@ -6,6 +6,7 @@ import 'package:basketball_manager/features/career/career_controller.dart';
 import 'package:basketball_manager/features/career/career_storage.dart';
 import 'package:basketball_manager/features/career/offseason_overview_screen.dart';
 import 'package:basketball_manager/features/career/playoff_tournament_screen.dart';
+import 'package:basketball_manager/features/career/rollover_isolate_workers.dart';
 import 'package:basketball_manager/features/season/season_storage.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
@@ -500,7 +501,11 @@ void main() {
     (tester) async {
       final storage = _TestArchiveCareerStorage();
       await storage.write(completedYear1Json);
-      final controller = GmCareerController(storage: storage);
+      final controller = GmCareerController(
+        storage: storage,
+        prepareRolloverWorker: (request) async =>
+            prepareSeasonRolloverWorker(request),
+      );
       await controller.loadCareer();
 
       await tester.pumpWidget(
@@ -572,7 +577,11 @@ void main() {
     (tester) async {
       final storage = _TestArchiveCareerStorage();
       await storage.write(completedYear1Json);
-      final controller = GmCareerController(storage: storage);
+      final controller = GmCareerController(
+        storage: storage,
+        prepareRolloverWorker: (request) async =>
+            prepareSeasonRolloverWorker(request),
+      );
       await controller.loadCareer();
 
       final observer = _CountingNavigatorObserver();
@@ -599,7 +608,11 @@ void main() {
     (tester) async {
       final storage = _TestArchiveCareerStorage();
       await storage.write(completedYear1Json);
-      final controller = GmCareerController(storage: storage);
+      final controller = GmCareerController(
+        storage: storage,
+        prepareRolloverWorker: (request) async =>
+            prepareSeasonRolloverWorker(request),
+      );
       await controller.loadCareer();
 
       await tester.pumpWidget(

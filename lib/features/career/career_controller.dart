@@ -4,6 +4,29 @@ import 'package:simulation_core/simulation_core.dart';
 import 'career_storage.dart';
 import 'rollover_isolate_workers.dart';
 
+/// Observable operation-boundary stage during a player-initiated season
+/// transition from completed playoffs to the next season's opening offseason.
+enum SeasonTransitionStage {
+  preparing(
+    label: 'Preparing next season',
+    description:
+        'Building next season rosters, contracts, and financial plans.',
+  ),
+  archiving(
+    label: 'Verifying and archiving completed season',
+    description: 'Validating and saving the immutable season archive.',
+  ),
+  savingNextSeason(
+    label: 'Saving your next season',
+    description: 'Writing your next season career save.',
+  );
+
+  const SeasonTransitionStage({required this.label, required this.description});
+
+  final String label;
+  final String description;
+}
+
 /// Manages loading, saving, and active runtime state for a persistent [GmCareer].
 class GmCareerController extends ChangeNotifier {
   GmCareerController({
@@ -24,6 +47,7 @@ class GmCareerController extends ChangeNotifier {
   Future<void> _pendingCommand = Future<void>.value();
   bool _draftRecoveryRequired = false;
   bool _disposed = false;
+  SeasonTransitionStage? _seasonTransitionStage;
   static const _draftService = DraftExecutionService();
   static const _signingService = RookieSigningService();
   static const _marketService = FreeAgentMarketService();
@@ -43,6 +67,18 @@ class GmCareerController extends ChangeNotifier {
   /// Draft and signing commands remain blocked until a successful reload
   /// reconciles a failed or uncertain write.
   bool get draftRecoveryRequired => _draftRecoveryRequired;
+
+  /// Current operation-boundary stage while archiving a completed season and
+  /// saving the next season, or `null` when idle.
+  SeasonTransitionStage? get seasonTransitionStage => _seasonTransitionStage;
+
+  void _setSeasonTransitionStage(SeasonTransitionStage? stage) {
+    if (_seasonTransitionStage == stage) return;
+    _seasonTransitionStage = stage;
+    if (!_disposed) {
+      notifyListeners();
+    }
+  }
 
   /// Completes after commands already queued by this controller have settled.
   Future<void> get commandsSettled => _pendingCommand;
@@ -484,42 +520,47 @@ class GmCareerController extends ChangeNotifier {
         throw StateError('Career changed before season archive executed');
       }
       final archiveStorage = _requireArchiveStorage();
-      final prepared = await _prepareRolloverWorker(
-        RolloverPrepareRequest(current),
-      );
-      if (_disposed) {
-        throw StateError(
-          'GmCareerController was disposed before season archive persisted',
+      try {
+        _setSeasonTransitionStage(SeasonTransitionStage.preparing);
+        final prepared = await _prepareRolloverWorker(
+          RolloverPrepareRequest(current),
         );
-      }
-      final postWorkerCareer = _career;
-      if (!identical(postWorkerCareer, current) ||
-          !identical(postWorkerCareer, submittedCareer) ||
-          postWorkerCareer == null ||
-          postWorkerCareer.id != expectedCareerId ||
-          postWorkerCareer.currentYear != expectedYear ||
-          slot != expectedSlot) {
-        throw StateError(
-          'Career or slot changed while season archive was preparing',
+        if (_disposed) {
+          throw StateError(
+            'GmCareerController was disposed before season archive persisted',
+          );
+        }
+        final postWorkerCareer = _career;
+        if (!identical(postWorkerCareer, current) ||
+            !identical(postWorkerCareer, submittedCareer) ||
+            postWorkerCareer == null ||
+            postWorkerCareer.id != expectedCareerId ||
+            postWorkerCareer.currentYear != expectedYear ||
+            slot != expectedSlot) {
+          throw StateError(
+            'Career or slot changed while season archive was preparing',
+          );
+        }
+        if (prepared.archiveRecord.seasonYear != expectedYear ||
+            prepared.nextCareer.id != expectedCareerId ||
+            prepared.nextCareer.currentYear != expectedYear! + 1) {
+          throw StateError(
+            'Prepared rollover output does not match requested career or year',
+          );
+        }
+        await _persistPreparedTransition(
+          current: current,
+          archiveStorage: archiveStorage,
+          archiveJson: prepared.archiveJson,
+          archiveDigest: prepared.archiveDigest,
+          record: prepared.archiveRecord,
+          next: prepared.nextCareer,
+          preEncodedNext: prepared.encodedNextCareer,
+          slot: slot,
         );
+      } finally {
+        _setSeasonTransitionStage(null);
       }
-      if (prepared.archiveRecord.seasonYear != expectedYear ||
-          prepared.nextCareer.id != expectedCareerId ||
-          prepared.nextCareer.currentYear != expectedYear! + 1) {
-        throw StateError(
-          'Prepared rollover output does not match requested career or year',
-        );
-      }
-      await _persistPreparedTransition(
-        current: current,
-        archiveStorage: archiveStorage,
-        archiveJson: prepared.archiveJson,
-        archiveDigest: prepared.archiveDigest,
-        record: prepared.archiveRecord,
-        next: prepared.nextCareer,
-        preEncodedNext: prepared.encodedNextCareer,
-        slot: slot,
-      );
     });
   }
 
@@ -543,19 +584,23 @@ class GmCareerController extends ChangeNotifier {
         throw StateError('Career changed before season archive executed');
       }
       final archiveStorage = _requireArchiveStorage();
-      final archive = SeasonArchive.fromCareer(current);
-      final encodedArchive = SeasonArchiveCodec.encodeWithDigest(archive);
-      final record = archive.toHistoryRecord(encodedArchive.digest);
-      final next = buildNextCareer(current, record);
-      await _persistPreparedTransition(
-        current: current,
-        archiveStorage: archiveStorage,
-        archiveJson: encodedArchive.json,
-        archiveDigest: encodedArchive.digest,
-        record: record,
-        next: next,
-        slot: slot,
-      );
+      try {
+        final archive = SeasonArchive.fromCareer(current);
+        final encodedArchive = SeasonArchiveCodec.encodeWithDigest(archive);
+        final record = archive.toHistoryRecord(encodedArchive.digest);
+        final next = buildNextCareer(current, record);
+        await _persistPreparedTransition(
+          current: current,
+          archiveStorage: archiveStorage,
+          archiveJson: encodedArchive.json,
+          archiveDigest: encodedArchive.digest,
+          record: record,
+          next: next,
+          slot: slot,
+        );
+      } finally {
+        _setSeasonTransitionStage(null);
+      }
     });
   }
 
@@ -596,12 +641,14 @@ class GmCareerController extends ChangeNotifier {
     }
     final encodedNext = preEncodedNext ?? GmCareerCodec.encode(next);
     try {
+      _setSeasonTransitionStage(SeasonTransitionStage.archiving);
       await archiveStorage.writeArchive(
         seasonYear: current.currentYear,
         archiveJson: archiveJson,
         expectedDigest: archiveDigest,
         slot: slot,
       );
+      _setSeasonTransitionStage(SeasonTransitionStage.savingNextSeason);
       await storage.write(encodedNext, slot: slot);
     } catch (_) {
       _draftRecoveryRequired = true;

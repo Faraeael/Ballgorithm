@@ -38,12 +38,16 @@ class _PlayoffTournamentScreenState extends State<PlayoffTournamentScreen> {
           team.teamId.value: team.name,
       };
       final isBusy = widget.controller.isLoading || _isTransitioning;
+      final transitionStage = widget.controller.seasonTransitionStage;
+      final isSeasonTransitioning = _isTransitioning || transitionStage != null;
       return PlayoffBracketContent(
         state: state,
         names: names,
         seasonYear: career.currentYear,
         userFranchiseId: career.userFranchiseId,
         isLoading: isBusy,
+        transitionStage: transitionStage,
+        isTransitioning: isSeasonTransitioning,
         recoveryRequired: widget.controller.draftRecoveryRequired,
         errorMessage: widget.controller.errorMessage,
         onSimulate: state.isComplete || isBusy
@@ -56,16 +60,20 @@ class _PlayoffTournamentScreenState extends State<PlayoffTournamentScreen> {
                 !_isDialogOpen
             ? () => _confirmContinueToNextSeason(context)
             : null,
-        onViewFullBracket: () => Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(
-            builder: (_) => PlayoffFullBracketScreen(career: career),
-          ),
-        ),
-        onViewResults: () => Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(
-            builder: (_) => PlayoffGameResultsScreen(career: career),
-          ),
-        ),
+        onViewFullBracket: isSeasonTransitioning
+            ? null
+            : () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => PlayoffFullBracketScreen(career: career),
+                ),
+              ),
+        onViewResults: isSeasonTransitioning
+            ? null
+            : () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => PlayoffGameResultsScreen(career: career),
+                ),
+              ),
         onReload: isBusy
             ? null
             : () => widget.controller.loadCareer(slot: widget.slot),
@@ -177,6 +185,8 @@ class PlayoffBracketContent extends StatelessWidget {
     required this.onViewFullBracket,
     required this.onViewResults,
     this.userFranchiseId,
+    this.transitionStage,
+    this.isTransitioning = false,
     this.onContinueToNextSeason,
     this.errorMessage,
     this.onReload,
@@ -187,12 +197,14 @@ class PlayoffBracketContent extends StatelessWidget {
   final int seasonYear;
   final TeamId? userFranchiseId;
   final bool isLoading;
+  final SeasonTransitionStage? transitionStage;
+  final bool isTransitioning;
   final bool recoveryRequired;
   final String? errorMessage;
   final VoidCallback? onSimulate;
   final VoidCallback? onContinueToNextSeason;
-  final VoidCallback onViewFullBracket;
-  final VoidCallback onViewResults;
+  final VoidCallback? onViewFullBracket;
+  final VoidCallback? onViewResults;
   final VoidCallback? onReload;
 
   @override
@@ -282,18 +294,61 @@ class PlayoffBracketContent extends StatelessWidget {
                   .join('\n'),
             ),
           ],
-          if (errorMessage != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              errorMessage!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-          ],
-          if (recoveryRequired) ...[
-            const SizedBox(height: 8),
-            Text(
-              'Save recovery required. Reload the saved career before continuing.',
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+          if (errorMessage != null || recoveryRequired) ...[
+            const SizedBox(height: 12),
+            Card(
+              key: const ValueKey('playoff-error-card'),
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          color: Theme.of(context).colorScheme.onErrorContainer,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            recoveryRequired
+                                ? 'Save Recovery Required'
+                                : 'Season Transition Interrupted',
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onErrorContainer,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (errorMessage != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        errorMessage!,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onErrorContainer,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    Text(
+                      recoveryRequired
+                          ? 'Save recovery required. Reload the saved career before continuing.'
+                          : 'No save files were modified. You can review the error and try again.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onErrorContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
           if (!state.isComplete) ...[
@@ -314,6 +369,14 @@ class PlayoffBracketContent extends StatelessWidget {
               ),
             ),
           ] else ...[
+            if (isTransitioning || transitionStage != null) ...[
+              const SizedBox(height: 12),
+              _SeasonTransitionProgressCard(
+                completedYear: seasonYear,
+                targetYear: seasonYear + 1,
+                stage: transitionStage ?? SeasonTransitionStage.preparing,
+              ),
+            ],
             const SizedBox(height: 12),
             FilledButton.icon(
               key: const ValueKey('continue-to-next-season'),
@@ -342,13 +405,83 @@ class PlayoffBracketContent extends StatelessWidget {
             onPressed: state.gameResults.isEmpty ? null : onViewResults,
             child: const Text('View Game Results'),
           ),
-          if (recoveryRequired)
-            TextButton(
+          if (recoveryRequired) ...[
+            const SizedBox(height: 8),
+            FilledButton.tonalIcon(
               key: const ValueKey('reload-playoff-career'),
               onPressed: isLoading ? null : onReload,
-              child: const Text('Reload Saved Career'),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Reload Saved Career'),
             ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _SeasonTransitionProgressCard extends StatelessWidget {
+  const _SeasonTransitionProgressCard({
+    required this.completedYear,
+    required this.targetYear,
+    required this.stage,
+  });
+
+  final int completedYear;
+  final int targetYear;
+  final SeasonTransitionStage stage;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Card(
+      key: const ValueKey('season-transition-progress-card'),
+      color: colors.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Season $completedYear → Season $targetYear',
+                    key: const ValueKey('season-transition-years'),
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: colors.onSecondaryContainer,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              stage.label,
+              key: const ValueKey('season-transition-stage-label'),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: colors.onSecondaryContainer,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              stage.description,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.onSecondaryContainer,
+              ),
+            ),
+            const SizedBox(height: 12),
+            const LinearProgressIndicator(),
+          ],
+        ),
       ),
     );
   }
