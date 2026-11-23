@@ -7,6 +7,7 @@ import '../models/ids.dart';
 import '../models/roster_category.dart';
 import '../models/roster_rules.dart';
 import '../models/offseason_clearance.dart';
+import '../models/team.dart';
 import '../validation/validation_result.dart';
 import 'career_phase.dart';
 import 'competitive_offer_ranker.dart';
@@ -202,7 +203,53 @@ final class HardshipSettlementService {
     var committedSalary = 0;
     for (final candidate in candidates) {
       if (selected.length >= missing) break;
-      final nextSalary = committedSalary + candidate.offer.firstYearSalary;
+      var effectiveSelected0 = selected.isNotEmpty ? selected.first : null;
+      var effectiveNextOffer = candidate.offer;
+      if (effectiveSelected0 != null) {
+        final firstPlayer = career.freeAgentPool
+            .byId(effectiveSelected0.playerId)!
+            .player;
+        final secondPlayer = career.freeAgentPool
+            .byId(effectiveNextOffer.playerId)!
+            .player;
+        if (firstPlayer.position == secondPlayer.position) {
+          if (effectiveSelected0.playerId.value.compareTo(
+                effectiveNextOffer.playerId.value,
+              ) <
+              0) {
+            final adjustedSecond = _cheapestAcceptableContract(
+              career: career,
+              teamId: teamId,
+              playerId: effectiveNextOffer.playerId,
+              teamOverride: team.copyWith(
+                roster: team.roster.withPlayer(
+                  firstPlayer,
+                  category: RosterCategory.standard,
+                ),
+              ),
+            );
+            if (adjustedSecond == null) continue;
+            effectiveNextOffer = adjustedSecond.offer;
+          } else {
+            final adjustedFirst = _cheapestAcceptableContract(
+              career: career,
+              teamId: teamId,
+              playerId: effectiveSelected0.playerId,
+              teamOverride: team.copyWith(
+                roster: team.roster.withPlayer(
+                  secondPlayer,
+                  category: RosterCategory.standard,
+                ),
+              ),
+            );
+            if (adjustedFirst == null) continue;
+            effectiveSelected0 = adjustedFirst.offer;
+          }
+        }
+      }
+      final nextSalary =
+          (effectiveSelected0?.firstYearSalary ?? 0) +
+          effectiveNextOffer.firstYearSalary;
       final overage = payroll + nextSalary - FinancialRules.salaryCap;
       final additional = overage > ordinaryRelief
           ? overage - ordinaryRelief
@@ -212,7 +259,10 @@ final class HardshipSettlementService {
           projectedCash - nextSalary < 0) {
         continue;
       }
-      selected.add(candidate.offer);
+      if (effectiveSelected0 != null) {
+        selected[0] = effectiveSelected0;
+      }
+      selected.add(effectiveNextOffer);
       committedSalary = nextSalary;
     }
     final totalOverage = payroll + committedSalary - FinancialRules.salaryCap;
@@ -548,6 +598,7 @@ final class HardshipSettlementService {
     required GmCareer career,
     required TeamId teamId,
     required PlayerId playerId,
+    Team? teamOverride,
   }) {
     _HardshipCandidate? cheapest;
     for (
@@ -567,6 +618,7 @@ final class HardshipSettlementService {
           category: RosterCategory.standard,
           durationYears: duration,
           salary: salary,
+          teamOverride: teamOverride,
         );
         if (willingness.accepts) {
           high = salary;
@@ -582,6 +634,7 @@ final class HardshipSettlementService {
         category: RosterCategory.standard,
         durationYears: duration,
         salary: low,
+        teamOverride: teamOverride,
       );
       if (!willingness.accepts) continue;
       if (FinancialRules.standardSchedule(

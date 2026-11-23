@@ -21,12 +21,7 @@ GmCareer _career({FranchiseSituation situation = FranchiseSituation.playIn}) =>
 
 GmCareer _resolveAll(GmCareer career) {
   var current = career;
-  while (current.freeAgentMarket.isResolvable &&
-      current.freeAgentMarket.nextResolutionIndex <
-          current.freeAgentMarket.resolutionOrder.length) {
-    current = _marketService.resolveNext(current);
-  }
-  if (current.freeAgentMarket.status == FreeAgentMarketStatus.resolving) {
+  while (current.freeAgentMarket.isResolvable) {
     current = _marketService.resolveNext(current);
   }
   return current;

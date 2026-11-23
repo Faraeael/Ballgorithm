@@ -61,7 +61,66 @@ GmCareer _buildYear2CareerForClearance({
   );
 
   final contracts = bootstrapped.contracts;
-  final schedules = bootstrapped.schedules;
+  final schedules = Map<String, ContractFinancials>.from(
+    bootstrapped.schedules,
+  );
+  if (triggerCapException) {
+    // Pick a non-debt team with 12 standard legacy players and set its
+    // legacy salaries to valid bootstrap tiers totaling 40,800 CU (200 CU room
+    // for 2 missing standard players -> deterministic 600 CU CapException).
+    final capExceptionTeam = y2League.teams.firstWhere(
+      (t) =>
+          t.id != debtTeam.id &&
+          t.id != targetTeam.id &&
+          t.roster.standardCount == 12 &&
+          schedules.values
+              .where(
+                (s) =>
+                    s.teamId == t.id &&
+                    contracts[s.contractId]?.category ==
+                        RosterCategory.standard,
+              )
+              .every(
+                (s) => contracts[s.contractId]?.source == ContractSource.legacy,
+              ),
+    );
+    final stdSchedules = schedules.values
+        .where(
+          (s) =>
+              s.teamId == capExceptionTeam.id &&
+              contracts[s.contractId]?.category == RosterCategory.standard,
+        )
+        .toList();
+    const bootstrap40800 = [
+      4100,
+      4100,
+      4100,
+      4100,
+      4100,
+      4100,
+      3300,
+      3300,
+      3300,
+      3300,
+      2600,
+      400,
+    ];
+    for (var i = 0; i < stdSchedules.length; i++) {
+      final orig = stdSchedules[i];
+      schedules[orig.contractId] = ContractFinancials(
+        contractId: orig.contractId,
+        playerId: orig.playerId,
+        teamId: orig.teamId,
+        annualSalaries: FinancialRules.standardSchedule(
+          bootstrap40800[i],
+          orig.durationYears,
+        ),
+        guaranteedYears: orig.guaranteedYears,
+        source: orig.source,
+        signedYear: orig.signedYear,
+      );
+    }
+  }
 
   final liability = GuaranteedLiability(
     id: GuaranteedLiability.idFor('retired-y1-contract'),

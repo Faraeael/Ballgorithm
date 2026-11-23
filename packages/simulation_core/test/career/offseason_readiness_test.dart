@@ -66,6 +66,62 @@ GmCareer _marketRounds(GmCareer career) {
 
 GmCareer _offseason() => _marketRounds(_aiRookies(_draft(_base())));
 
+/// Returns a post-market career where `team-1` (non-grandfathered, 12 standard
+/// players) has 200 CU of cap room for its 2 missing standard spots so
+/// `OffseasonClearanceService.start` deterministically issues a 600 CU
+/// `CapException` without relying on AI overspending.
+GmCareer _offseasonWithCapException() {
+  final career = _offseason();
+  final raw = jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>;
+  final finances = raw['finances'] as Map<String, dynamic>;
+  final contracts = {
+    for (final c
+        in (finances['contracts'] as List<dynamic>)
+            .cast<Map<String, dynamic>>())
+      c['id'] as String: c,
+  };
+  const targetSalaries = [
+    4100,
+    4100,
+    4100,
+    4100,
+    4100,
+    4100,
+    3300,
+    3300,
+    3300,
+    3300,
+    2600,
+    400,
+  ];
+  var index = 0;
+  var payrollDelta = 0;
+  for (final schedule
+      in (finances['schedules'] as List<dynamic>)
+          .cast<Map<String, dynamic>>()) {
+    final contract = contracts[schedule['contractId']]!;
+    if (contract['teamId'] != 'team-1' ||
+        contract['category'] != RosterCategory.standard.jsonValue) {
+      continue;
+    }
+    final annual = (schedule['annualSalaries'] as List<dynamic>).cast<int>();
+    final nextSalary = targetSalaries[index++];
+    payrollDelta += nextSalary - annual.first;
+    schedule['annualSalaries'] = FinancialRules.standardSchedule(
+      nextSalary,
+      annual.length,
+    );
+  }
+  for (final team
+      in (finances['teamFinances'] as List<dynamic>)
+          .cast<Map<String, dynamic>>()) {
+    if (team['teamId'] == 'team-1') {
+      team['cash'] = (team['cash'] as int) + payrollDelta;
+    }
+  }
+  return GmCareerCodec.decode(jsonEncode(raw));
+}
+
 void main() {
   group('T08H offseason readiness', () {
     test('fresh career is in progress, not ready', () {
@@ -90,7 +146,8 @@ void main() {
     });
 
     test('clearance start grants exact bounded exceptions', () {
-      final career = _clearance.start(_offseason());
+      final career = _clearance.start(_offseasonWithCapException());
+      expect(career.offseasonClearance.capExceptions, isNotEmpty);
       expect(
         career.offseasonClearance.status,
         OffseasonClearanceStatus.collectingHumanOffers,
@@ -113,7 +170,7 @@ void main() {
     test(
       'readiness counts approved relief without claiming player acceptance',
       () {
-        final career = _clearance.start(_offseason());
+        final career = _clearance.start(_offseasonWithCapException());
         final exception = career.offseasonClearance.capExceptions.firstWhere(
           (item) => item.amount > 0,
         );
@@ -122,7 +179,10 @@ void main() {
             .teams
             .singleWhere((item) => item.teamId == exception.teamId);
 
-        expect(need.capRoom, lessThan(FinancialRules.minimumSalary));
+        expect(
+          need.capRoom,
+          lessThan(FinancialRules.minimumSalary * need.requiredPlayers),
+        );
         expect(need.authorizedCapRelief, exception.amount);
         expect(need.financiallyLegalMinimumOffers, greaterThan(0));
         expect(need.willingMinimumOffers, 0);
@@ -130,7 +190,7 @@ void main() {
       },
     );
     test('financial illegality does not become player refusal', () {
-      final marketCareer = _offseason();
+      final marketCareer = _offseasonWithCapException();
       final authorized = _clearance.start(marketCareer);
       final exception = authorized.offseasonClearance.capExceptions.first;
       final entry = authorized.freeAgentPool.entries.first;
@@ -160,7 +220,7 @@ void main() {
     });
 
     test('forged exception amount fails career validation', () {
-      final career = _clearance.start(_offseason());
+      final career = _clearance.start(_offseasonWithCapException());
       final original = career.offseasonClearance.capExceptions.first;
       final forged = CapException(
         teamId: original.teamId,

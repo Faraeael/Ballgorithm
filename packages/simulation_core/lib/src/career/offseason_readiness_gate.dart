@@ -1,6 +1,7 @@
 import '../finance/financial_rules.dart';
 import '../models/free_agent_market.dart';
 import '../models/offseason_clearance.dart';
+import '../models/position.dart';
 import '../models/roster_category.dart';
 import '../models/ids.dart';
 import '../models/roster_rules.dart';
@@ -42,6 +43,7 @@ final class FranchiseClearanceNeed {
     required this.acceptableOffers,
     required this.unsignedDraftRights,
     required this.blockers,
+    this.missingPositions = const [],
   });
 
   final TeamId teamId;
@@ -62,9 +64,12 @@ final class FranchiseClearanceNeed {
   final int acceptableOffers;
   final int unsignedDraftRights;
   final List<String> blockers;
+  final List<Position> missingPositions;
 
   bool get canClear =>
-      requiredPlayers > 0 && acceptableOffers >= requiredPlayers;
+      requiredPlayers > 0 &&
+      acceptableOffers >= requiredPlayers &&
+      missingPositions.isEmpty;
 }
 
 final class OffseasonReadinessResult {
@@ -171,22 +176,34 @@ final class OffseasonReadinessGate {
     final blockers = <String>[];
     for (final team in career.league.teams) {
       final readiness = team.roster.validateRegularSeasonReadiness();
+      final missingPositions = [
+        for (final position in Position.values)
+          if (!team.roster.covers(position)) position,
+      ];
       final standard = team.roster.standardCount;
       final required = (RosterRules.minRegularSeasonStandard - standard).clamp(
         0,
         RosterRules.minRegularSeasonStandard,
       );
-      if (readiness.isValid) {
+      final isTeamReady = readiness.isValid && missingPositions.isEmpty;
+      if (isTeamReady) {
         ready++;
       } else {
         below++;
       }
       shortageTotal += required;
       if (team.id == career.userFranchiseId) humanShortage = required;
-      if (required == 0 && readiness.isValid) continue;
-      final need = _diagnoseTeam(career, team, required);
+      if (isTeamReady) continue;
+      final need = _diagnoseTeam(
+        career,
+        team,
+        required,
+        missingPositions: missingPositions,
+      );
       needs.add(need);
-      if (required > 0 && !need.canClear) {
+      if (required == 0 && missingPositions.isNotEmpty) {
+        blockers.add('${team.abbreviation}: ${need.blockers.join('; ')}');
+      } else if (required > 0 && !need.canClear) {
         blockers.add(
           '${team.abbreviation}: $required standard player(s) needed; '
           '${need.blockers.join('; ')}',
@@ -266,8 +283,9 @@ final class OffseasonReadinessGate {
   FranchiseClearanceNeed _diagnoseTeam(
     GmCareer career,
     Team team,
-    int required,
-  ) {
+    int required, {
+    List<Position> missingPositions = const [],
+  }) {
     final capRoom =
         FinancialRules.salaryCap -
         career.finances.capPayrollFor(team.id, career.currentYear);
@@ -367,7 +385,18 @@ final class OffseasonReadinessGate {
     }
     final blockers = <String>[];
     if (required == 0) {
-      blockers.add('non-roster readiness issue');
+      if (missingPositions.isNotEmpty) {
+        final missingText = missingPositions
+            .map((position) => position.shortName)
+            .join(', ');
+        blockers.add(
+          'missing position coverage: $missingText (already at '
+          '${team.roster.standardCount} standard players; standard-shortage '
+          'clearance/hardship cannot sign additional players)',
+        );
+      } else {
+        blockers.add('non-roster readiness issue');
+      }
     } else if (capRoom + authorizedRelief <
         FinancialRules.minimumSalary * required) {
       blockers.add(
@@ -380,6 +409,12 @@ final class OffseasonReadinessGate {
       blockers.add(
         'only $acceptable distinct remaining player(s) accept a legal offer '
         'for $required spot(s)',
+      );
+    }
+    if (required > 0 && missingPositions.isNotEmpty) {
+      blockers.add(
+        'missing position coverage: '
+        '${missingPositions.map((position) => position.shortName).join(', ')}',
       );
     }
     return FranchiseClearanceNeed(
@@ -409,6 +444,7 @@ final class OffseasonReadinessGate {
           .where((rights) => rights.owningTeamId == team.id)
           .length,
       blockers: blockers,
+      missingPositions: List.unmodifiable(missingPositions),
     );
   }
 }

@@ -185,10 +185,11 @@ final class FreeAgentOfferEvaluator {
     required RosterCategory category,
     required int durationYears,
     required int salary,
+    Team? teamOverride,
   }) {
     final entry = career.freeAgentPool.byId(freeAgentId);
-    final team = _team(career, teamId);
-    if (entry == null || team == null) {
+    final team = teamOverride ?? _team(career, teamId);
+    if (entry == null || team == null || team.id != teamId) {
       return PlayerOfferWillingness(
         status: FreeAgentOfferStatus.invalidTerms,
         reasonCode: entry == null ? 'unknownPlayer' : 'unknownTeam',

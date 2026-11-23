@@ -14,12 +14,15 @@ const _market = FreeAgentMarketService();
 const _clearance = OffseasonClearanceService();
 const _hardship = HardshipSettlementService();
 
-GmCareer _preparedHardshipCareer({bool prepareHardship = true}) {
+GmCareer _preparedHardshipCareer({
+  bool prepareHardship = true,
+  FranchiseSituation selectedSituation = FranchiseSituation.tanking,
+}) {
   var career = GmCareer.fromSetupResult(
     const CareerSetupService().generate(
       CareerSetupRequest(
         selectedTeamId: TeamId('team-1'),
-        selectedSituation: FranchiseSituation.tanking,
+        selectedSituation: selectedSituation,
         seed: _seed,
       ),
     ),
@@ -62,8 +65,13 @@ GmCareer _preparedHardshipCareer({bool prepareHardship = true}) {
       : career;
 }
 
-GmCareer _eligibleHumanHardshipCareer() {
-  final career = _preparedHardshipCareer(prepareHardship: false);
+GmCareer _eligibleHumanHardshipCareer({
+  FranchiseSituation selectedSituation = FranchiseSituation.tanking,
+}) {
+  final career = _preparedHardshipCareer(
+    prepareHardship: false,
+    selectedSituation: selectedSituation,
+  );
   final raw = jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>;
   final finances = raw['finances'] as Map<String, dynamic>;
   final contracts = {
@@ -321,10 +329,15 @@ void main() {
   test(
     'committed hardship writes resume without replay or transaction loss',
     () async {
-      final prepared = _preparedHardshipCareer();
+      final prepared = _hardship.prepare(
+        _eligibleHumanHardshipCareer(
+          selectedSituation: FranchiseSituation.contender,
+        ),
+        humanParticipationConfirmed: true,
+      );
       expect(
         prepared.hardshipSettlement.resolutionOrder.length,
-        greaterThan(1),
+        greaterThan(2),
       );
       final expected = _resolveAll(prepared);
       final storage = _PromoteThenFailStorage(GmCareerCodec.encode(prepared));
