@@ -52,6 +52,28 @@ final class HardshipTeamAssessment {
       proposedOffers.fold<int>(0, (sum, offer) => sum + offer.firstYearSalary);
 }
 
+final class HardshipPreparationReport {
+  const HardshipPreparationReport({
+    required this.career,
+    required this.candidateCountsByTeam,
+    required this.optionCountsByTeam,
+    required this.exploredStates,
+    required this.searchTruncated,
+    required this.completedTeams,
+    required this.filledSlots,
+    required this.elapsedMicroseconds,
+  });
+
+  final GmCareer career;
+  final Map<String, int> candidateCountsByTeam;
+  final Map<String, int> optionCountsByTeam;
+  final int exploredStates;
+  final bool searchTruncated;
+  final int completedTeams;
+  final int filledSlots;
+  final int elapsedMicroseconds;
+}
+
 /// One deterministic settlement after the original clearance has completed.
 final class HardshipSettlementService {
   const HardshipSettlementService({
@@ -59,6 +81,10 @@ final class HardshipSettlementService {
     this.ranker = const CompetitiveOfferRanker(),
     this.acquisition = const FreeAgentAcquisitionService(),
   });
+
+  static const int _maxSingleCandidatesPerTeam = 24;
+  static const int _maxOptionsPerTeam = 64;
+  static const int _maxSearchStates = 20000;
 
   final FreeAgentOfferEvaluator evaluator;
   final CompetitiveOfferRanker ranker;
@@ -316,6 +342,14 @@ final class HardshipSettlementService {
   GmCareer prepare(
     GmCareer career, {
     required bool humanParticipationConfirmed,
+  }) => prepareWithReport(
+    career,
+    humanParticipationConfirmed: humanParticipationConfirmed,
+  ).career;
+
+  HardshipPreparationReport prepareWithReport(
+    GmCareer career, {
+    required bool humanParticipationConfirmed,
   }) {
     if (career.phase != CareerPhase.openingOffseason ||
         career.freeAgentMarket.status != FreeAgentMarketStatus.marketComplete ||
@@ -325,14 +359,43 @@ final class HardshipSettlementService {
       _fail('Hardship settlement is not authorized in this career state');
     }
     career.validate();
-    final offers = <HardshipOffer>[];
+    final stopwatch = Stopwatch()..start();
+
     final teams = [...career.league.teams]
       ..sort((left, right) => left.id.value.compareTo(right.id.value));
+
+    final humanOffers = humanParticipationConfirmed
+        ? assessTeam(career, career.userFranchiseId).proposedOffers
+        : const <HardshipOffer>[];
+    final humanTargets = <String>{
+      for (final offer in humanOffers) offer.playerId.value,
+    };
+
+    final teamPlans = <_TeamHardshipPlan>[];
+    final candidateCountsByTeam = <String, int>{};
+    final optionCountsByTeam = <String, int>{};
+    var optionsTruncated = false;
+
     for (final team in teams) {
-      if (team.id == career.userFranchiseId && !humanParticipationConfirmed) {
-        continue;
+      if (team.id == career.userFranchiseId) continue;
+      final plan = _buildTeamPlan(career, team, humanTargets);
+      if (plan == null) continue;
+      candidateCountsByTeam[team.id.value] = plan.affordableCandidateCount;
+      optionCountsByTeam[team.id.value] = plan.options.length;
+      if (plan.optionsTruncated) optionsTruncated = true;
+      if (plan.options.isNotEmpty) {
+        teamPlans.add(plan);
       }
-      offers.addAll(assessTeam(career, team.id).proposedOffers);
+    }
+
+    final solved = _solveJointAllocation(teamPlans);
+
+    final offers = <HardshipOffer>[...humanOffers];
+    for (final plan in teamPlans) {
+      final chosen = solved.assignments[plan.teamId.value];
+      if (chosen != null) {
+        offers.addAll(chosen.offers);
+      }
     }
     offers.sort((left, right) {
       final team = left.teamId.value.compareTo(right.teamId.value);
@@ -340,31 +403,52 @@ final class HardshipSettlementService {
           ? team
           : left.playerId.value.compareTo(right.playerId.value);
     });
+
     final authorizations = <HardshipAuthorization>[];
     for (final team in teams) {
       final teamOffers = offers
           .where((offer) => offer.teamId == team.id)
           .toList();
       if (teamOffers.isEmpty) continue;
-      final assessment = assessTeam(career, team.id);
-      final authorization = HardshipAuthorization(
-        authorizationId: HardshipAuthorization.idFor(
-          team.id,
-          career.currentYear,
-        ),
-        teamId: team.id,
-        seasonYear: career.currentYear,
-        additionalAmount: assessment.additionalAuthority,
-        existingOrdinaryRelief: assessment.ordinaryRelief,
-        maximumCombinedOverage: FinancialRules.maximumCombinedHardshipOverage,
-        missingPlayers: assessment.missingPlayers,
-        authorizedOfferIds: [for (final offer in teamOffers) offer.offerId],
-        reason: hardshipAuthorizationReason,
-        status: HardshipAuthorizationStatus.unused,
-        usedAmount: 0,
-        transactionIds: const [],
+      final payroll = career.finances.capPayrollFor(
+        team.id,
+        career.currentYear,
       );
-      authorizations.add(authorization);
+      final ordinaryRelief = career.finances.financesFor(team.id).capException;
+      final missing =
+          RosterRules.minRegularSeasonStandard - team.roster.standardCount;
+      final proposedTotal = teamOffers.fold<int>(
+        0,
+        (sum, offer) => sum + offer.firstYearSalary,
+      );
+      final overage = payroll + proposedTotal - FinancialRules.salaryCap;
+      final requiredAdditional = overage > ordinaryRelief
+          ? overage - ordinaryRelief
+          : 0;
+      if (requiredAdditional < 1 ||
+          ordinaryRelief + requiredAdditional >
+              FinancialRules.maximumCombinedHardshipOverage) {
+        _fail('Coordinated hardship offer exceeds exact legal authority');
+      }
+      authorizations.add(
+        HardshipAuthorization(
+          authorizationId: HardshipAuthorization.idFor(
+            team.id,
+            career.currentYear,
+          ),
+          teamId: team.id,
+          seasonYear: career.currentYear,
+          additionalAmount: requiredAdditional,
+          existingOrdinaryRelief: ordinaryRelief,
+          maximumCombinedOverage: FinancialRules.maximumCombinedHardshipOverage,
+          missingPlayers: missing,
+          authorizedOfferIds: [for (final offer in teamOffers) offer.offerId],
+          reason: hardshipAuthorizationReason,
+          status: HardshipAuthorizationStatus.unused,
+          usedAmount: 0,
+          transactionIds: const [],
+        ),
+      );
     }
     final order = {for (final offer in offers) offer.playerId.value}.toList()
       ..sort();
@@ -380,7 +464,410 @@ final class HardshipSettlementService {
       outcomes: const [],
       authorizations: authorizations,
     );
-    return career.copyWith(hardshipSettlement: settlement);
+    stopwatch.stop();
+    return HardshipPreparationReport(
+      career: career.copyWith(hardshipSettlement: settlement),
+      candidateCountsByTeam: Map.unmodifiable(candidateCountsByTeam),
+      optionCountsByTeam: Map.unmodifiable(optionCountsByTeam),
+      exploredStates: solved.exploredStates,
+      searchTruncated: solved.truncated || optionsTruncated,
+      completedTeams: solved.completedTeams,
+      filledSlots: solved.filledSlots,
+      elapsedMicroseconds: stopwatch.elapsedMicroseconds,
+    );
+  }
+
+  _TeamHardshipPlan? _buildTeamPlan(
+    GmCareer career,
+    Team team,
+    Set<String> humanTargets,
+  ) {
+    final finances = career.finances.financesFor(team.id);
+    final payroll = career.finances.capPayrollFor(team.id, career.currentYear);
+    final missing =
+        RosterRules.minRegularSeasonStandard - team.roster.standardCount;
+    final ordinaryRelief = finances.capException;
+    final projectedCash = career.finances.projectedEndOfSeasonCash(
+      team.id,
+      career.currentYear,
+    );
+    if (missing <= 0 ||
+        missing > FinancialRules.maximumReliefDeals ||
+        finances.capGrandfathered ||
+        projectedCash < 0) {
+      return null;
+    }
+
+    final candidates = <_HardshipCandidate>[];
+    for (final entry in career.freeAgentPool.entries) {
+      if (career.freeAgentOffers.remainingAttempts(
+            teamId: team.id,
+            playerId: entry.id,
+            seasonYear: career.currentYear,
+          ) <=
+          0) {
+        continue;
+      }
+      final candidate = _cheapestAcceptableContract(
+        career: career,
+        teamId: team.id,
+        playerId: entry.id,
+      );
+      if (candidate != null) candidates.add(candidate);
+    }
+    if (candidates.isEmpty) return null;
+    candidates.sort(_compareCandidates);
+
+    var ordinarySlots = 0;
+    var ordinarySalary = 0;
+    for (final candidate in candidates) {
+      if (ordinarySlots >= missing) break;
+      final nextSalary = ordinarySalary + candidate.offer.firstYearSalary;
+      final payrollAfter = payroll + nextSalary;
+      final ordinaryLegal =
+          payrollAfter <= FinancialRules.salaryCap ||
+          (candidate.offer.firstYearSalary == FinancialRules.minimumSalary &&
+              payrollAfter <= FinancialRules.salaryCap + ordinaryRelief);
+      if (ordinaryLegal && projectedCash >= nextSalary) {
+        ordinarySlots++;
+        ordinarySalary = nextSalary;
+      }
+    }
+    if (ordinarySlots >= missing) return null;
+
+    final affordableSingles = <_HardshipCandidate>[];
+    for (final candidate in candidates) {
+      final salary = candidate.offer.firstYearSalary;
+      final overage = payroll + salary - FinancialRules.salaryCap;
+      final additional = overage > ordinaryRelief
+          ? overage - ordinaryRelief
+          : 0;
+      if (ordinaryRelief + additional <=
+              FinancialRules.maximumCombinedHardshipOverage &&
+          projectedCash - salary >= 0) {
+        affordableSingles.add(candidate);
+      }
+    }
+    if (affordableSingles.isEmpty) return null;
+
+    final bounded = affordableSingles.length > _maxSingleCandidatesPerTeam
+        ? affordableSingles.sublist(0, _maxSingleCandidatesPerTeam)
+        : affordableSingles;
+    final truncatedSingles =
+        affordableSingles.length > _maxSingleCandidatesPerTeam;
+
+    final options = <_HardshipOption>[];
+    if (missing == 1) {
+      for (final c in bounded) {
+        final salary = c.offer.firstYearSalary;
+        final overage = payroll + salary - FinancialRules.salaryCap;
+        final additional = overage > ordinaryRelief
+            ? overage - ordinaryRelief
+            : 0;
+        if (additional < 1 ||
+            ordinaryRelief + additional >
+                FinancialRules.maximumCombinedHardshipOverage ||
+            projectedCash - salary < 0) {
+          continue;
+        }
+        options.add(
+          _HardshipOption(
+            offers: [c.offer],
+            targetIds: {c.offer.playerId.value},
+            filledSlots: 1,
+            isComplete: true,
+            humanConflictCount: humanTargets.contains(c.offer.playerId.value)
+                ? 1
+                : 0,
+            additionalAuthority: additional,
+            totalFirstYearSalary: salary,
+            totalScheduleSalary: c.totalSalary,
+            canonicalKey: c.offer.playerId.value,
+          ),
+        );
+      }
+    } else {
+      for (var i = 0; i < bounded.length; i++) {
+        for (var j = i + 1; j < bounded.length; j++) {
+          final a = bounded[i];
+          final b = bounded[j];
+          var first = a;
+          var second = b;
+          if (first.offer.playerId.value.compareTo(
+                second.offer.playerId.value,
+              ) >
+              0) {
+            first = b;
+            second = a;
+          }
+          final firstPlayer = career.freeAgentPool
+              .byId(first.offer.playerId)!
+              .player;
+          final secondPlayer = career.freeAgentPool
+              .byId(second.offer.playerId)!
+              .player;
+          if (firstPlayer.position == secondPlayer.position) {
+            final adjustedSecond = _cheapestAcceptableContract(
+              career: career,
+              teamId: team.id,
+              playerId: second.offer.playerId,
+              teamOverride: team.copyWith(
+                roster: team.roster.withPlayer(
+                  firstPlayer,
+                  category: RosterCategory.standard,
+                ),
+              ),
+            );
+            if (adjustedSecond == null) continue;
+            second = adjustedSecond;
+          }
+          final totalFirst =
+              first.offer.firstYearSalary + second.offer.firstYearSalary;
+          final overage = payroll + totalFirst - FinancialRules.salaryCap;
+          final additional = overage > ordinaryRelief
+              ? overage - ordinaryRelief
+              : 0;
+          if (additional < 1 ||
+              ordinaryRelief + additional >
+                  FinancialRules.maximumCombinedHardshipOverage ||
+              projectedCash - totalFirst < 0) {
+            continue;
+          }
+          final humanConflicts =
+              (humanTargets.contains(first.offer.playerId.value) ? 1 : 0) +
+              (humanTargets.contains(second.offer.playerId.value) ? 1 : 0);
+          options.add(
+            _HardshipOption(
+              offers: [first.offer, second.offer],
+              targetIds: {
+                first.offer.playerId.value,
+                second.offer.playerId.value,
+              },
+              filledSlots: 2,
+              isComplete: true,
+              humanConflictCount: humanConflicts,
+              additionalAuthority: additional,
+              totalFirstYearSalary: totalFirst,
+              totalScheduleSalary: first.totalSalary + second.totalSalary,
+              canonicalKey:
+                  '${first.offer.playerId.value},${second.offer.playerId.value}',
+            ),
+          );
+        }
+      }
+      // Single-slot partial fallbacks for secondary slot-maximization when full
+      // 2-slot completion is infeasible across competing teams.
+      for (final c in bounded) {
+        final salary = c.offer.firstYearSalary;
+        final overage = payroll + salary - FinancialRules.salaryCap;
+        final additional = overage > ordinaryRelief
+            ? overage - ordinaryRelief
+            : 0;
+        if (additional < 1 ||
+            ordinaryRelief + additional >
+                FinancialRules.maximumCombinedHardshipOverage ||
+            projectedCash - salary < 0) {
+          continue;
+        }
+        options.add(
+          _HardshipOption(
+            offers: [c.offer],
+            targetIds: {c.offer.playerId.value},
+            filledSlots: 1,
+            isComplete: false,
+            humanConflictCount: humanTargets.contains(c.offer.playerId.value)
+                ? 1
+                : 0,
+            additionalAuthority: additional,
+            totalFirstYearSalary: salary,
+            totalScheduleSalary: c.totalSalary,
+            canonicalKey: c.offer.playerId.value,
+          ),
+        );
+      }
+    }
+
+    if (options.isEmpty) return null;
+    options.sort(_compareOptions);
+    final retained = options.length > _maxOptionsPerTeam
+        ? options.sublist(0, _maxOptionsPerTeam)
+        : options;
+    return _TeamHardshipPlan(
+      teamId: team.id,
+      missingPlayers: missing,
+      affordableCandidateCount: affordableSingles.length,
+      options: retained,
+      optionsTruncated: truncatedSingles || options.length > _maxOptionsPerTeam,
+    );
+  }
+
+  static int _compareOptions(_HardshipOption a, _HardshipOption b) {
+    if (a.isComplete != b.isComplete) return a.isComplete ? -1 : 1;
+    var compare = a.humanConflictCount.compareTo(b.humanConflictCount);
+    if (compare != 0) return compare;
+    compare = a.additionalAuthority.compareTo(b.additionalAuthority);
+    if (compare != 0) return compare;
+    compare = a.totalFirstYearSalary.compareTo(b.totalFirstYearSalary);
+    if (compare != 0) return compare;
+    compare = a.totalScheduleSalary.compareTo(b.totalScheduleSalary);
+    if (compare != 0) return compare;
+    return a.canonicalKey.compareTo(b.canonicalKey);
+  }
+
+  _JointHardshipSolution _solveJointAllocation(List<_TeamHardshipPlan> plans) {
+    if (plans.isEmpty) {
+      return const _JointHardshipSolution(
+        assignments: {},
+        exploredStates: 0,
+        truncated: false,
+        completedTeams: 0,
+        filledSlots: 0,
+      );
+    }
+
+    // MRV order: fewest complete options first (or fewest total options), ties
+    // broken deterministically by teamId.
+    final ordered = [...plans]
+      ..sort((a, b) {
+        final aComp = a.completeOptionCount;
+        final bComp = b.completeOptionCount;
+        final aHasComp = aComp > 0 ? 0 : 1;
+        final bHasComp = bComp > 0 ? 0 : 1;
+        if (aHasComp != bHasComp) return aHasComp.compareTo(bHasComp);
+        if (aComp != bComp) return aComp.compareTo(bComp);
+        final byLen = a.options.length.compareTo(b.options.length);
+        if (byLen != 0) return byLen;
+        return a.teamId.value.compareTo(b.teamId.value);
+      });
+
+    final n = ordered.length;
+    final remComplete = List<int>.filled(n + 1, 0);
+    final remMaxSlots = List<int>.filled(n + 1, 0);
+    final remMinAuthWhenComplete = List<int>.filled(n + 1, 0);
+    for (var i = n - 1; i >= 0; i--) {
+      final p = ordered[i];
+      remComplete[i] = remComplete[i + 1] + (p.completeOptionCount > 0 ? 1 : 0);
+      remMaxSlots[i] =
+          remMaxSlots[i + 1] +
+          (p.completeOptionCount > 0 ? p.missingPlayers : 1);
+      final minAuth = p.completeOptionCount > 0
+          ? p.options
+                .where((o) => o.isComplete)
+                .map((o) => o.additionalAuthority)
+                .reduce((x, y) => x < y ? x : y)
+          : 0;
+      remMinAuthWhenComplete[i] = remMinAuthWhenComplete[i + 1] + minAuth;
+    }
+
+    var bestCompleted = -1;
+    var bestSlots = -1;
+    var bestHumanConflicts = 1 << 30;
+    var bestAdditional = 1 << 30;
+    var bestFirstYear = 1 << 30;
+    Map<String, _HardshipOption> bestAssignments = const {};
+
+    var explored = 0;
+    var truncated = false;
+    final usedPlayers = <String>{};
+    final current = <String, _HardshipOption>{};
+
+    void search(
+      int idx,
+      int curCompleted,
+      int curSlots,
+      int curHumanConflicts,
+      int curAdditional,
+      int curFirstYear,
+    ) {
+      if (explored >= _maxSearchStates) {
+        truncated = true;
+        return;
+      }
+      explored++;
+
+      if (idx == n) {
+        final better =
+            curCompleted > bestCompleted ||
+            (curCompleted == bestCompleted &&
+                (curSlots > bestSlots ||
+                    (curSlots == bestSlots &&
+                        (curHumanConflicts < bestHumanConflicts ||
+                            (curHumanConflicts == bestHumanConflicts &&
+                                (curAdditional < bestAdditional ||
+                                    (curAdditional == bestAdditional &&
+                                        curFirstYear < bestFirstYear)))))));
+        if (better) {
+          bestCompleted = curCompleted;
+          bestSlots = curSlots;
+          bestHumanConflicts = curHumanConflicts;
+          bestAdditional = curAdditional;
+          bestFirstYear = curFirstYear;
+          bestAssignments = Map<String, _HardshipOption>.of(current);
+        }
+        return;
+      }
+
+      if (curCompleted + remComplete[idx] < bestCompleted) return;
+      if (curCompleted + remComplete[idx] == bestCompleted) {
+        if (curSlots + remMaxSlots[idx] < bestSlots) return;
+        if (curSlots + remMaxSlots[idx] == bestSlots) {
+          if (curHumanConflicts > bestHumanConflicts) return;
+          if (curHumanConflicts == bestHumanConflicts &&
+              bestCompleted == n &&
+              curAdditional + remMinAuthWhenComplete[idx] >= bestAdditional) {
+            return;
+          }
+        }
+      }
+
+      final plan = ordered[idx];
+      for (final opt in plan.options) {
+        if (truncated) return;
+        var conflict = false;
+        for (final pid in opt.targetIds) {
+          if (usedPlayers.contains(pid)) {
+            conflict = true;
+            break;
+          }
+        }
+        if (conflict) continue;
+
+        usedPlayers.addAll(opt.targetIds);
+        current[plan.teamId.value] = opt;
+        search(
+          idx + 1,
+          curCompleted + (opt.isComplete ? 1 : 0),
+          curSlots + opt.filledSlots,
+          curHumanConflicts + opt.humanConflictCount,
+          curAdditional + opt.additionalAuthority,
+          curFirstYear + opt.totalFirstYearSalary,
+        );
+        current.remove(plan.teamId.value);
+        usedPlayers.removeAll(opt.targetIds);
+      }
+
+      // Skip branch (needed when joint conflicts force sacrificing one team).
+      if (!truncated &&
+          (curCompleted + remComplete[idx + 1] >= bestCompleted)) {
+        search(
+          idx + 1,
+          curCompleted,
+          curSlots,
+          curHumanConflicts,
+          curAdditional,
+          curFirstYear,
+        );
+      }
+    }
+
+    search(0, 0, 0, 0, 0, 0);
+    return _JointHardshipSolution(
+      assignments: bestAssignments,
+      exploredStates: explored,
+      truncated: truncated,
+      completedTeams: bestCompleted < 0 ? 0 : bestCompleted,
+      filledSlots: bestSlots < 0 ? 0 : bestSlots,
+    );
   }
 
   GmCareer resolveNext(GmCareer career) {
@@ -739,4 +1226,61 @@ final class _HardshipCandidate {
   final HardshipOffer offer;
 
   int get totalSalary => offer.salarySchedule.fold<int>(0, (a, b) => a + b);
+}
+
+final class _HardshipOption {
+  const _HardshipOption({
+    required this.offers,
+    required this.targetIds,
+    required this.filledSlots,
+    required this.isComplete,
+    required this.humanConflictCount,
+    required this.additionalAuthority,
+    required this.totalFirstYearSalary,
+    required this.totalScheduleSalary,
+    required this.canonicalKey,
+  });
+
+  final List<HardshipOffer> offers;
+  final Set<String> targetIds;
+  final int filledSlots;
+  final bool isComplete;
+  final int humanConflictCount;
+  final int additionalAuthority;
+  final int totalFirstYearSalary;
+  final int totalScheduleSalary;
+  final String canonicalKey;
+}
+
+final class _TeamHardshipPlan {
+  _TeamHardshipPlan({
+    required this.teamId,
+    required this.missingPlayers,
+    required this.affordableCandidateCount,
+    required this.options,
+    required this.optionsTruncated,
+  }) : completeOptionCount = options.where((o) => o.isComplete).length;
+
+  final TeamId teamId;
+  final int missingPlayers;
+  final int affordableCandidateCount;
+  final List<_HardshipOption> options;
+  final bool optionsTruncated;
+  final int completeOptionCount;
+}
+
+final class _JointHardshipSolution {
+  const _JointHardshipSolution({
+    required this.assignments,
+    required this.exploredStates,
+    required this.truncated,
+    required this.completedTeams,
+    required this.filledSlots,
+  });
+
+  final Map<String, _HardshipOption> assignments;
+  final int exploredStates;
+  final bool truncated;
+  final int completedTeams;
+  final int filledSlots;
 }
