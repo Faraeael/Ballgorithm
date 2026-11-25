@@ -249,6 +249,8 @@ final class SeasonRolloverService {
       marketHistory: [...current.marketHistory, marketHistoryRecord],
       // M010: preferences carry over; validity is re-checked at season entry.
       userRotation: current.userRotation,
+      // M011: identities carry over; expired commitments end employment.
+      staff: current.staff.rolledOver(financialPlan.proposedCareerFinances),
     );
 
     return SeasonRolloverResult(

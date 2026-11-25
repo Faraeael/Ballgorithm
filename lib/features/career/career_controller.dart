@@ -411,24 +411,124 @@ class GmCareerController extends ChangeNotifier {
         return proposal.settings;
       });
 
+  /// M011: switch to AUTO while keeping the current manual plan for later
+  /// restoration. Nothing is erased; plain AUTO stays an explicit reset.
+  Future<void> delegateUserRotationKeepingManual({String slot = 'default'}) =>
+      _rotationCommand('delegate rotation', slot, (current) {
+        final settings = current.userRotation;
+        if (!settings.isManual) return settings;
+        return CareerRotationSettings.autoRetaining(settings);
+      });
+
+  /// M011: restores the retained manual plan after validating it against the
+  /// current standard roster; an obsolete plan is refused with its issues.
+  Future<void> restoreRetainedManualRotation({String slot = 'default'}) =>
+      _rotationCommand('restore manual rotation', slot, (current) {
+        final retained = current.userRotation.retainedManual;
+        if (retained == null) {
+          throw StateError('No retained manual rotation to restore');
+        }
+        final resolution = CareerRotationService.resolve(
+          retained,
+          RegularSeasonGameAdapter.standardTeamFor(current.userTeam),
+        );
+        if (!resolution.isValid) {
+          throw CareerRotationInvalidException(resolution.issues);
+        }
+        return retained;
+      });
+
+  /// M011 (D2): permanent league-wide coaching activation.
+  Future<void> enableCoaching({String slot = 'default'}) =>
+      _staffCommand('enable coaching', slot, _staffMarket.enableCoaching);
+
+  Future<void> hireHeadCoach({
+    required String candidateId,
+    required int durationYears,
+    String slot = 'default',
+  }) => _staffCommand(
+    'hire head coach',
+    slot,
+    (current) => _staffMarket.hireHeadCoach(
+      current,
+      teamId: current.userFranchiseId,
+      candidateId: candidateId,
+      durationYears: durationYears,
+    ),
+  );
+
+  Future<void> dismissHeadCoach({String slot = 'default'}) => _staffCommand(
+    'dismiss head coach',
+    slot,
+    (current) =>
+        _staffMarket.dismissHeadCoach(current, teamId: current.userFranchiseId),
+  );
+
+  Future<void> replaceHeadCoach({
+    required String candidateId,
+    required int durationYears,
+    String slot = 'default',
+  }) => _staffCommand(
+    'replace head coach',
+    slot,
+    (current) => _staffMarket.replaceHeadCoach(
+      current,
+      teamId: current.userFranchiseId,
+      candidateId: candidateId,
+      durationYears: durationYears,
+    ),
+  );
+
+  Future<void> renewHeadCoach({
+    required int additionalYears,
+    String slot = 'default',
+  }) => _staffCommand(
+    'renew head coach',
+    slot,
+    (current) => _staffMarket.renewHeadCoach(
+      current,
+      teamId: current.userFranchiseId,
+      additionalYears: additionalYears,
+    ),
+  );
+
+  static const StaffMarketService _staffMarket = StaffMarketService();
+
+  StateError? _exclusiveCommandBlocker(String action) =>
+      _inFlightCommands > 0 ||
+          _isLoading ||
+          isBatchSimulating ||
+          _seasonTransitionStage != null
+      ? StateError('Cannot $action while a simulation or save is in progress')
+      : null;
+
   Future<void> _rotationCommand(
     String action,
     String slot,
     CareerRotationSettings Function(GmCareer current) next,
   ) {
-    if (_inFlightCommands > 0 ||
-        _isLoading ||
-        isBatchSimulating ||
-        _seasonTransitionStage != null) {
-      return Future.error(
-        StateError('Cannot $action while a simulation or save is in progress'),
-      );
-    }
+    final blocked = _exclusiveCommandBlocker(action);
+    if (blocked != null) return Future.error(blocked);
     return _runCareerCommand(action: action, () async {
       final current = _requireCareer();
       final settings = next(current);
       if (settings == current.userRotation) return;
       await _saveCareerState(current.copyWith(userRotation: settings), slot);
+    });
+  }
+
+  /// Staff transactions: rejected (never queued) while anything else runs;
+  /// the pure core transaction either fully succeeds or throws before any
+  /// state is built, and a failed save keeps the previous career.
+  Future<void> _staffCommand(
+    String action,
+    String slot,
+    GmCareer Function(GmCareer current) transaction,
+  ) {
+    final blocked = _exclusiveCommandBlocker(action);
+    if (blocked != null) return Future.error(blocked);
+    return _runCareerCommand(action: action, () async {
+      await _saveCareerState(transaction(_requireCareer()), slot);
     });
   }
 

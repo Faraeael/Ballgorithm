@@ -384,7 +384,8 @@ void main() {
           ..remove('careerDraftRights')
           ..remove('carriedUnsignedProspects')
           ..remove('marketHistory')
-          ..remove('userRotation');
+          ..remove('userRotation')
+          ..remove('staff');
         final migrated = GmCareerCodec.decode(jsonEncode(older));
         expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
         expect(migrated.freeAgentOffers.isEmpty, isTrue);

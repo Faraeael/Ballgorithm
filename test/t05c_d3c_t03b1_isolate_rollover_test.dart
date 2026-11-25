@@ -49,15 +49,17 @@ void main() {
   // 2ab8e25: aadfbd75…, bfc2440e…, 4395386f…, 2b53db23…; 298e443 is unchanged.
   const baselineArch1Sha =
       '73507ba699b903cf4c89e7245142d3ef44dd3bcf346e23d004ef54b4f4f10b9f';
-  // M010 schema v26 adds `userRotation` (AUTO) to career JSON. With that key
-  // removed and schemaVersion 25 restored, the career hashes are exactly the
-  // v25 values 30bbf735… (Y2) and d900d14c… (Y3); archive digests are unchanged.
+  // M011 schema v27 adds `staff` (180 named, now-unattached incumbents,
+  // coachingEnabled false) to career JSON. With that key removed and
+  // schemaVersion 26 restored, the career hashes are exactly the v26 values
+  // f3b6dbbf… (Y2) and 0b02462c… (Y3); archive digests are unchanged.
+  // (v26 itself was v25 30bbf735…/d900d14c… plus M010 `userRotation`.)
   const baselineY2CareerSha =
-      'f3b6dbbffffd74910d3cc10b5d2fa74fd713e1cd88e3fac98ee8b59f3101b8ab';
+      '03eb0bc0c57be026f72747f1425f08d891cc72015ba3b70e4252ff1798035bf5';
   const baselineArch2Sha =
       'efd8aaf999ff1ea6f4008f2ccf58ea20ff9811dbb89a586da00febc96c67ff06';
   const baselineY3CareerSha =
-      '0b02462c584dabf1f5e7fcc0ca700d92b57badf19fbf116ef692823e8a7aff22';
+      'cd263778ffebdf8f38630db2badac53713d8a88e9408bbc7b8351c755ff269ee';
 
   late GmCareer y1Completed;
   late GmCareer y2Completed;

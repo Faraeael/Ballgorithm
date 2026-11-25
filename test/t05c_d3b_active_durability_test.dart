@@ -299,6 +299,7 @@ void main() {
         v24Map['schemaVersion'] = 24;
         v24Map.remove('marketHistory');
         v24Map.remove('userRotation');
+        v24Map.remove('staff');
         File(
           '${s.resolvePath('legacy_slot')}.bak',
         ).writeAsStringSync(jsonEncode(v24Map));

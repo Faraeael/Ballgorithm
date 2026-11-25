@@ -222,7 +222,8 @@ void main() {
                 ..remove('careerDraftRights')
                 ..remove('carriedUnsignedProspects')
                 ..remove('marketHistory')
-                ..remove('userRotation');
+                ..remove('userRotation')
+                ..remove('staff');
           (migratedV15['regularSeasonState'] as Map<String, dynamic>).remove(
             'schedule',
           );
@@ -310,7 +311,8 @@ void main() {
                 ..remove('careerDraftRights')
                 ..remove('carriedUnsignedProspects')
                 ..remove('marketHistory')
-                ..remove('userRotation');
+                ..remove('userRotation')
+                ..remove('staff');
           (scheduledV16['regularSeasonState'] as Map<String, dynamic>).remove(
             'gameInputSnapshots',
           );
@@ -497,7 +499,8 @@ void main() {
                 ..remove('careerDraftRights')
                 ..remove('carriedUnsignedProspects')
                 ..remove('marketHistory')
-                ..remove('userRotation');
+                ..remove('userRotation')
+                ..remove('staff');
           final legacySeason =
               legacyV17['regularSeasonState'] as Map<String, dynamic>;
           legacySeason.remove('gameInputSnapshots');
@@ -3247,7 +3250,8 @@ String _v18Json(GmCareer career) {
     ..remove('careerDraftRights')
     ..remove('carriedUnsignedProspects')
     ..remove('marketHistory')
-    ..remove('userRotation');
+    ..remove('userRotation')
+    ..remove('staff');
   return jsonEncode(save);
 }
 
@@ -3261,6 +3265,7 @@ String _v19Json(GmCareer career) {
     ..remove('careerDraftRights')
     ..remove('carriedUnsignedProspects')
     ..remove('marketHistory')
-    ..remove('userRotation');
+    ..remove('userRotation')
+    ..remove('staff');
   return jsonEncode(save);
 }

@@ -5,12 +5,13 @@ import '../../theme/hardwood_command_theme.dart';
 import 'career_controller.dart';
 import 'career_player_profile_screen.dart';
 import 'career_rotation_screen.dart';
+import 'career_staff_view.dart';
 import 'career_ui_labels.dart';
 import 'widgets/hardwood_components.dart';
 
-enum _TeamSubView { rosterAndDepth, capAndContracts }
+enum _TeamSubView { rosterAndDepth, capAndContracts, staff }
 
-/// D02 Team Roster & Depth + Cap & Contracts destination.
+/// D02 Team Roster & Depth + Cap & Contracts + M011 Staff destination.
 class CareerTeamTab extends StatefulWidget {
   const CareerTeamTab({super.key, required this.controller});
 
@@ -64,6 +65,8 @@ class _CareerTeamTabState extends State<CareerTeamTab> {
                   ? Position.values
                   : <Position>[_selectedPosition!])
             _buildPositionGroup(context, t, career, team, pos),
+        ] else if (_subView == _TeamSubView.staff) ...[
+          CareerStaffView(controller: widget.controller),
         ] else ...[
           _buildCapOverviewCard(
             t,
@@ -142,7 +145,8 @@ class _CareerTeamTabState extends State<CareerTeamTab> {
                   ),
                   SizedBox(height: t.space100),
                   Text(
-                    '${manual ? 'MANUAL' : 'AUTO'} · $readiness',
+                    '${manual ? 'MANUAL' : 'AUTO'}${_autoCoachSuffix(career)} '
+                    '· $readiness',
                     key: const ValueKey('team-rotation-status'),
                     style: TextStyle(
                       color: ready ? t.textSecondary : t.statusDangerFg,
@@ -158,6 +162,18 @@ class _CareerTeamTabState extends State<CareerTeamTab> {
         ),
       ),
     );
+  }
+
+  /// " (Coach X)" when coaching is on and AUTO is delegated to a coach;
+  /// empty otherwise so the M010 status text is unchanged.
+  String _autoCoachSuffix(GmCareer career) {
+    if (!career.staff.coachingEnabled || career.userRotation.isManual) {
+      return '';
+    }
+    final coach = career.staff.employedHeadCoach(career.userFranchiseId);
+    return coach == null
+        ? ' (no head coach)'
+        : ' (Coach ${coach.firstName} ${coach.lastName})';
   }
 
   Widget _buildSubViewSwitcher(HardwoodCommandTokens t) {
@@ -181,6 +197,16 @@ class _CareerTeamTabState extends State<CareerTeamTab> {
             selected: _subView == _TeamSubView.capAndContracts,
             onTap: () =>
                 setState(() => _subView = _TeamSubView.capAndContracts),
+          ),
+        ),
+        SizedBox(width: t.space200),
+        Expanded(
+          child: _subViewButton(
+            t,
+            key: const ValueKey('team-view-staff'),
+            label: 'STAFF',
+            selected: _subView == _TeamSubView.staff,
+            onTap: () => setState(() => _subView = _TeamSubView.staff),
           ),
         ),
       ],

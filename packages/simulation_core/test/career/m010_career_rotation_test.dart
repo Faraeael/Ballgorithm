@@ -281,11 +281,11 @@ void main() {
   });
 
   group('M010-T02 CareerRotationSettings persistence', () {
-    test('AUTO and manual settings round-trip through schema v26', () {
-      expect(GmCareerCodec.currentSchemaVersion, 26);
+    test('AUTO and manual settings round-trip through the current schema', () {
+      expect(GmCareerCodec.currentSchemaVersion, 27);
       expect(scheduled.userRotation, CareerRotationSettings.auto);
       final autoJson = jsonDecode(GmCareerCodec.encode(scheduled)) as Map;
-      expect(autoJson['schemaVersion'], 26);
+      expect(autoJson['schemaVersion'], GmCareerCodec.currentSchemaVersion);
       expect(autoJson['userRotation'], {'mode': 'auto'});
 
       for (final settings in [
@@ -309,17 +309,25 @@ void main() {
             jsonDecode(GmCareerCodec.encode(scheduled)) as Map<String, dynamic>;
         final v25 = Map<String, dynamic>.of(map)
           ..['schemaVersion'] = 25
-          ..remove('userRotation');
+          ..remove('userRotation')
+          ..remove('staff');
         final migrated = GmCareerCodec.decode(jsonEncode(v25));
         expect(migrated.userRotation, CareerRotationSettings.auto);
-        expect(migrated.schemaVersion, 26);
+        expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
 
-        final v25WithKey = Map<String, dynamic>.of(map)..['schemaVersion'] = 25;
+        // userRotation itself is rejected below v26 (staff removed so the
+        // failure can only come from userRotation).
+        final v25WithKey = Map<String, dynamic>.of(map)
+          ..['schemaVersion'] = 25
+          ..remove('staff');
         expect(
           () => GmCareerCodec.decode(jsonEncode(v25WithKey)),
           throwsFormatException,
         );
-        final v26Missing = Map<String, dynamic>.of(map)..remove('userRotation');
+        final v26Missing = Map<String, dynamic>.of(map)
+          ..['schemaVersion'] = 26
+          ..remove('userRotation')
+          ..remove('staff');
         expect(
           () => GmCareerCodec.decode(jsonEncode(v26Missing)),
           throwsFormatException,

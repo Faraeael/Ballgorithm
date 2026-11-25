@@ -1404,7 +1404,9 @@ class CareerHomeScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'The season cannot start with your saved manual rotation:',
+                'The season cannot start with your saved manual rotation. '
+                'Switching to AUTO keeps that plan so you can restore and '
+                'repair it later:',
               ),
               for (final issue in error.issues)
                 Text(
@@ -1434,7 +1436,7 @@ class CareerHomeScreen extends StatelessWidget {
       await openCareerRotationEditor(context, controller);
     } else if (action == 'auto') {
       try {
-        await controller.resetUserRotationToAuto();
+        await controller.delegateUserRotationKeepingManual();
       } catch (_) {}
     }
   }

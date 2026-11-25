@@ -400,7 +400,8 @@ void main() {
           ..remove('careerDraftRights')
           ..remove('carriedUnsignedProspects')
           ..remove('marketHistory')
-          ..remove('userRotation');
+          ..remove('userRotation')
+          ..remove('staff');
 
         final v1Json = jsonEncode(v1Map);
 

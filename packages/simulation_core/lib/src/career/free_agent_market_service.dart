@@ -11,6 +11,7 @@ import 'competitive_offer_ranker.dart';
 import 'free_agent_acquisition_service.dart';
 import 'free_agent_offer_evaluator.dart';
 import 'gm_career.dart';
+import 'staff_market_service.dart';
 
 /// Shared two-round free-agency market orchestration.
 final class FreeAgentMarketService {
@@ -32,8 +33,12 @@ final class FreeAgentMarketService {
     }
     final market = career.freeAgentMarket;
     if (market.status == FreeAgentMarketStatus.notStarted) {
+      // M011 (D8): AI head-coach recruitment happens once per offseason as
+      // free agency opens: after the draft and rookie signings, before player
+      // offers and clearance. Returns [career] unchanged when coaching is off.
+      final staffed = const StaffMarketService().aiRecruitHeadCoaches(career);
       return _replaceMarket(
-        career,
+        staffed,
         market.copyWith(
           status: FreeAgentMarketStatus.collectingHumanOffers,
           roundNumber: 1,

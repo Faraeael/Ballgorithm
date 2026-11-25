@@ -27,6 +27,7 @@ import '../simulation/game_fingerprint.dart';
 import 'regular_season_game_adapter.dart';
 import 'regular_season_game_input_evidence.dart';
 import 'career_rotation_settings.dart';
+import 'staff_state.dart';
 import 'regular_season_game_result.dart';
 import 'career_phase.dart';
 import 'offseason_readiness_gate.dart';
@@ -43,7 +44,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 26;
+  static const int currentSchemaVersion = 27;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -104,6 +105,7 @@ final class GmCareerCodec {
           ],
       },
       'userRotation': career.userRotation.toJson(),
+      'staff': career.staff.toJson(),
     };
     return jsonEncode(map);
   }
@@ -749,7 +751,15 @@ final class GmCareerCodec {
       if (!raw.containsKey('userRotation')) {
         throw const FormatException('Missing userRotation in career JSON v26');
       }
-      userRotation = CareerRotationSettings.fromJson(raw['userRotation']);
+      final rawRotation = raw['userRotation'];
+      if (schemaVersion < 27 &&
+          rawRotation is Map &&
+          rawRotation.containsKey('retainedManual')) {
+        throw const FormatException(
+          'retainedManual is not supported before career schema v27',
+        );
+      }
+      userRotation = CareerRotationSettings.fromJson(rawRotation);
     } else {
       if (raw.containsKey('userRotation')) {
         throw const FormatException(
@@ -757,6 +767,23 @@ final class GmCareerCodec {
         );
       }
       userRotation = CareerRotationSettings.auto;
+    }
+
+    // M011: v27 stores named staff; older saves derive deterministic named
+    // incumbents from their existing commitments (no money changes).
+    final StaffState? staff;
+    if (schemaVersion >= 27) {
+      if (!raw.containsKey('staff')) {
+        throw const FormatException('Missing staff in career JSON v27');
+      }
+      staff = StaffState.fromJson(raw['staff']);
+    } else {
+      if (raw.containsKey('staff')) {
+        throw const FormatException(
+          'staff is not supported before career schema v27',
+        );
+      }
+      staff = null;
     }
 
     final career = GmCareer(
@@ -791,6 +818,7 @@ final class GmCareerCodec {
       carriedUnsignedProspects: carriedUnsignedProspects,
       marketHistory: marketHistory,
       userRotation: userRotation,
+      staff: staff,
     );
     if (schemaVersion == 17) _validateNativeCareer(career);
     final migrated = schemaVersion == 17 ? _migrateV17(career) : career;

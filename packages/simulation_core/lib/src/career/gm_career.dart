@@ -28,6 +28,7 @@ import '../models/team.dart';
 import 'career_phase.dart';
 import 'career_rotation_service.dart';
 import 'career_rotation_settings.dart';
+import 'staff_state.dart';
 import 'career_setup.dart';
 import 'regular_season_state.dart';
 import 'play_in_state.dart';
@@ -96,6 +97,7 @@ final class GmCareer {
     Map<String, CarriedUnsignedProspect> carriedUnsignedProspects = const {},
     List<SeasonMarketHistoryRecord> marketHistory = const [],
     this.userRotation = CareerRotationSettings.auto,
+    StaffState? staff,
   }) : draftExecutionState =
            draftExecutionState ?? DraftExecutionState.initial(),
        rookieSigningLedger = rookieSigningLedger ?? RookieSigningLedger.empty(),
@@ -154,6 +156,12 @@ final class GmCareer {
            k: carriedUnsignedProspects[k]!,
        }),
        marketHistory = List.unmodifiable(marketHistory) {
+    this.staff =
+        staff ??
+        StaffState.incumbentsFor(
+          finances: this.finances,
+          generationSeed: generationSeed,
+        );
     validate();
   }
 
@@ -178,7 +186,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 26;
+  static const int currentSchemaVersion = 27;
 
   final String id;
   final int schemaVersion;
@@ -247,6 +255,10 @@ final class GmCareer {
   /// Existing careers default to AUTO. Obsolete manual plans are preserved for
   /// explicit reconciliation; see `CareerRotationService`.
   final CareerRotationSettings userRotation;
+
+  /// Named staff and the league-wide coaching switch (M011, schema v27).
+  /// Salaries stay on `finances.staffCommitments`.
+  late final StaffState staff;
 
   /// Draft rights whose prospect has not signed a rookie contract yet.
   ///
@@ -409,6 +421,7 @@ final class GmCareer {
     _validateCareerDraftRights(teamIds, playerIds);
     _validateMarketHistory();
     _validateUserRotation();
+    staff.validate(finances: finances, league: league);
   }
 
   /// Rosters only change in openingOffseason, so a manual plan that resolves
@@ -1802,6 +1815,7 @@ final class GmCareer {
     Map<String, CarriedUnsignedProspect>? carriedUnsignedProspects,
     List<SeasonMarketHistoryRecord>? marketHistory,
     CareerRotationSettings? userRotation,
+    StaffState? staff,
   }) {
     return GmCareer(
       id: id ?? this.id,
@@ -1842,6 +1856,7 @@ final class GmCareer {
           carriedUnsignedProspects ?? this.carriedUnsignedProspects,
       marketHistory: marketHistory ?? this.marketHistory,
       userRotation: userRotation ?? this.userRotation,
+      staff: staff ?? this.staff,
     );
   }
 }

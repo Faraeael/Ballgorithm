@@ -27,6 +27,7 @@ final class CareerRotationSettings {
     required this.starters,
     required this.preset,
     required this.customTargets,
+    this.retainedManual,
   });
 
   /// Automatic mode; existing careers decode to this.
@@ -36,6 +37,22 @@ final class CareerRotationSettings {
     preset: RotationPreset.balanced,
     customTargets: {},
   );
+
+  /// AUTO (delegated) that keeps the last manual plan for later restoration
+  /// (M011, schema v27). The retained plan never drives game inputs; it is
+  /// re-validated against the roster when restored.
+  factory CareerRotationSettings.autoRetaining(CareerRotationSettings manual) {
+    if (!manual.isManual) {
+      throw const FormatException('Only a manual plan can be retained');
+    }
+    return CareerRotationSettings._(
+      mode: CareerRotationMode.auto,
+      starters: const [],
+      preset: RotationPreset.balanced,
+      customTargets: const {},
+      retainedManual: manual,
+    );
+  }
 
   /// Validated manual settings.
   ///
@@ -94,10 +111,15 @@ final class CareerRotationSettings {
     }
     final mode = raw['mode'];
     if (mode == CareerRotationMode.auto.jsonValue) {
-      if (raw.length != 1) {
+      if (raw.keys.any((k) => k != 'mode' && k != 'retainedManual')) {
         throw const FormatException('Automatic userRotation has extra keys');
       }
-      return auto;
+      if (!raw.containsKey('retainedManual')) return auto;
+      final retained = CareerRotationSettings.fromJson(raw['retainedManual']);
+      if (!retained.isManual) {
+        throw const FormatException('retainedManual must be a manual plan');
+      }
+      return CareerRotationSettings.autoRetaining(retained);
     }
     if (mode != CareerRotationMode.manual.jsonValue) {
       throw FormatException('Unknown userRotation mode: $mode');
@@ -144,6 +166,9 @@ final class CareerRotationSettings {
 
   bool get isManual => mode == CareerRotationMode.manual;
 
+  /// Last manual plan kept while AUTO is active (null when none).
+  final CareerRotationSettings? retainedManual;
+
   Map<String, Object?> toJson() => isManual
       ? {
           'mode': mode.jsonValue,
@@ -151,7 +176,11 @@ final class CareerRotationSettings {
           'preset': preset.jsonValue,
           if (preset == RotationPreset.custom) 'customTargets': customTargets,
         }
-      : {'mode': mode.jsonValue};
+      : {
+          'mode': mode.jsonValue,
+          if (retainedManual != null)
+            'retainedManual': retainedManual!.toJson(),
+        };
 
   @override
   bool operator ==(Object other) =>
@@ -159,7 +188,8 @@ final class CareerRotationSettings {
       other.mode == mode &&
       other.preset == preset &&
       _listEquals(other.starters, starters) &&
-      _mapEquals(other.customTargets, customTargets);
+      _mapEquals(other.customTargets, customTargets) &&
+      other.retainedManual == retainedManual;
 
   @override
   int get hashCode => Object.hash(
@@ -169,6 +199,7 @@ final class CareerRotationSettings {
     Object.hashAll(
       customTargets.entries.map((e) => Object.hash(e.key, e.value)),
     ),
+    retainedManual,
   );
 
   static bool _listEquals(List<PlayerId> a, List<PlayerId> b) {

@@ -5,6 +5,7 @@ import '../../theme/hardwood_command_theme.dart';
 import '../game/participation_view.dart';
 import '../game/rotation_budget.dart';
 import 'career_controller.dart';
+import 'career_ui_labels.dart';
 import 'widgets/hardwood_components.dart';
 
 /// The three approved M010 editor views; all share one unsaved draft.
@@ -145,12 +146,37 @@ class _CareerRotationScreenState extends State<CareerRotationScreen> {
           if (rosterIds.contains(entry.key)) entry.key: entry.value,
       };
     } else {
+      // AUTO draft mirrors what AUTO will actually use (M011: the head
+      // coach's plan when coaching is on), so switching to MANUAL starts
+      // from exactly what was shown.
+      final decision = team == null ? null : _autoDecision(team);
       _manual = false;
-      _starters = team == null ? const [] : _defaultStarters(team);
-      _preset = RotationPreset.balanced;
-      _customTargets = {};
+      _starters = team == null
+          ? const []
+          : decision?.lineup.playerIds ?? _defaultStarters(team);
+      _preset = decision?.plan.preset ?? RotationPreset.balanced;
+      _customTargets = _preset == RotationPreset.custom
+          ? {
+              for (final e in decision!.plan.targetSeconds.entries)
+                e.key.value: e.value,
+            }
+          : {};
     }
   }
+
+  /// What AUTO means for the human team now (coach plan or default).
+  TeamRotationDecision? _autoDecision(Team team) {
+    final career = _controller.career;
+    if (career == null) return null;
+    try {
+      return CareerRotationService.autoDecisionFor(career, team, rules: _rules);
+    } on GameValidationException {
+      return null;
+    }
+  }
+
+  List<String> _autoStarters(Team team) =>
+      _autoDecision(team)?.lineup.playerIds ?? _defaultStarters(team);
 
   bool get _busy =>
       _saving ||
@@ -186,14 +212,11 @@ class _CareerRotationScreenState extends State<CareerRotationScreen> {
   /// what is in the draft (unassigned players render as unassigned).
   Map<String, int> _draftTargets(Team team) {
     if (!_manual) {
-      try {
-        final auto = CareerRotationService.automaticFor(team, rules: _rules);
-        return {
-          for (final e in auto.plan.targetSeconds.entries) e.key.value: e.value,
-        };
-      } on GameValidationException {
-        return const {};
-      }
+      final auto = _autoDecision(team);
+      if (auto == null) return const {};
+      return {
+        for (final e in auto.plan.targetSeconds.entries) e.key.value: e.value,
+      };
     }
     if (_preset == RotationPreset.custom) return _customTargets;
     try {
@@ -226,7 +249,18 @@ class _CareerRotationScreenState extends State<CareerRotationScreen> {
   }
 
   void _setMode(bool manual, Team team) {
-    if (manual == _manual) return;
+    if (manual == _manual || _busy) return;
+    final career = _controller.career;
+    final retained = career?.userRotation.retainedManual;
+    if (manual && career != null && retained != null) {
+      final resolution = CareerRotationService.resolve(retained, team);
+      if (resolution.isValid) {
+        _edit(() => _loadDraftFrom(retained, team));
+      } else {
+        _loadRetainedRepairDraft(career, team, retained, resolution);
+      }
+      return;
+    }
     _edit(() {
       _manual = manual;
       if (manual && _starters.length != 5) {
@@ -286,8 +320,9 @@ class _CareerRotationScreenState extends State<CareerRotationScreen> {
     try {
       if (settings.isManual) {
         await _controller.updateUserRotation(settings);
-      } else {
-        await _controller.resetUserRotationToAuto();
+      } else if (_controller.career?.userRotation.isManual ?? false) {
+        // M011: AUTO keeps the saved manual plan for later restoration.
+        await _controller.delegateUserRotationKeepingManual();
       }
       if (!mounted) return;
       setState(() {
@@ -357,8 +392,8 @@ class _CareerRotationScreenState extends State<CareerRotationScreen> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Switch to AUTO?'),
         content: const Text(
-          'Your saved manual rotation will be replaced by the automatic '
-          'default lineup and balanced playing time.',
+          'AUTO takes over the rotation. Your saved manual plan is kept and '
+          'can be restored (and repaired) later.',
         ),
         actions: [
           TextButton(
@@ -375,7 +410,7 @@ class _CareerRotationScreenState extends State<CareerRotationScreen> {
     );
     if (confirmed != true || !mounted) return;
     try {
-      await _controller.resetUserRotationToAuto();
+      await _controller.delegateUserRotationKeepingManual();
       if (!mounted) return;
       setState(() {
         _loadDraftFromCommitted();
@@ -727,15 +762,118 @@ class _CareerRotationScreenState extends State<CareerRotationScreen> {
               ? 'You choose the starting five and playing-time targets. They '
                     'apply to every regular-season, Play-In and playoff game '
                     'simulated after you save.'
-              : 'AUTO uses the default lineup (first standard player at each '
-                    'natural position, in roster order) and the balanced '
-                    'nine-player rotation — the same rules as every AI team.',
+              : _autoDescription(team),
           key: const ValueKey('rotation-mode-description'),
           style: TextStyle(color: t.textSecondary, fontSize: 12.5),
         ),
+        if (!_manual &&
+            _controller.career?.userRotation.retainedManual != null) ...[
+          SizedBox(height: t.space300),
+          Container(
+            key: const ValueKey('rotation-retained-manual'),
+            padding: EdgeInsets.all(t.space300),
+            decoration: BoxDecoration(
+              color: t.bgElevated,
+              borderRadius: BorderRadius.circular(t.radiusMd),
+              border: Border.all(color: t.borderSubtle),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Your previous manual plan is saved and is not used while '
+                  'AUTO is active.',
+                  style: TextStyle(color: t.textPrimary, fontSize: 12.5),
+                ),
+                SizedBox(height: t.space200),
+                HardwoodSecondaryButton(
+                  key: const ValueKey('rotation-restore-manual'),
+                  label: 'RESTORE MANUAL PLAN',
+                  icon: Icons.restore,
+                  onPressed: _busy ? null : () => _restoreRetained(team),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     ),
   );
+
+  String _autoDescription(Team team) {
+    final decision = _autoDecision(team);
+    return switch (decision?.authority) {
+      RotationAuthority.headCoach =>
+        'AUTO delegates to Head Coach ${decision!.coach!.firstName} '
+            '${decision.coach!.lastName} '
+            '(${CareerUiLabels.coachPhilosophy(decision.coach!.philosophy!)}): '
+            '${CareerUiLabels.coachPhilosophyEffect(decision.coach!.philosophy!)} '
+            'AI teams use their own head coaches.',
+      RotationAuthority.vacantFallback =>
+        'No head coach — AUTO uses the default lineup (first standard player '
+            'at each natural position) and the balanced nine-player rotation '
+            'until you hire one.',
+      RotationAuthority.coachPlanUnavailable =>
+        'Coach plan unavailable for this roster — AUTO uses the default '
+            'lineup and the balanced nine-player rotation.',
+      _ =>
+        'AUTO uses the default lineup (first standard player at each '
+            'natural position, in roster order) and the balanced '
+            'nine-player rotation — the same rules as every AI team.',
+    };
+  }
+
+  /// Restores the retained manual plan. A plan that no longer fits the
+  /// roster is never applied or discarded silently: it is loaded into the
+  /// draft (with the M010 repair proposal when one applies) for review.
+  Future<void> _restoreRetained(Team team) async {
+    final career = _controller.career;
+    final retained = career?.userRotation.retainedManual;
+    if (career == null || retained == null || _busy) return;
+    final resolution = CareerRotationService.resolve(retained, team);
+    if (!resolution.isValid) {
+      _loadRetainedRepairDraft(career, team, retained, resolution);
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await _controller.restoreRetainedManualRotation();
+      if (!mounted) return;
+      setState(() {
+        _loadDraftFromCommitted();
+        _status = 'Manual plan restored.';
+        _statusIsError = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _status = 'Not restored: $error';
+        _statusIsError = true;
+      });
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  void _loadRetainedRepairDraft(
+    GmCareer career,
+    Team team,
+    CareerRotationSettings retained,
+    CareerRotationResolution resolution,
+  ) {
+    final proposal = CareerRotationService.proposeRepair(retained, team);
+    final repaired = proposal != null && proposal.isApplicable;
+    setState(() {
+      _loadDraftFrom(repaired ? proposal.settings : retained, team);
+      _dirty = true;
+      _view = RotationEditorView.startingFive;
+      _statusIsError = true;
+      _status =
+          'Your saved manual plan no longer fits the roster:\n'
+          '${resolution.issues.map((i) => describeRotationIssue(i, career)).join('\n')}\n'
+          '${repaired ? 'A repaired draft is loaded (not saved). Review it and save.' : 'It is loaded as a draft (not saved). Fix it and save.'}';
+    });
+  }
 
   Widget _toggle(
     HardwoodCommandTokens t, {
@@ -829,7 +967,7 @@ class _CareerRotationScreenState extends State<CareerRotationScreen> {
 
   Widget _startingFive(HardwoodCommandTokens t, Team team) {
     final byId = {for (final p in team.players) p.id.value: p};
-    final starters = _manual ? _starters : _defaultStarters(team);
+    final starters = _manual ? _starters : _autoStarters(team);
     return _card(
       t,
       key: const ValueKey('rotation-starting-five'),
@@ -842,7 +980,8 @@ class _CareerRotationScreenState extends State<CareerRotationScreen> {
             _manual
                 ? 'Tap a position to choose a standard-roster player. Choosing '
                       'a current starter swaps the two players.'
-                : 'AUTO preview. Switch to MANUAL to choose your starters.',
+                : 'AUTO preview — the lineup AUTO will use. Switch to MANUAL '
+                      'to choose your starters.',
             style: TextStyle(color: t.textSecondary, fontSize: 12.5),
           ),
           SizedBox(height: t.space300),
@@ -1160,7 +1299,7 @@ class _CareerRotationScreenState extends State<CareerRotationScreen> {
     final targets = _draftTargets(team);
     final total = RotationBudget.total(targets);
     final remaining = _teamTotal - total;
-    final starters = _manual ? _starters : _defaultStarters(team);
+    final starters = _manual ? _starters : _autoStarters(team);
     final ordered = <Player>[
       for (final id in starters) ...team.players.where((p) => p.id.value == id),
       for (final p in team.players)
@@ -1190,7 +1329,10 @@ class _CareerRotationScreenState extends State<CareerRotationScreen> {
                         key: ValueKey('rotation-preset-${preset.jsonValue}'),
                         label: label,
                         selected:
-                            (_manual ? _preset : RotationPreset.balanced) ==
+                            (_manual
+                                ? _preset
+                                : _autoDecision(team)?.plan.preset ??
+                                      RotationPreset.balanced) ==
                             preset,
                         onTap: () {
                           if (!_manual) _setMode(true, team);
@@ -1448,7 +1590,7 @@ class _CareerRotationScreenState extends State<CareerRotationScreen> {
 
   Widget _depthChart(HardwoodCommandTokens t, Team team) {
     final targets = _draftTargets(team);
-    final starters = _manual ? _starters : _defaultStarters(team);
+    final starters = _manual ? _starters : _autoStarters(team);
     final byId = {for (final p in team.players) p.id.value: p};
     final rosterIndex = {
       for (var i = 0; i < team.players.length; i++) team.players[i].id.value: i,

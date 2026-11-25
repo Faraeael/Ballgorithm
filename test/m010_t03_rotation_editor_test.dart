@@ -541,7 +541,11 @@ void main() {
     expect(controller.career!.phase, CareerPhase.openingOffseason);
     expect(controller.career!.userRotation, obsolete);
     await _tapKey(tester, 'rotation-blocked-auto');
-    expect(controller.career!.userRotation, CareerRotationSettings.auto);
+    // M011: switching to AUTO keeps the obsolete plan for later repair.
+    expect(
+      controller.career!.userRotation,
+      CareerRotationSettings.autoRetaining(obsolete),
+    );
     expect(find.byKey(const ValueKey('home-rotation-attention')), findsNothing);
     await _tapKey(tester, 'home-primary-cta');
     await _tapKey(tester, 'confirm-start-regular-season');

@@ -91,26 +91,22 @@ final class RegularSeasonGameAdapter {
     );
   }
 
-  /// The human franchise uses its saved manual plan; every other side, and
-  /// the human side in AUTO, keeps the default lineup and balanced rotation.
-  /// An unresolvable manual plan throws: it never falls back to AUTO.
+  /// One authoritative decision path for every side of every career game
+  /// (regular season, batch, Play-In, playoffs): see
+  /// [CareerRotationService.decisionFor]. With coaching disabled this is the
+  /// M010 behaviour exactly. An unresolvable manual plan throws: it never
+  /// falls back to AUTO.
   static ({CourtLineup lineup, TeamRotationPlan plan}) _sideFor(
     GmCareer career,
     Team team,
     GameRules rules,
   ) {
-    if (team.id != career.userFranchiseId || !career.userRotation.isManual) {
-      return CareerRotationService.automaticFor(team, rules: rules);
-    }
-    final resolution = CareerRotationService.resolve(
-      career.userRotation,
+    final decision = CareerRotationService.decisionFor(
+      career,
       team,
       rules: rules,
     );
-    if (!resolution.isValid) {
-      throw CareerRotationInvalidException(resolution.issues);
-    }
-    return (lineup: resolution.lineup!, plan: resolution.plan!);
+    return (lineup: decision.lineup, plan: decision.plan);
   }
 
   GameResult simulate(GmCareer career, RegularSeasonFixture fixture) =>

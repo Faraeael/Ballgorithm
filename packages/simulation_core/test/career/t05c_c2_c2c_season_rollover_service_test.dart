@@ -276,9 +276,9 @@ void main() {
 
         // Next career metadata & phase
         expect(next.id, completedChamp.id);
-        expect(next.schemaVersion, 26);
-        expect(GmCareer.currentSchemaVersion, 26);
-        expect(GmCareerCodec.currentSchemaVersion, 26);
+        expect(next.schemaVersion, 27);
+        expect(GmCareer.currentSchemaVersion, 27);
+        expect(GmCareerCodec.currentSchemaVersion, 27);
         expect(next.currentYear, 2);
         expect(next.phase, CareerPhase.openingOffseason);
         expect(next.regularSeasonState, isNull);
@@ -497,6 +497,11 @@ void main() {
             seasonYear: 5,
           ),
           finances: y5Boot,
+          // M011: re-bootstrapped commitments need their named incumbents.
+          staff: StaffState.incumbentsFor(
+            finances: y5Boot,
+            generationSeed: next.generationSeed,
+          ),
           freeAgentPool: FreeAgentPool(
             seasonYear: 5,
             entries: [...next.freeAgentPool.entries, expiredRookieEntry],
@@ -613,6 +618,7 @@ void main() {
         // Valid v24 (without marketHistory/userRotation) migrates cleanly to the current schema
         v24Map.remove('marketHistory');
         v24Map.remove('userRotation');
+        v24Map.remove('staff');
         final migratedFromV24 = GmCareerCodec.decode(jsonEncode(v24Map));
         expect(
           migratedFromV24.schemaVersion,

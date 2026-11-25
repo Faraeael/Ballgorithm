@@ -466,9 +466,9 @@ void main() {
       );
       expect(reloaded.seasonSettlements.length, 1);
 
-      // 18. Current schema (v26 since M010) survives persistence & round-trip.
+      // 18. Current schema (v27 since M011) survives persistence & round-trip.
       expect(reloaded.schemaVersion, GmCareer.currentSchemaVersion);
-      expect(GmCareer.currentSchemaVersion, 26);
+      expect(GmCareer.currentSchemaVersion, 27);
       final reencoded = GmCareerCodec.encode(reloaded);
       final redecoded = GmCareerCodec.decode(reencoded);
       expect(redecoded.currentYear, 2);

@@ -732,7 +732,8 @@ void main() {
             ..remove('careerDraftRights')
             ..remove('carriedUnsignedProspects')
             ..remove('marketHistory')
-            ..remove('userRotation');
+            ..remove('userRotation')
+            ..remove('staff');
       final migrated = GmCareerCodec.decode(jsonEncode(json));
       expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
       expect(migrated.freeAgentMarket.status, FreeAgentMarketStatus.notStarted);
@@ -754,7 +755,8 @@ void main() {
           ..remove('careerDraftRights')
           ..remove('carriedUnsignedProspects')
           ..remove('marketHistory')
-          ..remove('userRotation');
+          ..remove('userRotation')
+          ..remove('staff');
         final migrated = GmCareerCodec.decode(jsonEncode(older));
         expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
         expect(
@@ -770,7 +772,8 @@ void main() {
         ..remove('careerDraftRights')
         ..remove('carriedUnsignedProspects')
         ..remove('marketHistory')
-        ..remove('userRotation');
+        ..remove('userRotation')
+        ..remove('staff');
       ((legacyV11['freeAgentMarket'] as Map<String, dynamic>)).remove(
         'roundHistory',
       );

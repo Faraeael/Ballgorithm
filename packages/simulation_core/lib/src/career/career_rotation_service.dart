@@ -8,8 +8,10 @@ import '../simulation/game_rules.dart';
 import '../simulation/game_validation.dart';
 import '../simulation/rotation_plan.dart';
 import 'career_rotation_settings.dart';
+import 'coach_rotation_policy.dart';
 import 'gm_career.dart';
 import 'regular_season_game_adapter.dart';
+import 'staff_member.dart';
 
 /// Why a manual plan does not resolve against the current standard roster.
 enum CareerRotationIssueCode {
@@ -90,6 +92,43 @@ final class CareerRotationInvalidException implements Exception {
   @override
   String toString() =>
       'Manual rotation is invalid: ${issues.map((i) => i.message).join('; ')}';
+}
+
+/// Who decides a team's lineup and playing time for the next game.
+enum RotationAuthority {
+  /// Coaching disabled: the M010 automatic lineup and balanced preset.
+  automatic,
+
+  /// The human franchise's saved MANUAL plan.
+  manual,
+
+  /// The team's employed head coach's philosophy (coaching enabled).
+  headCoach,
+
+  /// Coaching enabled but no employed head coach: automatic rotation.
+  vacantFallback,
+
+  /// Coaching enabled, but the coach's plan failed validation for this
+  /// roster: automatic rotation (M011 §3 safety rule).
+  coachPlanUnavailable,
+}
+
+/// The lineup and plan one team side will use, and who chose it.
+final class TeamRotationDecision {
+  const TeamRotationDecision({
+    required this.authority,
+    required this.lineup,
+    required this.plan,
+    this.coach,
+  });
+
+  final RotationAuthority authority;
+  final CourtLineup lineup;
+  final TeamRotationPlan plan;
+
+  /// The employed head coach when coaching is enabled (also set for
+  /// [RotationAuthority.manual] and [RotationAuthority.coachPlanUnavailable]).
+  final StaffMember? coach;
 }
 
 /// Resolves the human franchise's persisted preferences into the existing
@@ -235,6 +274,91 @@ abstract final class CareerRotationService {
   /// Resolves the career's saved preferences for the human franchise.
   static CareerRotationResolution resolveForCareer(GmCareer career) => resolve(
     career.userRotation,
+    RegularSeasonGameAdapter.standardTeamFor(career.userTeam),
+  );
+
+  /// The single authoritative rotation decision for any team in [career]
+  /// (M011 §4). [standardTeam] must be the team's standard roster.
+  ///
+  /// Coaching disabled: human MANUAL, otherwise [automaticFor] (M010).
+  /// Coaching enabled: human MANUAL still takes precedence; every other side
+  /// uses its employed head coach, or [automaticFor] when vacant. Dismissed
+  /// staff are never employed and so never decide. An invalid MANUAL plan
+  /// throws [CareerRotationInvalidException]; it never falls back to AUTO.
+  static TeamRotationDecision decisionFor(
+    GmCareer career,
+    Team standardTeam, {
+    GameRules? rules,
+  }) {
+    final effectiveRules = rules ?? GameRules.standard;
+    final staff = career.staff;
+    final coach = staff.coachingEnabled
+        ? staff.employedHeadCoach(standardTeam.id)
+        : null;
+    if (standardTeam.id == career.userFranchiseId &&
+        career.userRotation.isManual) {
+      final resolution = resolve(
+        career.userRotation,
+        standardTeam,
+        rules: effectiveRules,
+      );
+      if (!resolution.isValid) {
+        throw CareerRotationInvalidException(resolution.issues);
+      }
+      return TeamRotationDecision(
+        authority: RotationAuthority.manual,
+        lineup: resolution.lineup!,
+        plan: resolution.plan!,
+        coach: coach,
+      );
+    }
+    return autoDecisionFor(career, standardTeam, rules: effectiveRules);
+  }
+
+  /// What AUTO means for [standardTeam] right now, ignoring any human MANUAL
+  /// plan: the employed head coach when coaching is enabled, otherwise
+  /// [automaticFor]. Used by game inputs and by the AUTO preview.
+  static TeamRotationDecision autoDecisionFor(
+    GmCareer career,
+    Team standardTeam, {
+    GameRules? rules,
+  }) {
+    final effectiveRules = rules ?? GameRules.standard;
+    final staff = career.staff;
+    final coach = staff.coachingEnabled
+        ? staff.employedHeadCoach(standardTeam.id)
+        : null;
+    if (coach != null) {
+      final planned = CoachRotationPolicy.planFor(
+        coach.philosophy!,
+        standardTeam,
+        rules: effectiveRules,
+      );
+      if (planned != null) {
+        return TeamRotationDecision(
+          authority: RotationAuthority.headCoach,
+          lineup: planned.lineup,
+          plan: planned.plan,
+          coach: coach,
+        );
+      }
+    }
+    final auto = automaticFor(standardTeam, rules: effectiveRules);
+    return TeamRotationDecision(
+      authority: !staff.coachingEnabled
+          ? RotationAuthority.automatic
+          : coach == null
+          ? RotationAuthority.vacantFallback
+          : RotationAuthority.coachPlanUnavailable,
+      lineup: auto.lineup,
+      plan: auto.plan,
+      coach: coach,
+    );
+  }
+
+  /// [decisionFor] the human franchise.
+  static TeamRotationDecision decisionForUser(GmCareer career) => decisionFor(
+    career,
     RegularSeasonGameAdapter.standardTeamFor(career.userTeam),
   );
 
