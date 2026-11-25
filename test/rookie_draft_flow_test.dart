@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:basketball_manager/app.dart';
+import 'package:basketball_manager/features/career/career_shell_scaffold.dart';
 import 'package:basketball_manager/features/career/career_storage.dart';
 import 'package:basketball_manager/features/career/offseason_overview_screen.dart';
 import 'package:basketball_manager/features/season/season_storage.dart';
@@ -174,8 +175,8 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Offseason overview is now open
-        expect(find.byType(GmOffseasonOverviewScreen), findsOneWidget);
+        // Career Shell is now open
+        expect(find.byType(CareerShellScaffold), findsOneWidget);
 
         // Inspect saved career data
         final savedRaw = await careerStorage.read();
@@ -199,20 +200,10 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Reopens directly into Offseason Overview
-        expect(find.byType(GmOffseasonOverviewScreen), findsOneWidget);
-        // Scroll down until Rookie Draft module is visible
-        await tester.scrollUntilVisible(
-          find.byKey(const ValueKey('btn-open-draft-board')),
-          160,
-          scrollable: find.byType(Scrollable).first,
-        );
-        await tester.pumpAndSettle();
-        expect(
-          find.byKey(const ValueKey('btn-open-draft-board')),
-          findsOneWidget,
-        );
-        await tester.tap(find.byKey(const ValueKey('btn-open-draft-board')));
+        // Reopens directly into Career Shell
+        expect(find.byType(CareerShellScaffold), findsOneWidget);
+        expect(find.byKey(const ValueKey('home-primary-cta')), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('home-primary-cta')));
         await tester.pumpAndSettle();
 
         await tester.tap(find.text('Prospects (90)'));
@@ -261,7 +252,9 @@ void main() {
           ..remove('seasonHistory')
           ..remove('retiredPlayers')
           ..remove('seasonSettlements')
-          ..remove('careerDraftRights');
+          ..remove('careerDraftRights')
+          ..remove('carriedUnsignedProspects')
+          ..remove('marketHistory');
 
         await careerStorage.write(jsonEncode(rawV1Map));
 

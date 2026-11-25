@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:basketball_manager/app.dart';
 import 'package:basketball_manager/features/career/career_controller.dart';
+import 'package:basketball_manager/features/career/career_home_screen.dart';
 import 'package:basketball_manager/features/career/career_storage.dart';
 import 'package:basketball_manager/features/career/draft_board_screen.dart';
 import 'package:basketball_manager/features/career/offseason_overview_screen.dart';
@@ -254,9 +255,7 @@ void main() {
         const sentinel = '{"m007-sentinel":"unchanged-during-draft"}';
         await seasonStorage.write(sentinel);
         final controller = tester
-            .widget<GmOffseasonOverviewScreen>(
-              find.byType(GmOffseasonOverviewScreen),
-            )
+            .widget<CareerHomeScreen>(find.byType(CareerHomeScreen))
             .controller;
         await _openBoard(tester);
         final gate = storage.gateAt(3);
@@ -292,14 +291,14 @@ void main() {
         // Pump bounded frames only while the storage gate deliberately stays shut.
         await tester.binding.handlePopRoute();
         await tester.pump(const Duration(milliseconds: 400));
-        expect(find.byType(GmOffseasonOverviewScreen), findsOneWidget);
+        expect(find.byType(CareerHomeScreen), findsOneWidget);
         expect(controller.isLoading, isTrue);
         await tester.scrollUntilVisible(
-          find.byKey(const ValueKey('btn-open-draft-board')),
+          find.byKey(const ValueKey('home-primary-cta')),
           160,
           scrollable: find.byType(Scrollable).first,
         );
-        await tester.tap(find.byKey(const ValueKey('btn-open-draft-board')));
+        await tester.tap(find.byKey(const ValueKey('home-primary-cta')));
         await tester.pump(const Duration(milliseconds: 400));
         expect(find.byType(GmDraftBoardScreen), findsOneWidget);
         expect(controller.career!.draftExecutionState.selections, hasLength(2));
@@ -757,8 +756,11 @@ Future<void> _mountOverview(
 }
 
 Future<void> _revealOverviewButton(WidgetTester tester) async {
+  final key = find.byType(CareerHomeScreen).evaluate().isNotEmpty
+      ? 'home-primary-cta'
+      : 'btn-open-draft-board';
   await tester.scrollUntilVisible(
-    find.byKey(const ValueKey('btn-open-draft-board')),
+    find.byKey(ValueKey(key)),
     160,
     scrollable: find.byType(Scrollable).first,
   );
@@ -767,7 +769,10 @@ Future<void> _revealOverviewButton(WidgetTester tester) async {
 
 Future<void> _openBoard(WidgetTester tester) async {
   await _revealOverviewButton(tester);
-  await _tapKey(tester, 'btn-open-draft-board');
+  final key = find.byType(CareerHomeScreen).evaluate().isNotEmpty
+      ? 'home-primary-cta'
+      : 'btn-open-draft-board';
+  await _tapKey(tester, key);
 }
 
 Future<void> _tapKey(WidgetTester tester, String key) async {

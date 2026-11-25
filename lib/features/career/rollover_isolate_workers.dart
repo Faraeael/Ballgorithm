@@ -2,7 +2,28 @@ import 'dart:async';
 import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:simulation_core/simulation_core.dart';
+
+/// Threshold (in JSON chars) above which career/archive decoding is offloaded
+/// to a background isolate.
+const int kLargeJsonIsolateThresholdChars = 256 * 1024;
+
+/// Returns `true` when large JSON decoding should run in a background isolate.
+///
+/// Always `true` in release/profile builds and non-widget unit tests; returns
+/// `false` only under `AutomatedTestWidgetsFlutterBinding` (`FakeAsync`), where
+/// unawaited `compute()` calls inside `initState` / `pumpAndSettle` would stall.
+bool shouldUseIsolateForLargeDecode(int jsonLength) {
+  if (jsonLength < kLargeJsonIsolateThresholdChars) return false;
+  if (kReleaseMode || kProfileMode) return true;
+  try {
+    return WidgetsBinding.instance.runtimeType.toString() !=
+        'AutomatedTestWidgetsFlutterBinding';
+  } catch (_) {
+    return true;
+  }
+}
 
 /// Pure CPU payload for preparing a Year N archive and Year N+1 rollover
 /// inside a background isolate.
@@ -44,6 +65,49 @@ final class ArchiveVerifyRequest {
   final String expectedDigest;
   final int expectedSeasonYear;
 }
+
+/// Pure CPU payload for decoding and verifying a persisted [SeasonArchive].
+final class ArchiveDecodeVerifyRequest {
+  const ArchiveDecodeVerifyRequest({
+    required this.archiveJson,
+    required this.expectedDigest,
+    required this.expectedCareerId,
+    required this.expectedSeasonYear,
+    required this.expectedRecord,
+  });
+
+  final String archiveJson;
+  final String expectedDigest;
+  final String expectedCareerId;
+  final int expectedSeasonYear;
+  final SeasonHistoryRecord expectedRecord;
+}
+
+/// Top-level isolate worker: validates an active career JSON string.
+bool validateCareerJsonWorker(String rawCareerJson) {
+  if (rawCareerJson.trim().isEmpty) return false;
+  try {
+    GmCareerCodec.decode(rawCareerJson);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Top-level isolate worker: decodes an active [GmCareer] JSON string.
+GmCareer decodeCareerJsonWorker(String rawCareerJson) =>
+    GmCareerCodec.decode(rawCareerJson);
+
+/// Top-level isolate worker: decodes and cryptographically verifies a [SeasonArchive].
+SeasonArchive decodeAndVerifyArchiveWorker(
+  ArchiveDecodeVerifyRequest request,
+) => SeasonArchiveCodec.decodeAndVerify(
+  request.archiveJson,
+  expectedDigest: request.expectedDigest,
+  expectedCareerId: request.expectedCareerId,
+  expectedSeasonYear: request.expectedSeasonYear,
+  expectedRecord: request.expectedRecord,
+);
 
 /// Pure CPU payload for classifying an existing archive file on disk.
 final class ExistingArchiveClassifyRequest {

@@ -307,14 +307,17 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
   File _corruptFile(String slot, int stamp) =>
       File('${resolvePath(slot)}.corrupt.$stamp');
 
-  bool _isValidCareerJson(String content) {
+  Future<bool> _isValidCareerJson(String content) async {
     if (content.trim().isEmpty) return false;
-    try {
-      GmCareerCodec.decode(content);
-      return true;
-    } catch (_) {
-      return false;
+    if (!shouldUseIsolateForLargeDecode(content.length)) {
+      try {
+        GmCareerCodec.decode(content);
+        return true;
+      } catch (_) {
+        return false;
+      }
     }
+    return compute(validateCareerJsonWorker, content);
   }
 
   Future<void> _quarantineIfPresent(File file, String slot) async {
@@ -339,7 +342,7 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
     if (await _fileOps.exists(file)) {
       try {
         final activeContent = await _fileOps.readAsString(file);
-        if (_isValidCareerJson(activeContent)) {
+        if (await _isValidCareerJson(activeContent)) {
           return null;
         }
       } catch (_) {}
@@ -347,7 +350,7 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
     if (await _fileOps.exists(backup)) {
       try {
         final backupContent = await _fileOps.readAsString(backup);
-        if (_isValidCareerJson(backupContent)) {
+        if (await _isValidCareerJson(backupContent)) {
           if (await _fileOps.exists(file)) {
             final activeContent = await _fileOps.readAsString(file);
             if (activeContent.trim().isNotEmpty) {
@@ -403,7 +406,7 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
 
       if (await _fileOps.exists(file)) {
         final content = await _fileOps.readAsString(file);
-        if (_isValidCareerJson(content)) {
+        if (await _isValidCareerJson(content)) {
           return content;
         }
 
@@ -418,7 +421,7 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
         if (await _fileOps.exists(temp)) {
           try {
             final tempContent = await _fileOps.readAsString(temp);
-            if (_isValidCareerJson(tempContent)) {
+            if (await _isValidCareerJson(tempContent)) {
               if (content.trim().isNotEmpty) {
                 await _quarantineIfPresent(file, slot);
               } else {
@@ -446,7 +449,7 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
       if (await _fileOps.exists(temp)) {
         try {
           final tempContent = await _fileOps.readAsString(temp);
-          if (_isValidCareerJson(tempContent)) {
+          if (await _isValidCareerJson(tempContent)) {
             await _promoteActiveFile(temp, file);
             return tempContent;
           }
@@ -506,8 +509,8 @@ class FileGmCareerStorage implements GmCareerStorage, GmCareerArchiveStorage {
           try {
             final backupContent = await _fileOps.readAsString(backup);
             final activeContent = await _fileOps.readAsString(file);
-            if (_isValidCareerJson(backupContent) &&
-                !_isValidCareerJson(activeContent)) {
+            if (await _isValidCareerJson(backupContent) &&
+                !await _isValidCareerJson(activeContent)) {
               preserveExistingValidBackup = true;
             }
           } catch (_) {}

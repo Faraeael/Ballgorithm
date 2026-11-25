@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
 
 import 'career_controller.dart';
+import 'career_player_profile_screen.dart';
 import 'rookie_signing_status.dart';
 
 /// Live draft commands and public scouting, backed only by committed career state.
@@ -680,9 +681,34 @@ class _GmDraftBoardScreenState extends State<GmDraftBoardScreen>
         'Est. POT: ${prospect.estimatedPotentialGrade} (${prospect.estimatedPotentialRange})\n'
         '${_availability(career, prospect)}',
       ),
+      trailing: IconButton(
+        key: ValueKey('prospect-profile-${prospect.projectedRank}'),
+        tooltip: 'View Full Profile',
+        icon: const Icon(Icons.person_search_outlined),
+        onPressed: () => _openProspectProfile(career, prospect),
+      ),
       onTap: () => _showProspectDetails(prospect),
     ),
   );
+
+  void _openProspectProfile(
+    GmCareer career,
+    PublicProspectScoutingView prospect,
+  ) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => CareerPlayerProfileScreen(
+          dossier: DraftProspectPlayerDossier(
+            prospect: prospect,
+            currentYear: career.currentYear,
+            canSelect: _canDraft(prospect.id),
+            onSelectProspect: () => _showProspectDetails(prospect),
+            selectButtonLabel: 'Draft Player',
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildResultsTab(
     GmCareer career,

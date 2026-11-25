@@ -151,19 +151,18 @@ void main() {
           );
           await tester.pumpAndSettle();
           await tester.scrollUntilVisible(
-            find.byKey(const ValueKey('btn-start-regular-season')),
+            find.byKey(const ValueKey('home-primary-cta')),
             220,
             scrollable: find
                 .descendant(
-                  of: find.byKey(const ValueKey('offseason-overview-scroll')),
+                  of: find.byKey(const ValueKey('career-home-scroll')),
                   matching: find.byType(Scrollable),
                 )
                 .first,
           );
           await tester.pumpAndSettle();
-          await tester.tap(
-            find.byKey(const ValueKey('btn-start-regular-season')),
-          );
+          expect(find.text('START REGULAR SEASON'), findsOneWidget);
+          await tester.tap(find.byKey(const ValueKey('home-primary-cta')));
           await tester.pumpAndSettle();
           expect(
             find.byKey(const ValueKey('confirm-start-regular-season')),
@@ -183,9 +182,7 @@ void main() {
           expect(controller.career!.phase, CareerPhase.openingOffseason);
           expect(await storage.read(), firstClearedSave);
 
-          await tester.tap(
-            find.byKey(const ValueKey('btn-start-regular-season')),
-          );
+          await tester.tap(find.byKey(const ValueKey('home-primary-cta')));
           await tester.pumpAndSettle();
           await tester.tap(
             find.byKey(const ValueKey('confirm-start-regular-season')),
@@ -204,9 +201,12 @@ void main() {
               const RegularSeasonEntryService().start(cleared),
             ),
           );
-          expect(find.text('Regular Season'), findsOneWidget);
-          expect(find.textContaining('Record: 0–0'), findsOneWidget);
-          expect(find.text('Schedule not generated'), findsOneWidget);
+          expect(
+            find.textContaining('Regular Season'),
+            findsAtLeastNWidgets(1),
+          );
+          expect(find.textContaining('0–0'), findsAtLeastNWidgets(1));
+          expect(find.text('GENERATE SCHEDULE'), findsOneWidget);
           for (final size in const [Size(360, 640), Size(393, 852)]) {
             tester.view.physicalSize = size;
             await tester.pumpAndSettle();
@@ -219,7 +219,9 @@ void main() {
                 ..remove('seasonHistory')
                 ..remove('retiredPlayers')
                 ..remove('seasonSettlements')
-                ..remove('careerDraftRights');
+                ..remove('careerDraftRights')
+                ..remove('carriedUnsignedProspects')
+                ..remove('marketHistory');
           (migratedV15['regularSeasonState'] as Map<String, dynamic>).remove(
             'schedule',
           );
@@ -230,7 +232,7 @@ void main() {
           expect(migratedCareer.phase, CareerPhase.regularSeason);
           expect(migratedCareer.regularSeasonState!.schedule, isNull);
 
-          await tester.tap(find.byKey(const ValueKey('btn-generate-schedule')));
+          await tester.tap(find.byKey(const ValueKey('home-primary-cta')));
           await tester.pumpAndSettle();
           final scheduledCareer = controller.career!;
           expect(
@@ -266,20 +268,18 @@ void main() {
           expect(schedule.completedGamesCount, 0);
           expect(scheduledCareer.regularSeasonState!.gameResults, isEmpty);
           expect(scheduledCareer.currentYear, entered.currentYear);
-          expect(find.text('Games scheduled: 82'), findsOneWidget);
-          expect(find.text('Upcoming five'), findsOneWidget);
-          expect(find.textContaining('Next opponent:'), findsOneWidget);
-          expect(
-            find.byKey(const ValueKey('btn-view-full-schedule')),
-            findsOneWidget,
-          );
+          expect(find.text('0 / 82 Played'), findsOneWidget);
+          expect(find.text('VS'), findsOneWidget);
+          expect(find.text('82-Game Schedule'), findsOneWidget);
           await tester.scrollUntilVisible(
-            find.text('Simulate Next Round'),
+            find.byKey(const ValueKey('home-primary-cta')),
             220,
             scrollable: find.byType(Scrollable).first,
           );
-          await tester.ensureVisible(find.text('Simulate Next Round'));
-          await tester.tap(find.text('Simulate Next Round'));
+          await tester.ensureVisible(
+            find.byKey(const ValueKey('home-primary-cta')),
+          );
+          await tester.tap(find.byKey(const ValueKey('home-primary-cta')));
           await tester.pumpAndSettle();
           await tester.tap(find.text('Cancel'));
           await tester.pumpAndSettle();
@@ -306,7 +306,9 @@ void main() {
                 ..remove('seasonHistory')
                 ..remove('retiredPlayers')
                 ..remove('seasonSettlements')
-                ..remove('careerDraftRights');
+                ..remove('careerDraftRights')
+                ..remove('carriedUnsignedProspects')
+                ..remove('marketHistory');
           (scheduledV16['regularSeasonState'] as Map<String, dynamic>).remove(
             'gameInputSnapshots',
           );
@@ -363,13 +365,11 @@ void main() {
           );
 
           await tester.dragUntilVisible(
-            find.byKey(const ValueKey('btn-view-full-schedule')),
+            find.text('82-Game Schedule'),
             find.byType(ListView).last,
             const Offset(0, -200),
           );
-          await tester.tap(
-            find.byKey(const ValueKey('btn-view-full-schedule')),
-          );
+          await tester.tap(find.text('82-Game Schedule'));
           await tester.pumpAndSettle();
           expect(find.text('Team Schedule'), findsOneWidget);
           final lastFixture = schedule
@@ -492,7 +492,9 @@ void main() {
                 ..remove('seasonHistory')
                 ..remove('retiredPlayers')
                 ..remove('seasonSettlements')
-                ..remove('careerDraftRights');
+                ..remove('careerDraftRights')
+                ..remove('carriedUnsignedProspects')
+                ..remove('marketHistory');
           final legacySeason =
               legacyV17['regularSeasonState'] as Map<String, dynamic>;
           legacySeason.remove('gameInputSnapshots');
@@ -812,19 +814,18 @@ void main() {
           );
           await tester.pumpAndSettle();
           await tester.scrollUntilVisible(
-            find.byKey(const ValueKey('btn-start-regular-season')),
+            find.byKey(const ValueKey('home-primary-cta')),
             220,
             scrollable: find
                 .descendant(
-                  of: find.byKey(const ValueKey('offseason-overview-scroll')),
+                  of: find.byKey(const ValueKey('career-home-scroll')),
                   matching: find.byType(Scrollable),
                 )
                 .first,
           );
           await tester.pumpAndSettle();
-          await tester.tap(
-            find.byKey(const ValueKey('btn-start-regular-season')),
-          );
+          expect(find.text('START REGULAR SEASON'), findsOneWidget);
+          await tester.tap(find.byKey(const ValueKey('home-primary-cta')));
           await tester.pumpAndSettle();
           await tester.tap(
             find.byKey(const ValueKey('confirm-start-regular-season')),
@@ -838,18 +839,18 @@ void main() {
             CareerPhase.regularSeason,
           );
           await tester.scrollUntilVisible(
-            find.byKey(const ValueKey('btn-season-entry-reload')),
+            find.byKey(const ValueKey('home-reload-career-button')),
             220,
             scrollable: find
                 .descendant(
-                  of: find.byKey(const ValueKey('offseason-overview-scroll')),
+                  of: find.byKey(const ValueKey('career-home-scroll')),
                   matching: find.byType(Scrollable),
                 )
                 .first,
           );
           await tester.pumpAndSettle();
           await tester.tap(
-            find.byKey(const ValueKey('btn-season-entry-reload')),
+            find.byKey(const ValueKey('home-reload-career-button')),
           );
           await tester.pumpAndSettle();
           expect(failureController.career!.phase, CareerPhase.regularSeason);
@@ -874,7 +875,7 @@ void main() {
           );
           expect(await failureStorage.read(), promotedSave);
           failureStorage.failBeforePromotionNextWrite = true;
-          await tester.tap(find.byKey(const ValueKey('btn-generate-schedule')));
+          await tester.tap(find.byKey(const ValueKey('home-primary-cta')));
           await tester.pumpAndSettle();
           expect(
             failureController.career!.regularSeasonState!.schedule,
@@ -882,7 +883,9 @@ void main() {
           );
           expect(failureController.draftRecoveryRequired, isTrue);
           expect(await failureStorage.read(), promotedSave);
-          await tester.tap(find.byKey(const ValueKey('btn-schedule-reload')));
+          await tester.tap(
+            find.byKey(const ValueKey('home-reload-career-button')),
+          );
           await tester.pumpAndSettle();
           expect(failureController.draftRecoveryRequired, isFalse);
           expect(
@@ -891,7 +894,7 @@ void main() {
           );
 
           failureStorage.failNextWrite = true;
-          await tester.tap(find.byKey(const ValueKey('btn-generate-schedule')));
+          await tester.tap(find.byKey(const ValueKey('home-primary-cta')));
           await tester.pumpAndSettle();
           expect(
             failureController.career!.regularSeasonState!.schedule,
@@ -902,7 +905,9 @@ void main() {
           final persistedSchedule = GmCareerCodec.decode(
             promotedScheduleSave!,
           ).regularSeasonState!.schedule!;
-          await tester.tap(find.byKey(const ValueKey('btn-schedule-reload')));
+          await tester.tap(
+            find.byKey(const ValueKey('home-reload-career-button')),
+          );
           await tester.pumpAndSettle();
           final recoveredCareer = failureController.career!;
           expect(failureController.draftRecoveryRequired, isFalse);
@@ -3236,7 +3241,9 @@ String _v18Json(GmCareer career) {
     ..remove('seasonHistory')
     ..remove('retiredPlayers')
     ..remove('seasonSettlements')
-    ..remove('careerDraftRights');
+    ..remove('careerDraftRights')
+    ..remove('carriedUnsignedProspects')
+    ..remove('marketHistory');
   return jsonEncode(save);
 }
 
@@ -3247,6 +3254,8 @@ String _v19Json(GmCareer career) {
     ..remove('seasonHistory')
     ..remove('retiredPlayers')
     ..remove('seasonSettlements')
-    ..remove('careerDraftRights');
+    ..remove('careerDraftRights')
+    ..remove('carriedUnsignedProspects')
+    ..remove('marketHistory');
   return jsonEncode(save);
 }

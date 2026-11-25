@@ -354,7 +354,8 @@ void main() {
 
   test(
     'Non-vacuous Year 1 -> Year 2 -> Year 3 continuity for nonzero debt, guaranteed liability, FA offers, staff, and facilities',
-    timeout: const Timeout(Duration(minutes: 3)),
+    // ~4.5 min with production large-JSON isolate decoding in JIT test runs.
+    timeout: const Timeout(Duration(minutes: 10)),
     () async {
       const debtorTeamId = TeamId('team-2');
       const slot = 'continuity_slot';

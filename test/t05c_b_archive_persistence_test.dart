@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:basketball_manager/features/career/career_controller.dart';
 import 'package:basketball_manager/features/career/career_storage.dart';
+import 'package:basketball_manager/features/career/rollover_isolate_workers.dart';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simulation_core/simulation_core.dart';
 import 'package:simulation_core/src/domain_versions.dart' as domain_versions;
@@ -844,6 +846,101 @@ void main() {
           await storage.readArchive(seasonYear: 1, slot: 'slot-tmp'),
           equals(encoded.json),
         );
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+  });
+
+  group('M009-UX-T01D: production large-JSON isolate decode workers', () {
+    test(
+      'large career JSON takes the isolate path and decodes equivalently',
+      () async {
+        expect(
+          completedYear1Json.length,
+          greaterThan(kLargeJsonIsolateThresholdChars),
+        );
+        expect(
+          shouldUseIsolateForLargeDecode(completedYear1Json.length),
+          isTrue,
+        );
+        expect(
+          await compute(validateCareerJsonWorker, completedYear1Json),
+          isTrue,
+        );
+        final decoded = await compute(
+          decodeCareerJsonWorker,
+          completedYear1Json,
+        );
+        expect(GmCareerCodec.encode(decoded), completedYear1Json);
+      },
+      // JIT isolate decode of the full Season 1 save; 30 s default is too tight under suite load.
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test(
+      'malformed career JSON is rejected and decode errors propagate',
+      () async {
+        final truncated = completedYear1Json.substring(
+          0,
+          completedYear1Json.length - 10,
+        );
+        expect(await compute(validateCareerJsonWorker, truncated), isFalse);
+        expect(await compute(validateCareerJsonWorker, '   '), isFalse);
+        await expectLater(
+          compute(decodeCareerJsonWorker, truncated),
+          throwsA(isA<FormatException>()),
+        );
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test(
+      'archive decode-and-verify worker accepts genuine and rejects tampered',
+      () async {
+        final archive = SeasonArchive.fromCareer(completedYear1);
+        final encoded = SeasonArchiveCodec.encodeWithDigest(archive);
+        final record = archive.toHistoryRecord(encoded.digest);
+        ArchiveDecodeVerifyRequest request(String json) =>
+            ArchiveDecodeVerifyRequest(
+              archiveJson: json,
+              expectedDigest: encoded.digest,
+              expectedCareerId: completedYear1.id,
+              expectedSeasonYear: 1,
+              expectedRecord: record,
+            );
+        final verified = await compute(
+          decodeAndVerifyArchiveWorker,
+          request(encoded.json),
+        );
+        expect(
+          SeasonArchiveCodec.encodeWithDigest(verified).digest,
+          encoded.digest,
+        );
+        await expectLater(
+          compute(decodeAndVerifyArchiveWorker, request('${encoded.json} ')),
+          throwsA(anything),
+        );
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test(
+      'controller load and archive verification use workers on large saves',
+      () async {
+        final storage = FileGmCareerStorage(directoryPath: tempDir.path);
+        await storage.write(completedYear1Json);
+        final controller = GmCareerController(storage: storage);
+        await controller.loadCareer();
+        expect(controller.errorMessage, isNull);
+        expect(GmCareerCodec.encode(controller.career!), completedYear1Json);
+        await controller.persistArchivedSeasonTransition(
+          confirmed: true,
+          buildNextCareer: _syntheticYear2Shell,
+        );
+        final raw = await storage.readArchive(seasonYear: 1);
+        expect(shouldUseIsolateForLargeDecode(raw!.length), isTrue);
+        final archive = await controller.loadSeasonArchive(1);
+        expect(archive.seasonYear, 1);
       },
       timeout: const Timeout(Duration(minutes: 2)),
     );

@@ -2,17 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
 import 'features/career/career_controller.dart';
 import 'features/career/career_setup_screens.dart';
+import 'features/career/career_shell_scaffold.dart';
 import 'features/career/career_storage.dart';
-import 'features/career/regular_season_overview_screen.dart';
-import 'features/career/play_in_tournament_screen.dart';
-import 'features/career/playoff_tournament_screen.dart';
-import 'features/career/offseason_overview_screen.dart';
-import 'features/game/game_screen.dart';
+import 'features/career/main_menu_screen.dart';
+import 'features/game/game_runner.dart';
 import 'features/league/league_screen.dart';
 import 'features/season/franchise_select_screen.dart';
 import 'features/season/season_controller.dart';
 import 'features/season/season_dashboard_screen.dart';
 import 'features/season/season_storage.dart';
+import 'theme/hardwood_command_theme.dart';
 
 class BasketballManagerApp extends StatefulWidget {
   const BasketballManagerApp({
@@ -40,7 +39,7 @@ class BasketballManagerApp extends StatefulWidget {
 class _BasketballManagerAppState extends State<BasketballManagerApp> {
   SeasonController? _controller;
   GmCareerController? _careerController;
-  bool _showFranchiseSelect = false;
+  bool _showMainMenu = false;
 
   bool get _isSeasonActive => widget.seasonMode ?? (widget.storage != null);
   @override
@@ -78,10 +77,7 @@ class _BasketballManagerAppState extends State<BasketballManagerApp> {
     return MaterialApp(
       title: 'Basketball Manager',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFB4541E)),
-      ),
+      theme: buildHardwoodCommandTheme(),
       home: _isSeasonActive
           ? _buildSeasonHome(context)
           : LeagueScreen(league: widget.league),
@@ -152,37 +148,45 @@ class _BasketballManagerAppState extends State<BasketballManagerApp> {
           );
         }
 
-        // If GM Career save is active and user has not navigated out to franchise select
-        if (_careerController!.hasCareer && !_showFranchiseSelect) {
-          final career = _careerController!.career!;
-          if (career.phase == CareerPhase.playIn) {
-            return PlayInTournamentScreen(controller: _careerController!);
-          }
-          if (career.phase == CareerPhase.playoffs) {
-            return PlayoffTournamentScreen(controller: _careerController!);
-          }
-          if (career.phase == CareerPhase.regularSeason) {
-            return RegularSeasonOverviewScreen(controller: _careerController!);
-          }
-          return GmOffseasonOverviewScreen(
+        // If GM Career save is active and user has not navigated out to Main Menu
+        if (_careerController!.hasCareer && !_showMainMenu) {
+          return CareerShellScaffold(
             controller: _careerController!,
-            onExit: () {
+            onReturnToMainMenu: () {
               setState(() {
-                _showFranchiseSelect = true;
+                _showMainMenu = true;
               });
             },
           );
         }
 
-        return FranchiseSelectScreen(
+        // Preserve direct M007 FranchiseSelectScreen when no career storage/controller
+        // was injected (legacy M007-only test contract).
+        if (widget.careerStorage == null && widget.careerController == null) {
+          return FranchiseSelectScreen(
+            league: widget.league,
+            controller: _controller!,
+            careerController: _careerController,
+            careerStorage: _careerController!.storage,
+            seedProvider: widget.seedProvider ?? defaultCareerSeedProvider,
+            onResumeCareer: () {
+              setState(() {
+                _showMainMenu = false;
+              });
+            },
+          );
+        }
+
+        return MainMenuScreen(
           league: widget.league,
-          controller: _controller!,
-          careerController: _careerController,
+          seasonController: _controller!,
+          careerController: _careerController!,
           careerStorage: widget.careerStorage ?? _careerController!.storage,
+          gameRunner: widget.gameRunner,
           seedProvider: widget.seedProvider ?? defaultCareerSeedProvider,
-          onResumeCareer: () {
+          onContinueCareer: () {
             setState(() {
-              _showFranchiseSelect = false;
+              _showMainMenu = false;
             });
           },
         );

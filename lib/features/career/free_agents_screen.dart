@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
 
 import 'career_controller.dart';
+import 'career_player_profile_screen.dart';
 import 'free_agent_offer_screen.dart';
 import 'league_market_summary_screen.dart';
 
@@ -137,24 +138,41 @@ class _GmFreeAgentsScreenState extends State<GmFreeAgentsScreen> {
                       itemCount: entries.length,
                       itemBuilder: (context, index) {
                         final entry = entries[index];
+                        final view = entry.toPublicView();
+                        final valuation = _market.estimate(view);
+                        final remaining = career.freeAgentOffers
+                            .remainingAttempts(
+                              teamId: career.userFranchiseId,
+                              playerId: entry.id,
+                              seasonYear: career.currentYear,
+                            );
+                        void openOffer() => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => GmFreeAgentOfferScreen(
+                              controller: widget.controller,
+                              freeAgentId: entry.id,
+                            ),
+                          ),
+                        );
                         return _FreeAgentCard(
                           entry: entry,
-                          valuation: _market.estimate(entry.toPublicView()),
-                          remainingAttempts: career.freeAgentOffers
-                              .remainingAttempts(
-                                teamId: career.userFranchiseId,
-                                playerId: entry.id,
-                                seasonYear: career.currentYear,
-                              ),
+                          valuation: valuation,
+                          remainingAttempts: remaining,
                           canOffer: canOffer,
-                          onMakeOffer: () => Navigator.of(context).push(
+                          onTapProfile: () => Navigator.of(context).push(
                             MaterialPageRoute<void>(
-                              builder: (_) => GmFreeAgentOfferScreen(
-                                controller: widget.controller,
-                                freeAgentId: entry.id,
+                              builder: (_) => CareerPlayerProfileScreen(
+                                dossier: FreeAgentPlayerDossier(
+                                  freeAgent: view,
+                                  currentYear: career.currentYear,
+                                  valuation: valuation,
+                                  canOffer: canOffer && remaining > 0,
+                                  onMakeOffer: openOffer,
+                                ),
                               ),
                             ),
                           ),
+                          onMakeOffer: openOffer,
                         );
                       },
                     ),
@@ -357,6 +375,7 @@ class _FreeAgentCard extends StatelessWidget {
     required this.valuation,
     required this.remainingAttempts,
     required this.canOffer,
+    required this.onTapProfile,
     required this.onMakeOffer,
   });
 
@@ -364,6 +383,7 @@ class _FreeAgentCard extends StatelessWidget {
   final MarketValuation valuation;
   final int remainingAttempts;
   final bool canOffer;
+  final VoidCallback onTapProfile;
   final VoidCallback onMakeOffer;
 
   @override
@@ -374,88 +394,92 @@ class _FreeAgentCard extends StatelessWidget {
     return Card(
       key: ValueKey('free-agent-${view.id.value}'),
       margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 18,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTapProfile,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 18,
+                    child: Text(
+                      view.position.shortName,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          view.fullName,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'Age ${view.age} • ${view.position.fullName} • '
+                          '${valuation.expectedRole.displayName}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    '${view.overallRating}',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 10,
+                runSpacing: 4,
+                children: [
+                  _Attribute(label: 'INS', value: attributes.insideScoring),
+                  _Attribute(label: 'MID', value: attributes.midrange),
+                  _Attribute(label: '3PT', value: attributes.threePoint),
+                  _Attribute(label: 'PAS', value: attributes.passing),
+                  _Attribute(label: 'DEF', value: attributes.perimeterDefense),
+                  _Attribute(label: 'REB', value: attributes.rebounding),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Est. market ${valuation.estimatedAnnualSalary} CU • '
+                'Preferred ${valuation.preferredDurationYears}y • '
+                '$remainingAttempts offer(s) remaining',
+                style: theme.textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.tonal(
+                  key: ValueKey('make-offer-${view.id.value}'),
+                  onPressed: canOffer && remainingAttempts > 0
+                      ? onMakeOffer
+                      : null,
                   child: Text(
-                    view.position.shortName,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    !canOffer
+                        ? 'Offers Locked'
+                        : (remainingAttempts > 0
+                              ? 'Make Offer'
+                              : 'No Offers Remaining'),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        view.fullName,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        'Age ${view.age} • ${view.position.fullName} • '
-                        '${valuation.expectedRole.displayName}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Text(
-                  '${view.overallRating}',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 10,
-              runSpacing: 4,
-              children: [
-                _Attribute(label: 'INS', value: attributes.insideScoring),
-                _Attribute(label: 'MID', value: attributes.midrange),
-                _Attribute(label: '3PT', value: attributes.threePoint),
-                _Attribute(label: 'PAS', value: attributes.passing),
-                _Attribute(label: 'DEF', value: attributes.perimeterDefense),
-                _Attribute(label: 'REB', value: attributes.rebounding),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Est. market ${valuation.estimatedAnnualSalary} CU • '
-              'Preferred ${valuation.preferredDurationYears}y • '
-              '$remainingAttempts offer(s) remaining',
-              style: theme.textTheme.bodySmall,
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.tonal(
-                key: ValueKey('make-offer-${view.id.value}'),
-                onPressed: canOffer && remainingAttempts > 0
-                    ? onMakeOffer
-                    : null,
-                child: Text(
-                  !canOffer
-                      ? 'Offers Locked'
-                      : (remainingAttempts > 0
-                            ? 'Make Offer'
-                            : 'No Offers Remaining'),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

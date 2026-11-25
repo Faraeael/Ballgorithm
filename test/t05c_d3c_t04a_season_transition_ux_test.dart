@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:basketball_manager/app.dart';
 import 'package:basketball_manager/features/career/career_controller.dart';
+import 'package:basketball_manager/features/career/career_home_screen.dart';
 import 'package:basketball_manager/features/career/career_storage.dart';
-import 'package:basketball_manager/features/career/offseason_overview_screen.dart';
 import 'package:basketball_manager/features/career/playoff_tournament_screen.dart';
 import 'package:basketball_manager/features/career/rollover_isolate_workers.dart';
 import 'package:basketball_manager/features/season/season_storage.dart';
@@ -124,6 +124,8 @@ void main() {
         buildApp(storage: storage, controller: controller),
       );
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Inspect Playoff Bracket'));
+      await tester.pumpAndSettle();
 
       // Champion displayed & Continue button eligible.
       expect(find.text('Season 1'), findsOneWidget);
@@ -209,9 +211,9 @@ void main() {
       expect(controller.seasonTransitionStage, isNull);
       expect(controller.career?.currentYear, 2);
       expect(controller.career?.phase, CareerPhase.openingOffseason);
-      expect(find.byType(GmOffseasonOverviewScreen), findsOneWidget);
+      expect(find.byType(CareerHomeScreen), findsOneWidget);
       expect(find.byType(PlayoffTournamentScreen), findsNothing);
-      expect(find.text('Year 2 • Opening Offseason'), findsOneWidget);
+      expect(find.text('Season 2 • Opening Offseason'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -240,6 +242,8 @@ void main() {
       await tester.pumpWidget(
         buildApp(storage: storage, controller: controller),
       );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Inspect Playoff Bracket'));
       await tester.pumpAndSettle();
 
       // 1. Pre-write failure -> no recovery required, clear non-mutation feedback

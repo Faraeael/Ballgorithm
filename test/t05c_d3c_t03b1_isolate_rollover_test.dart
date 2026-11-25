@@ -44,14 +44,17 @@ final class _FailingActiveWriteStorage extends FileGmCareerStorage {
 }
 
 void main() {
+  // Rebaselined for 6664ceb (M009-T05C-T05B AI free-agent offer policy), which
+  // changes the fixture's offseason signings. Pre-6664ceb values reproduced at
+  // 2ab8e25: aadfbd75…, bfc2440e…, 4395386f…, 2b53db23…; 298e443 is unchanged.
   const baselineArch1Sha =
-      'aadfbd7555ece1ddb3c4734c54575a4b981dc9c8943e9c361d8daf8f9699deae';
+      '73507ba699b903cf4c89e7245142d3ef44dd3bcf346e23d004ef54b4f4f10b9f';
   const baselineY2CareerSha =
-      'bfc2440eeed36adb253e991b73c756c2952be10d9559bc20aac71c63944d9a2e';
+      '30bbf735f40e836c70b140006683e47f86763b5d01a58964d9207c8fc71d014c';
   const baselineArch2Sha =
-      '4395386fb9ab4699fb1fc7fc1adf94f91869532e5b4485d8c22553f91b1d3bb9';
+      'efd8aaf999ff1ea6f4008f2ccf58ea20ff9811dbb89a586da00febc96c67ff06';
   const baselineY3CareerSha =
-      '2b53db23184b3e1a7e63501fc3025a3fa01e3c8db338a6ea107b084caf5449eb';
+      'd900d14c8820dcd179ccff5dc766bdd59ca566b4dd675e88edc92671e0878f38';
 
   late GmCareer y1Completed;
   late GmCareer y2Completed;
@@ -137,8 +140,10 @@ void main() {
           expect(y3.seasonSettlements.length, 2);
           expect(y3.marketHistory.length, 2);
           expect(y3.seasonHistory.length, 2);
-          expect(y3.careerDraftRights.length, 40);
-          expect(y3.freeAgentPool.entries.length, 408);
+          // 6664ceb: one carried draft right (40 -> 39) now enters the free-agent
+          // pool (408 -> 409); combined total remains 448.
+          expect(y3.careerDraftRights.length, 39);
+          expect(y3.freeAgentPool.entries.length, 409);
           expect(_sha256(GmCareerCodec.encode(y3)), baselineY3CareerSha);
           final storedArch2 = await storage.readArchive(seasonYear: 2);
           expect(SeasonArchiveCodec.digestOf(storedArch2!), baselineArch2Sha);

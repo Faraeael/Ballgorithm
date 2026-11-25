@@ -76,8 +76,10 @@ class GmOffseasonClearanceScreen extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 8),
-            if (readiness.status ==
-                    OffseasonReadinessStatus.clearanceRequired &&
+            if ((readiness.status ==
+                        OffseasonReadinessStatus.clearanceRequired ||
+                    readiness.status ==
+                        OffseasonReadinessStatus.financialExceptionRequired) &&
                 clearance.status == OffseasonClearanceStatus.notStarted)
               FilledButton(
                 key: const ValueKey('start-clearance'),

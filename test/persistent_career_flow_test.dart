@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:basketball_manager/app.dart';
+import 'package:basketball_manager/features/career/career_shell_scaffold.dart';
 import 'package:basketball_manager/features/career/career_storage.dart';
 import 'package:basketball_manager/features/season/season_storage.dart';
 import 'package:flutter/material.dart';
@@ -120,42 +121,41 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Offseason Overview Screen is now active (Scope 1, 8, 17)
-        expect(find.text('AUR Offseason'), findsOneWidget);
-        expect(find.text('Aurora Comets'), findsOneWidget);
-        expect(find.text('Year 1 • Opening Offseason'), findsOneWidget);
-        expect(find.text('Starting Situation:'), findsOneWidget);
-        expect(find.text('Tanking / Rebuilding'), findsOneWidget);
-        expect(find.text('Current Roster (12 Players)'), findsOneWidget);
-        // Scroll down to check disabled future modules
-        final overviewScroll = find
+        // Career Shell + Home Screen is now active (T01A/T01B)
+        expect(find.byType(CareerShellScaffold), findsOneWidget);
+        expect(find.text('AURORA COMETS'), findsWidgets);
+        expect(find.textContaining('Opening Offseason'), findsWidgets);
+
+        // Verify Market tab exposes offseason modules
+        await tester.tap(find.byKey(const ValueKey('nav-tab-market')));
+        await tester.pumpAndSettle();
+        expect(find.text('Rookie Draft'), findsOneWidget);
+        expect(find.text('Free Agency Pool'), findsOneWidget);
+
+        // Verify Career tab exposes starting situation and finance/exit actions
+        await tester.tap(find.byKey(const ValueKey('nav-tab-career')));
+        await tester.pumpAndSettle();
+        final careerScroll = find
             .descendant(
-              of: find.byKey(const ValueKey('offseason-overview-scroll')),
+              of: find.byKey(const ValueKey('career-career-tab')),
               matching: find.byType(Scrollable),
             )
             .first;
         await tester.scrollUntilVisible(
-          find.text('Front Office Modules (In Development)'),
-          240,
-          scrollable: overviewScroll,
+          find.text('Tanking / Rebuilding'),
+          200,
+          scrollable: careerScroll,
         );
-        await tester.pumpAndSettle();
+        expect(find.text('Tanking / Rebuilding'), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.byKey(const ValueKey('career-tab-main-menu-button')),
+          200,
+          scrollable: careerScroll,
+        );
         expect(
-          find.text('Front Office Modules (In Development)'),
+          find.byKey(const ValueKey('career-tab-main-menu-button')),
           findsOneWidget,
         );
-        await tester.scrollUntilVisible(
-          find.text('Franchise Finances'),
-          240,
-          scrollable: overviewScroll,
-        );
-        await tester.pumpAndSettle();
-        expect(find.text('Rookie Draft'), findsOneWidget);
-        expect(find.text('Free Agency'), findsOneWidget);
-        expect(find.text('Trades'), findsOneWidget);
-        expect(find.text('Staff & Coaching'), findsOneWidget);
-        expect(find.text('Facilities'), findsOneWidget);
-        expect(find.text('Franchise Finances'), findsOneWidget);
 
         // Verify storage received valid career data
         expect(await careerStorage.hasSave(), isTrue);
@@ -181,42 +181,50 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // App reopens directly into the restored Offseason Overview!
-        expect(find.text('AUR Offseason'), findsOneWidget);
+        // App reopens directly into the restored Career Shell!
+        expect(find.byType(CareerShellScaffold), findsOneWidget);
+        expect(find.textContaining('Opening Offseason'), findsWidgets);
+        expect(find.text('AURORA COMETS'), findsWidgets);
+
+        // 3. Exit to Main Menu via Career tab
+        await tester.tap(find.byKey(const ValueKey('nav-tab-career')));
+        await tester.pumpAndSettle();
+        final careerScroll2 = find
+            .descendant(
+              of: find.byKey(const ValueKey('career-career-tab')),
+              matching: find.byType(Scrollable),
+            )
+            .first;
         await tester.scrollUntilVisible(
-          find.text('Year 1 • Opening Offseason'),
-          -300,
-          scrollable: overviewScroll,
-        );
-        await tester.pumpAndSettle();
-        expect(find.text('Year 1 • Opening Offseason'), findsOneWidget);
-        expect(find.text('Aurora Comets'), findsOneWidget);
-
-        // 3. Exit to Franchise Select
-        expect(
-          find.byKey(const ValueKey('exit-career-menu-button')),
-          findsOneWidget,
-        );
-        await tester.tap(find.byKey(const ValueKey('exit-career-menu-button')));
-        await tester.pumpAndSettle();
-
-        // On FranchiseSelectScreen, Resume GM Career is available
-        expect(
-          find.byKey(const ValueKey('resume-career-button')),
-          findsOneWidget,
+          find.byKey(const ValueKey('career-tab-main-menu-button')),
+          200,
+          scrollable: careerScroll2,
         );
         expect(
-          find.byKey(const ValueKey('resume-career-card-button')),
+          find.byKey(const ValueKey('career-tab-main-menu-button')),
           findsOneWidget,
         );
-        expect(find.text('Resume GM Career: Aurora Comets'), findsOneWidget);
-
-        // Tap Resume GM Career
-        await tester.tap(find.byKey(const ValueKey('resume-career-button')));
+        await tester.tap(
+          find.byKey(const ValueKey('career-tab-main-menu-button')),
+        );
         await tester.pumpAndSettle();
 
-        // Returned to Offseason Overview
-        expect(find.text('AUR Offseason'), findsOneWidget);
+        // On MainMenuScreen, Continue GM Career is available
+        expect(
+          find.byKey(const ValueKey('continue-gm-career-button')),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Aurora Comets'), findsOneWidget);
+
+        // Tap Continue GM Career
+        await tester.tap(
+          find.byKey(const ValueKey('continue-gm-career-button')),
+        );
+        await tester.pumpAndSettle();
+
+        // Returned to Career Shell
+        expect(find.byType(CareerShellScaffold), findsOneWidget);
+        expect(find.text('AURORA COMETS'), findsWidgets);
       },
     );
 
@@ -243,6 +251,10 @@ void main() {
         // Since existing save was invalid JSON, app shows franchise select with error notice or option to start new
         // Navigate through setup to preview
         await tester.tap(find.byKey(const ValueKey('open-career-preview')));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('confirm-new-career-replace')),
+        );
         await tester.pumpAndSettle();
 
         await tester.tap(
@@ -297,9 +309,22 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Replaced and entered offseason overview
-        expect(find.text('AUR Offseason'), findsOneWidget);
-        expect(find.text('Starting Situation:'), findsOneWidget);
+        // Replaced and entered Career Shell
+        expect(find.byType(CareerShellScaffold), findsOneWidget);
+        expect(find.text('AURORA COMETS'), findsWidgets);
+        await tester.tap(find.byKey(const ValueKey('nav-tab-career')));
+        await tester.pumpAndSettle();
+        final careerScroll3 = find
+            .descendant(
+              of: find.byKey(const ValueKey('career-career-tab')),
+              matching: find.byType(Scrollable),
+            )
+            .first;
+        await tester.scrollUntilVisible(
+          find.text('Play-In Contender'),
+          200,
+          scrollable: careerScroll3,
+        );
         expect(find.text('Play-In Contender'), findsOneWidget);
       },
     );
@@ -340,39 +365,25 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(
-          find.textContaining('Failed to load GM Career:'),
+          find.byKey(const ValueKey('main-menu-storage-error')),
           findsOneWidget,
         );
-        expect(find.textContaining('Save file preserved.'), findsOneWidget);
 
-        // 2. Navigate to CareerSetupReviewScreen and attempt Start GM Career
+        // 2. Attempt New GM Career when hasSave throws: MainMenu refuses to
+        // overwrite or enter setup and writes nothing.
         await tester.tap(find.byKey(const ValueKey('open-career-preview')));
         await tester.pumpAndSettle();
-        await tester.tap(
-          find.byKey(const ValueKey('career-team-option-team-1')),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const ValueKey('next-situation-button')));
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const ValueKey('situation-card-tanking')));
-        await tester.pumpAndSettle();
-        await tester.tap(
-          find.byKey(const ValueKey('generate-career-preview-button')),
-        );
-        await tester.pumpAndSettle();
 
-        await tester.drag(
-          find.byKey(const ValueKey('career-preview-scroll')),
-          const Offset(0, -1500),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const ValueKey('start-career-button')));
-        await tester.pumpAndSettle();
-
-        // Normal creation & overwrite confirmations must NOT appear; write() never called
         expect(find.text('Confirm GM Career Creation'), findsNothing);
         expect(find.text('Replace Existing Career?'), findsNothing);
-        expect(find.text('Career Save Error'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('main-menu-storage-error')),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('Cannot verify existing career storage safely:'),
+          findsOneWidget,
+        );
         expect(careerStorage.writeAttempts, 0);
 
         // Existing save on disk remains completely untouched

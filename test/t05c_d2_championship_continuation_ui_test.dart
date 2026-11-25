@@ -3,8 +3,8 @@ import 'dart:convert';
 
 import 'package:basketball_manager/app.dart';
 import 'package:basketball_manager/features/career/career_controller.dart';
+import 'package:basketball_manager/features/career/career_home_screen.dart';
 import 'package:basketball_manager/features/career/career_storage.dart';
-import 'package:basketball_manager/features/career/offseason_overview_screen.dart';
 import 'package:basketball_manager/features/career/playoff_tournament_screen.dart';
 import 'package:basketball_manager/features/career/rollover_isolate_workers.dart';
 import 'package:basketball_manager/features/season/season_storage.dart';
@@ -512,6 +512,8 @@ void main() {
         buildApp(storage: storage, controller: controller),
       );
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Inspect Playoff Bracket'));
+      await tester.pumpAndSettle();
 
       final writesBeforeCancel = storage.writeCount;
       final archivesBeforeCancel = storage.archiveWriteCount;
@@ -565,9 +567,9 @@ void main() {
       expect(controller.career?.phase, CareerPhase.openingOffseason);
       expect(storage.archiveWriteCount, archivesBeforeCancel + 1);
       expect(storage.writeCount, writesBeforeCancel + 1);
-      expect(find.byType(GmOffseasonOverviewScreen), findsOneWidget);
+      expect(find.byType(CareerHomeScreen), findsOneWidget);
       expect(find.byType(PlayoffTournamentScreen), findsNothing);
-      expect(find.text('Year 2 • Opening Offseason'), findsOneWidget);
+      expect(find.text('Season 2 • Opening Offseason'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -618,6 +620,8 @@ void main() {
       await tester.pumpWidget(
         buildApp(storage: storage, controller: controller),
       );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Inspect Playoff Bracket'));
       await tester.pumpAndSettle();
 
       // 13 & 14 & 15. Fail active write -> championship stays visible, error shown, recovery-required disables button.
@@ -686,8 +690,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(controller.career?.currentYear, 2);
-      expect(find.byType(GmOffseasonOverviewScreen), findsOneWidget);
-      expect(find.text('Year 2 • Opening Offseason'), findsOneWidget);
+      expect(find.byType(CareerHomeScreen), findsOneWidget);
+      expect(find.text('Season 2 • Opening Offseason'), findsOneWidget);
 
       // 18. Reloaded Year N+1 shows offseason on fresh app mount.
       final reloadedController = GmCareerController(storage: storage);
@@ -696,8 +700,8 @@ void main() {
         buildApp(storage: storage, controller: reloadedController),
       );
       await tester.pumpAndSettle();
-      expect(find.byType(GmOffseasonOverviewScreen), findsOneWidget);
-      expect(find.text('Year 2 • Opening Offseason'), findsOneWidget);
+      expect(find.byType(CareerHomeScreen), findsOneWidget);
+      expect(find.text('Season 2 • Opening Offseason'), findsOneWidget);
     },
   );
 }

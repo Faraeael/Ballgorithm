@@ -13,7 +13,13 @@ class PlayInTournamentScreen extends StatelessWidget {
     listenable: controller,
     builder: (context, _) {
       final career = controller.career;
-      if (career == null || career.phase != CareerPhase.playIn) {
+      if (career?.phase == CareerPhase.playoffs) {
+        // Transient frame after enterPlayoffs; the screen pops back to the shell.
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      }
+      if (career == null ||
+          career.phase != CareerPhase.playIn ||
+          career.playInState == null) {
         throw StateError('Play-In career is not loaded');
       }
       final state = career.playInState!;
@@ -261,6 +267,11 @@ class PlayInTournamentScreen extends StatelessWidget {
     if (confirmed != true || !context.mounted) return;
     try {
       await controller.enterPlayoffs(confirmed: true);
+      if (context.mounted &&
+          controller.career?.phase == CareerPhase.playoffs &&
+          Navigator.of(context).canPop()) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
     } catch (_) {}
   }
 

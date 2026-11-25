@@ -160,6 +160,11 @@ class _PlayoffTournamentScreenState extends State<PlayoffTournamentScreen> {
           confirmed: true,
           slot: widget.slot,
         );
+        if (mounted &&
+            widget.controller.career?.phase == CareerPhase.openingOffseason &&
+            Navigator.of(this.context).canPop()) {
+          Navigator.of(this.context).popUntil((route) => route.isFirst);
+        }
       } catch (_) {
         // Error feedback is exposed via controller.errorMessage and draftRecoveryRequired.
       } finally {

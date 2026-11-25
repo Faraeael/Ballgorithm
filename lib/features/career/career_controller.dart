@@ -27,6 +27,34 @@ enum SeasonTransitionStage {
   final String description;
 }
 
+/// Live progress snapshot while a multi-round regular-season batch runs.
+@immutable
+final class BatchSimulationProgress {
+  const BatchSimulationProgress({
+    required this.startRound,
+    required this.currentRound,
+    required this.targetRound,
+    required this.roundsCompleted,
+    required this.totalRounds,
+    required this.isCancelling,
+    this.latestUserGameSummary,
+  });
+
+  final int startRound;
+  final int currentRound;
+  final int targetRound;
+  final int roundsCompleted;
+  final int totalRounds;
+  final bool isCancelling;
+  final String? latestUserGameSummary;
+
+  int get roundsRemaining =>
+      (totalRounds - roundsCompleted).clamp(0, totalRounds);
+
+  double get fraction =>
+      totalRounds <= 0 ? 1.0 : (roundsCompleted / totalRounds).clamp(0.0, 1.0);
+}
+
 /// Manages loading, saving, and active runtime state for a persistent [GmCareer].
 class GmCareerController extends ChangeNotifier {
   GmCareerController({
@@ -48,6 +76,8 @@ class GmCareerController extends ChangeNotifier {
   bool _draftRecoveryRequired = false;
   bool _disposed = false;
   SeasonTransitionStage? _seasonTransitionStage;
+  BatchSimulationProgress? _batchProgress;
+  bool _batchCancelRequested = false;
   static const _draftService = DraftExecutionService();
   static const _signingService = RookieSigningService();
   static const _marketService = FreeAgentMarketService();
@@ -71,6 +101,31 @@ class GmCareerController extends ChangeNotifier {
   /// Current operation-boundary stage while archiving a completed season and
   /// saving the next season, or `null` when idle.
   SeasonTransitionStage? get seasonTransitionStage => _seasonTransitionStage;
+
+  /// Active regular-season batch simulation progress, or `null` when idle.
+  BatchSimulationProgress? get batchProgress => _batchProgress;
+
+  /// Whether a multi-round regular-season batch is currently executing.
+  bool get isBatchSimulating => _batchProgress != null;
+
+  /// Requests graceful cancellation after the in-flight round finishes saving.
+  void requestCancelBatchSimulation() {
+    final current = _batchProgress;
+    if (current == null || _batchCancelRequested) return;
+    _batchCancelRequested = true;
+    _batchProgress = BatchSimulationProgress(
+      startRound: current.startRound,
+      currentRound: current.currentRound,
+      targetRound: current.targetRound,
+      roundsCompleted: current.roundsCompleted,
+      totalRounds: current.totalRounds,
+      isCancelling: true,
+      latestUserGameSummary: current.latestUserGameSummary,
+    );
+    if (!_disposed) {
+      notifyListeners();
+    }
+  }
 
   void _setSeasonTransitionStage(SeasonTransitionStage? stage) {
     if (_seasonTransitionStage == stage) return;
@@ -97,13 +152,17 @@ class GmCareerController extends ChangeNotifier {
         throw const FormatException('Career save file exists but is empty.');
       } else {
         try {
-          _career = GmCareerCodec.decode(raw);
+          _career = shouldUseIsolateForLargeDecode(raw.length)
+              ? await compute(decodeCareerJsonWorker, raw)
+              : GmCareerCodec.decode(raw);
         } catch (decodeError) {
           if (storage is FileGmCareerStorage) {
             final recovered = await (storage as FileGmCareerStorage)
                 .recoverBackup(slot: slot);
             if (recovered != null) {
-              _career = GmCareerCodec.decode(recovered);
+              _career = shouldUseIsolateForLargeDecode(recovered.length)
+                  ? await compute(decodeCareerJsonWorker, recovered)
+                  : GmCareerCodec.decode(recovered);
               _draftRecoveryRequired = false;
               return;
             }
@@ -426,6 +485,148 @@ class GmCareerController extends ChangeNotifier {
     await _saveCareerState(next, slot);
   });
 
+  /// Simulates and persists [roundCount] regular-season rounds sequentially
+  /// starting at [expectedStartRound], stopping at Round 82, cancellation,
+  /// or any simulation/persistence error without skipping or auto-advancing.
+  Future<void> simulateRegularSeasonBatch({
+    required int expectedStartRound,
+    required int roundCount,
+    required bool confirmed,
+    String slot = 'default',
+  }) => _runCareerCommand(action: 'simulate regular-season batch', () async {
+    if (!confirmed) {
+      throw StateError('Explicit human confirmation is required');
+    }
+    if (roundCount < 1) {
+      throw ArgumentError.value(
+        roundCount,
+        'roundCount',
+        'Batch roundCount must be at least 1',
+      );
+    }
+    final initial = _requireCareer();
+    final initialState = initial.regularSeasonState;
+    if (initialState == null || initial.phase != CareerPhase.regularSeason) {
+      throw StateError('Regular season is not active');
+    }
+    final initialSchedule = initialState.schedule;
+    if (initialSchedule == null) {
+      throw StateError('Regular-season schedule is missing');
+    }
+    final startRound = initialState.nextUnfinishedRoundNumber;
+    if (startRound != expectedStartRound) {
+      throw StateError(
+        'Stale round: expected $expectedStartRound, current round is $startRound',
+      );
+    }
+    final maxRound = initialSchedule.rounds.last.roundNumber;
+    final targetRound = (expectedStartRound + roundCount - 1).clamp(
+      expectedStartRound,
+      maxRound,
+    );
+    final totalRounds = targetRound - expectedStartRound + 1;
+
+    _batchCancelRequested = false;
+    _batchProgress = BatchSimulationProgress(
+      startRound: expectedStartRound,
+      currentRound: expectedStartRound,
+      targetRound: targetRound,
+      roundsCompleted: 0,
+      totalRounds: totalRounds,
+      isCancelling: false,
+    );
+    notifyListeners();
+
+    try {
+      String? lastSummary;
+      for (var round = expectedStartRound; round <= targetRound; round++) {
+        if (_batchCancelRequested || _disposed) {
+          break;
+        }
+        final current = _requireCareer();
+        final currentState = current.regularSeasonState;
+        if (currentState == null ||
+            current.phase != CareerPhase.regularSeason) {
+          throw StateError('Regular season is no longer active');
+        }
+        final nextRound = currentState.nextUnfinishedRoundNumber;
+        if (nextRound != round) {
+          throw StateError(
+            'Stale round during batch: expected $round, got $nextRound',
+          );
+        }
+
+        _batchProgress = BatchSimulationProgress(
+          startRound: expectedStartRound,
+          currentRound: round,
+          targetRound: targetRound,
+          roundsCompleted: round - expectedStartRound,
+          totalRounds: totalRounds,
+          isCancelling: _batchCancelRequested,
+          latestUserGameSummary: lastSummary,
+        );
+        if (!_disposed) notifyListeners();
+
+        final next = await compute(
+          _simulateRegularSeasonRound,
+          _RoundSimulationRequest(current, round),
+        );
+        await _saveCareerState(next, slot);
+        lastSummary = _formatUserRoundResult(next, round) ?? lastSummary;
+
+        final completed = round - expectedStartRound + 1;
+        _batchProgress = BatchSimulationProgress(
+          startRound: expectedStartRound,
+          currentRound: round,
+          targetRound: targetRound,
+          roundsCompleted: completed,
+          totalRounds: totalRounds,
+          isCancelling: _batchCancelRequested,
+          latestUserGameSummary: lastSummary,
+        );
+        if (!_disposed) notifyListeners();
+
+        // Yield to keep frame rendering and cancel input responsive between rounds.
+        await Future<void>.delayed(Duration.zero);
+      }
+    } finally {
+      _batchProgress = null;
+      _batchCancelRequested = false;
+    }
+  });
+
+  String? _formatUserRoundResult(GmCareer career, int roundNumber) {
+    final state = career.regularSeasonState;
+    final schedule = state?.schedule;
+    if (state == null || schedule == null) return null;
+    final round = schedule.rounds.cast<RegularSeasonRound?>().firstWhere(
+      (r) => r?.roundNumber == roundNumber,
+      orElse: () => null,
+    );
+    if (round == null) return null;
+    for (final fixture in round.fixtures) {
+      if (fixture.homeTeamId != career.userFranchiseId &&
+          fixture.awayTeamId != career.userFranchiseId) {
+        continue;
+      }
+      final result = state.gameResults[fixture.id];
+      if (result == null) return null;
+      final isHome = fixture.homeTeamId == career.userFranchiseId;
+      final oppId = isHome ? fixture.awayTeamId : fixture.homeTeamId;
+      final oppTeam = career.league.teams.firstWhere((t) => t.id == oppId);
+      final userScore = isHome
+          ? result.summary.homeScore
+          : result.summary.awayScore;
+      final oppScore = isHome
+          ? result.summary.awayScore
+          : result.summary.homeScore;
+      final won = result.summary.winnerTeamId == career.userFranchiseId;
+      return 'Rd $roundNumber: ${won ? 'W' : 'L'} $userScore–$oppScore '
+          '${isHome ? 'vs' : '@'} ${oppTeam.abbreviation}';
+    }
+    return null;
+  }
+
   /// Enters Play-In only after explicit confirmation and a fresh completion gate.
   Future<void> enterPlayIn({
     required bool confirmed,
@@ -684,12 +885,24 @@ class GmCareerController extends ChangeNotifier {
         'Missing or empty historical archive for slot "$slot" year $seasonYear',
       );
     }
-    return SeasonArchiveCodec.decodeAndVerify(
-      raw,
-      expectedDigest: record.archiveDigest,
-      expectedCareerId: current.id,
-      expectedSeasonYear: seasonYear,
-      expectedRecord: record,
+    if (!shouldUseIsolateForLargeDecode(raw.length)) {
+      return SeasonArchiveCodec.decodeAndVerify(
+        raw,
+        expectedDigest: record.archiveDigest,
+        expectedCareerId: current.id,
+        expectedSeasonYear: seasonYear,
+        expectedRecord: record,
+      );
+    }
+    return compute(
+      decodeAndVerifyArchiveWorker,
+      ArchiveDecodeVerifyRequest(
+        archiveJson: raw,
+        expectedDigest: record.archiveDigest,
+        expectedCareerId: current.id,
+        expectedSeasonYear: seasonYear,
+        expectedRecord: record,
+      ),
     );
   }
 
