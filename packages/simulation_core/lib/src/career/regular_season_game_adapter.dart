@@ -1,5 +1,6 @@
 import '../models/ids.dart';
 import '../models/league.dart';
+import '../models/player.dart';
 import '../models/roster.dart';
 import '../models/roster_category.dart';
 import '../models/team.dart';
@@ -9,6 +10,7 @@ import '../simulation/game_result.dart';
 import '../simulation/game_rules.dart';
 import '../simulation/game_simulator.dart';
 import '../simulation/rotation_plan.dart';
+import 'career_rotation_service.dart';
 import 'gm_career.dart';
 import 'regular_season_schedule.dart';
 
@@ -16,22 +18,26 @@ import 'regular_season_schedule.dart';
 final class RegularSeasonGameAdapter {
   const RegularSeasonGameAdapter();
 
-  League simulationLeagueFor(GmCareer career) {
-    final teams = <Team>[];
-    for (final source in career.league.teams) {
-      final players = source.roster.players
-          .where(
-            (player) =>
-                source.roster.categoryOf(player.id) == RosterCategory.standard,
-          )
-          .toList();
-      if (players.length < 5) {
-        throw FormatException(
-          'Team ${source.id.value} has fewer than five standard players',
-        );
-      }
-      teams.add(source.copyWith(roster: Roster(players)));
+  /// Standard-roster copy of [source] used for every career game input.
+  /// Two-way players and unsigned rights never enter simulation.
+  static Team standardTeamFor(Team source) {
+    final players = <Player>[
+      for (final player in source.roster.players)
+        if (source.roster.categoryOf(player.id) == RosterCategory.standard)
+          player,
+    ];
+    if (players.length < 5) {
+      throw FormatException(
+        'Team ${source.id.value} has fewer than five standard players',
+      );
     }
+    return source.copyWith(roster: Roster(players));
+  }
+
+  League simulationLeagueFor(GmCareer career) {
+    final teams = <Team>[
+      for (final source in career.league.teams) standardTeamFor(source),
+    ];
     return League.create(
       id: career.league.id,
       name: career.league.name,
@@ -66,37 +72,12 @@ final class RegularSeasonGameAdapter {
     final teams = league.teams;
     final home = teams.firstWhere((team) => team.id == homeTeamId);
     final away = teams.firstWhere((team) => team.id == awayTeamId);
-    final homeLineup = CourtLineup.defaultFor(home);
-    final awayLineup = CourtLineup.defaultFor(away);
     final rules = GameRules.standard;
-    final plan = RotationPlan(
-      home: TeamRotationPlan.create(
-        team: home,
-        preset: RotationPreset.balanced,
-        targets: [
-          for (final entry in RotationPlan.expandPreset(
-            preset: RotationPreset.balanced,
-            team: home,
-            lineup: homeLineup,
-            rules: rules,
-          ).entries)
-            RotationTarget(playerId: entry.key, seconds: entry.value),
-        ],
-      ),
-      away: TeamRotationPlan.create(
-        team: away,
-        preset: RotationPreset.balanced,
-        targets: [
-          for (final entry in RotationPlan.expandPreset(
-            preset: RotationPreset.balanced,
-            team: away,
-            lineup: awayLineup,
-            rules: rules,
-          ).entries)
-            RotationTarget(playerId: entry.key, seconds: entry.value),
-        ],
-      ),
-    );
+    final homeSide = _sideFor(career, home, rules);
+    final awaySide = _sideFor(career, away, rules);
+    final homeLineup = homeSide.lineup;
+    final awayLineup = awaySide.lineup;
+    final plan = RotationPlan(home: homeSide.plan, away: awaySide.plan);
     return GameInput.create(
       gameId: gameId,
       league: league,
@@ -108,6 +89,28 @@ final class RegularSeasonGameAdapter {
       rules: rules,
       rotationPlan: plan,
     );
+  }
+
+  /// The human franchise uses its saved manual plan; every other side, and
+  /// the human side in AUTO, keeps the default lineup and balanced rotation.
+  /// An unresolvable manual plan throws: it never falls back to AUTO.
+  static ({CourtLineup lineup, TeamRotationPlan plan}) _sideFor(
+    GmCareer career,
+    Team team,
+    GameRules rules,
+  ) {
+    if (team.id != career.userFranchiseId || !career.userRotation.isManual) {
+      return CareerRotationService.automaticFor(team, rules: rules);
+    }
+    final resolution = CareerRotationService.resolve(
+      career.userRotation,
+      team,
+      rules: rules,
+    );
+    if (!resolution.isValid) {
+      throw CareerRotationInvalidException(resolution.issues);
+    }
+    return (lineup: resolution.lineup!, plan: resolution.plan!);
   }
 
   GameResult simulate(GmCareer career, RegularSeasonFixture fixture) =>

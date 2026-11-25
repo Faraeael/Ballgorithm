@@ -165,7 +165,8 @@ void main() {
         ..remove('seasonSettlements')
         ..remove('careerDraftRights')
         ..remove('carriedUnsignedProspects')
-        ..remove('marketHistory');
+        ..remove('marketHistory')
+        ..remove('userRotation');
       final migrated = GmCareerCodec.decode(jsonEncode(v6));
 
       final expected = const FreeAgentGenerator().generate(seed: _seed);
@@ -212,7 +213,8 @@ void main() {
         ..remove('seasonSettlements')
         ..remove('careerDraftRights')
         ..remove('carriedUnsignedProspects')
-        ..remove('marketHistory');
+        ..remove('marketHistory')
+        ..remove('userRotation');
       final migrated = GmCareerCodec.decode(jsonEncode(v1));
       expect(migrated.freeAgentPool.length, 90);
       expect(

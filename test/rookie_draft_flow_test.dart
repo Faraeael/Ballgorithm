@@ -254,7 +254,8 @@ void main() {
           ..remove('seasonSettlements')
           ..remove('careerDraftRights')
           ..remove('carriedUnsignedProspects')
-          ..remove('marketHistory');
+          ..remove('marketHistory')
+          ..remove('userRotation');
 
         await careerStorage.write(jsonEncode(rawV1Map));
 

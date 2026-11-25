@@ -1,4 +1,5 @@
 import 'career_phase.dart';
+import 'career_rotation_service.dart';
 import 'gm_career.dart';
 import 'offseason_readiness_gate.dart';
 import 'regular_season_state.dart';
@@ -32,6 +33,13 @@ final class RegularSeasonEntryService {
     if (readiness.status != OffseasonReadinessStatus.cleared ||
         readiness.readyCount != career.league.teams.length) {
       throw RegularSeasonEntryBlocked(readiness);
+    }
+    // M010 D2: an obsolete manual plan blocks entry until Repair/Edit/Auto.
+    if (career.userRotation.isManual) {
+      final rotation = CareerRotationService.resolveForCareer(career);
+      if (!rotation.isValid) {
+        throw CareerRotationInvalidException(rotation.issues);
+      }
     }
 
     final state = RegularSeasonState(

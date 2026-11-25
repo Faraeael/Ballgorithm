@@ -26,6 +26,7 @@ import '../finance/career_finances.dart';
 import '../simulation/game_fingerprint.dart';
 import 'regular_season_game_adapter.dart';
 import 'regular_season_game_input_evidence.dart';
+import 'career_rotation_settings.dart';
 import 'regular_season_game_result.dart';
 import 'career_phase.dart';
 import 'offseason_readiness_gate.dart';
@@ -42,7 +43,7 @@ import 'gm_career.dart';
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 25;
+  static const int currentSchemaVersion = 26;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -102,6 +103,7 @@ final class GmCareerCodec {
               ).toJson(),
           ],
       },
+      'userRotation': career.userRotation.toJson(),
     };
     return jsonEncode(map);
   }
@@ -742,6 +744,21 @@ final class GmCareerCodec {
       marketHistory = const [];
     }
 
+    final CareerRotationSettings userRotation;
+    if (schemaVersion >= 26) {
+      if (!raw.containsKey('userRotation')) {
+        throw const FormatException('Missing userRotation in career JSON v26');
+      }
+      userRotation = CareerRotationSettings.fromJson(raw['userRotation']);
+    } else {
+      if (raw.containsKey('userRotation')) {
+        throw const FormatException(
+          'userRotation is not supported before career schema v26',
+        );
+      }
+      userRotation = CareerRotationSettings.auto;
+    }
+
     final career = GmCareer(
       id: id,
       schemaVersion: schemaVersion == 17 ? 17 : currentSchemaVersion,
@@ -773,6 +790,7 @@ final class GmCareerCodec {
       careerDraftRights: careerDraftRights,
       carriedUnsignedProspects: carriedUnsignedProspects,
       marketHistory: marketHistory,
+      userRotation: userRotation,
     );
     if (schemaVersion == 17) _validateNativeCareer(career);
     final migrated = schemaVersion == 17 ? _migrateV17(career) : career;

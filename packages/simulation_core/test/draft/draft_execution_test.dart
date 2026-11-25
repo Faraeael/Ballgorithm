@@ -376,7 +376,8 @@ void main() {
           ..remove('seasonSettlements')
           ..remove('careerDraftRights')
           ..remove('carriedUnsignedProspects')
-          ..remove('marketHistory');
+          ..remove('marketHistory')
+          ..remove('userRotation');
         if (version == 1) {
           legacy.remove('draftOrder');
           legacy.remove('draftClass');

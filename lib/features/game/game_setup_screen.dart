@@ -1,11 +1,10 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:simulation_core/simulation_core.dart';
 
 import 'game_runner.dart';
 import 'game_seed.dart';
 import 'participation_view.dart';
+import 'rotation_budget.dart';
 
 /// Game Day setup (M003 T022, extended in M005 T05).
 ///
@@ -29,7 +28,7 @@ class GameSetupScreen extends StatefulWidget {
 }
 
 class _GameSetupScreenState extends State<GameSetupScreen> {
-  static const int _fineSeconds = 10;
+  static const int _fineSeconds = RotationBudget.fineStepSeconds;
 
   Team? _homeTeam;
   Team? _awayTeam;
@@ -285,38 +284,32 @@ class _GameSetupScreenState extends State<GameSetupScreen> {
     });
   }
 
-  int get _customTotal =>
-      _customTargets.values.fold<int>(0, (sum, value) => sum + value);
+  int get _managedTotal => RotationBudget.total(_managedTargets());
 
-  int get _managedTotal =>
-      _managedTargets().values.fold<int>(0, (sum, value) => sum + value);
+  /// Highest value this player may take (shared M005 budget rule).
+  int _maximumAllowed(String playerId) => RotationBudget.maximumAllowed(
+    _customTargets,
+    playerId,
+    cap: _cap,
+    teamTotal: _teamTotal,
+  );
 
-  /// Highest value this player may take: the per-player cap and whatever the
-  /// team budget still allows after the other players are counted.
-  int _maximumAllowed(String playerId) {
-    final current = _customTargets[playerId] ?? 0;
-    final others = _customTotal - current;
-    return math.min(_cap, _teamTotal - others);
-  }
-
-  /// Applies one exact integer-second value to a single player.
-  ///
-  /// [clamp] is used by the slider drag: a proposal above the currently allowed
-  /// maximum sticks to that maximum instead of being dropped, so the thumb
-  /// never runs past the team budget. Fine adjustments reject out-of-range
-  /// proposals outright. In both cases only the edited player can change.
+  /// Applies one exact integer-second value to a single player through the
+  /// shared M005 rule: drags clamp, fine adjustments reject out-of-range
+  /// proposals, and only the edited player can change.
   bool _setCustomTarget(String playerId, int seconds, {bool clamp = false}) {
     if (_preset != RotationPreset.custom) return false;
-    final current = _customTargets[playerId] ?? 0;
-    final allowed = _maximumAllowed(playerId);
-    var proposed = seconds;
-    if (clamp) {
-      proposed = math.min(proposed, allowed);
-    }
-    if (proposed < 0 || proposed > allowed) return false;
-    if (proposed == current) return false;
+    final next = RotationBudget.propose(
+      _customTargets,
+      playerId,
+      seconds,
+      cap: _cap,
+      teamTotal: _teamTotal,
+      clamp: clamp,
+    );
+    if (next == null) return false;
     setState(() {
-      _customTargets[playerId] = proposed;
+      _customTargets[playerId] = next;
       _refreshBudgetMessage();
     });
     return true;

@@ -298,12 +298,16 @@ void main() {
         final v24Map = jsonDecode(jsonA) as Map<String, dynamic>;
         v24Map['schemaVersion'] = 24;
         v24Map.remove('marketHistory');
+        v24Map.remove('userRotation');
         File(
           '${s.resolvePath('legacy_slot')}.bak',
         ).writeAsStringSync(jsonEncode(v24Map));
         final recoveredLegacy = await s.read(slot: 'legacy_slot');
         expect(recoveredLegacy, isNotNull);
-        expect(GmCareerCodec.decode(recoveredLegacy!).schemaVersion, 25);
+        expect(
+          GmCareerCodec.decode(recoveredLegacy!).schemaVersion,
+          GmCareerCodec.currentSchemaVersion,
+        );
 
         // 23. Controller loadCareer safety & recovery guard
         final opsCtrl = _FaultInjectingFileOps();

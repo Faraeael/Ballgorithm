@@ -26,6 +26,8 @@ import '../models/roster_category.dart';
 import '../models/roster_rules.dart';
 import '../models/team.dart';
 import 'career_phase.dart';
+import 'career_rotation_service.dart';
+import 'career_rotation_settings.dart';
 import 'career_setup.dart';
 import 'regular_season_state.dart';
 import 'play_in_state.dart';
@@ -93,6 +95,7 @@ final class GmCareer {
     Map<String, DraftRights> careerDraftRights = const {},
     Map<String, CarriedUnsignedProspect> carriedUnsignedProspects = const {},
     List<SeasonMarketHistoryRecord> marketHistory = const [],
+    this.userRotation = CareerRotationSettings.auto,
   }) : draftExecutionState =
            draftExecutionState ?? DraftExecutionState.initial(),
        rookieSigningLedger = rookieSigningLedger ?? RookieSigningLedger.empty(),
@@ -175,7 +178,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 25;
+  static const int currentSchemaVersion = 26;
 
   final String id;
   final int schemaVersion;
@@ -239,6 +242,11 @@ final class GmCareer {
 
   /// Append-only chronological historical market/draft/clearance/hardship records.
   final List<SeasonMarketHistoryRecord> marketHistory;
+
+  /// Human franchise lineup and rotation preferences (M010, schema v26).
+  /// Existing careers default to AUTO. Obsolete manual plans are preserved for
+  /// explicit reconciliation; see `CareerRotationService`.
+  final CareerRotationSettings userRotation;
 
   /// Draft rights whose prospect has not signed a rookie contract yet.
   ///
@@ -400,6 +408,23 @@ final class GmCareer {
     _validateSeasonSettlements(teamIds);
     _validateCareerDraftRights(teamIds, playerIds);
     _validateMarketHistory();
+    _validateUserRotation();
+  }
+
+  /// Rosters only change in openingOffseason, so a manual plan that resolves
+  /// at season entry resolves for every game. Outside that phase an
+  /// unresolvable manual plan is a corrupt state, never a silent AUTO fallback.
+  void _validateUserRotation() {
+    if (!userRotation.isManual || phase == CareerPhase.openingOffseason) {
+      return;
+    }
+    final resolution = CareerRotationService.resolveForCareer(this);
+    if (!resolution.isValid) {
+      throw FormatException(
+        'Manual rotation does not resolve during ${phase.jsonValue}: '
+        '${resolution.issues.join('; ')}',
+      );
+    }
   }
 
   void _validateRetiredPlayers(Set<String> activePlayerIds) {
@@ -1776,6 +1801,7 @@ final class GmCareer {
     Map<String, DraftRights>? careerDraftRights,
     Map<String, CarriedUnsignedProspect>? carriedUnsignedProspects,
     List<SeasonMarketHistoryRecord>? marketHistory,
+    CareerRotationSettings? userRotation,
   }) {
     return GmCareer(
       id: id ?? this.id,
@@ -1815,6 +1841,7 @@ final class GmCareer {
       carriedUnsignedProspects:
           carriedUnsignedProspects ?? this.carriedUnsignedProspects,
       marketHistory: marketHistory ?? this.marketHistory,
+      userRotation: userRotation ?? this.userRotation,
     );
   }
 }

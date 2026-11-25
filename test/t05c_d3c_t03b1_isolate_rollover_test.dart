@@ -49,12 +49,15 @@ void main() {
   // 2ab8e25: aadfbd75…, bfc2440e…, 4395386f…, 2b53db23…; 298e443 is unchanged.
   const baselineArch1Sha =
       '73507ba699b903cf4c89e7245142d3ef44dd3bcf346e23d004ef54b4f4f10b9f';
+  // M010 schema v26 adds `userRotation` (AUTO) to career JSON. With that key
+  // removed and schemaVersion 25 restored, the career hashes are exactly the
+  // v25 values 30bbf735… (Y2) and d900d14c… (Y3); archive digests are unchanged.
   const baselineY2CareerSha =
-      '30bbf735f40e836c70b140006683e47f86763b5d01a58964d9207c8fc71d014c';
+      'f3b6dbbffffd74910d3cc10b5d2fa74fd713e1cd88e3fac98ee8b59f3101b8ab';
   const baselineArch2Sha =
       'efd8aaf999ff1ea6f4008f2ccf58ea20ff9811dbb89a586da00febc96c67ff06';
   const baselineY3CareerSha =
-      'd900d14c8820dcd179ccff5dc766bdd59ca566b4dd675e88edc92671e0878f38';
+      '0b02462c584dabf1f5e7fcc0ca700d92b57badf19fbf116ef692823e8a7aff22';
 
   late GmCareer y1Completed;
   late GmCareer y2Completed;

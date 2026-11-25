@@ -276,9 +276,9 @@ void main() {
 
         // Next career metadata & phase
         expect(next.id, completedChamp.id);
-        expect(next.schemaVersion, 25);
-        expect(GmCareer.currentSchemaVersion, 25);
-        expect(GmCareerCodec.currentSchemaVersion, 25);
+        expect(next.schemaVersion, 26);
+        expect(GmCareer.currentSchemaVersion, 26);
+        expect(GmCareerCodec.currentSchemaVersion, 26);
         expect(next.currentYear, 2);
         expect(next.phase, CareerPhase.openingOffseason);
         expect(next.regularSeasonState, isNull);
@@ -610,10 +610,15 @@ void main() {
           () => GmCareerCodec.decode(jsonEncode(v24Map)),
           throwsFormatException,
         );
-        // Valid v24 (without marketHistory) migrates cleanly to v25 with empty marketHistory
+        // Valid v24 (without marketHistory/userRotation) migrates cleanly to the current schema
         v24Map.remove('marketHistory');
+        v24Map.remove('userRotation');
         final migratedFromV24 = GmCareerCodec.decode(jsonEncode(v24Map));
-        expect(migratedFromV24.schemaVersion, 25);
+        expect(
+          migratedFromV24.schemaVersion,
+          GmCareerCodec.currentSchemaVersion,
+        );
+        expect(migratedFromV24.userRotation, CareerRotationSettings.auto);
         expect(migratedFromV24.marketHistory, isEmpty);
         expect(
           migratedFromV24.carriedUnsignedProspects.keys,

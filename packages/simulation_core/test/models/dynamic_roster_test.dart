@@ -327,7 +327,8 @@ void main() {
           ..remove('seasonSettlements')
           ..remove('careerDraftRights')
           ..remove('carriedUnsignedProspects')
-          ..remove('marketHistory');
+          ..remove('marketHistory')
+          ..remove('userRotation');
         final decodedV1 = GmCareerCodec.decode(jsonEncode(v1Map));
         expect(decodedV1.schemaVersion, GmCareer.currentSchemaVersion);
         expect(decodedV1.userTeam.roster.standardCount, 12);
@@ -342,7 +343,8 @@ void main() {
           ..remove('seasonSettlements')
           ..remove('careerDraftRights')
           ..remove('carriedUnsignedProspects')
-          ..remove('marketHistory');
+          ..remove('marketHistory')
+          ..remove('userRotation');
         final decodedV2 = GmCareerCodec.decode(jsonEncode(v2Map));
         expect(decodedV2.schemaVersion, GmCareer.currentSchemaVersion);
         expect(decodedV2.userTeam.roster.standardCount, 12);

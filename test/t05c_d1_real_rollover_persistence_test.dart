@@ -66,11 +66,8 @@ class _NonArchiveCareerStorage implements GmCareerStorage {
   }
 }
 
-({
-  GmCareer completed,
-  GmCareer regularSeason,
-  GmCareer incompletePlayoffs,
-}) _buildYear1Fixtures({
+({GmCareer completed, GmCareer regularSeason, GmCareer incompletePlayoffs})
+_buildYear1Fixtures({
   String id = 't05c-d1-career',
   int seed = 20261028,
   TeamId selectedTeamId = const TeamId('team-1'),
@@ -469,9 +466,9 @@ void main() {
       );
       expect(reloaded.seasonSettlements.length, 1);
 
-      // 18. Schema v25 survives persistence & codec round-trip.
+      // 18. Current schema (v26 since M010) survives persistence & round-trip.
       expect(reloaded.schemaVersion, GmCareer.currentSchemaVersion);
-      expect(GmCareer.currentSchemaVersion, 25);
+      expect(GmCareer.currentSchemaVersion, 26);
       final reencoded = GmCareerCodec.encode(reloaded);
       final redecoded = GmCareerCodec.decode(reencoded);
       expect(redecoded.currentYear, 2);
@@ -558,7 +555,9 @@ void main() {
           .map((p) => p.id.value)
           .toSet();
       final actualSurvivingIds = <String>{
-        ...reloaded.league.teams.expand((t) => t.players).map((p) => p.id.value),
+        ...reloaded.league.teams
+            .expand((t) => t.players)
+            .map((p) => p.id.value),
         ...reloaded.freeAgentPool.entries.map((e) => e.player.id.value),
       };
       expect(actualSurvivingIds.containsAll(expectedSurvivingIds), isTrue);
@@ -576,7 +575,9 @@ void main() {
       );
 
       // 17. Bundle export/import preserves Year 2 + Year 1 archive + market history.
-      final bundle = await reloadedController.exportCareerBundle(slot: 'slot_a');
+      final bundle = await reloadedController.exportCareerBundle(
+        slot: 'slot_a',
+      );
       final importController = GmCareerController(storage: storage);
       await importController.importCareerBundle(bundle, slot: 'slot_bundle');
       final imported = importController.career!;
@@ -597,16 +598,16 @@ void main() {
 
       // 14. Duplicate continuation rejected in Year 2.
       await expectLater(
-        reloadedController.continueToNextSeason(confirmed: true, slot: 'slot_a'),
+        reloadedController.continueToNextSeason(
+          confirmed: true,
+          slot: 'slot_a',
+        ),
         throwsA(isA<StateError>()),
       );
       expect(reloadedController.career?.currentYear, 2);
       expect(reloadedController.career?.seasonHistory.length, 1);
       expect(reloadedController.career?.marketHistory.length, 1);
-      expect(
-        reloadedController.career?.seasonSettlements.length,
-        1,
-      );
+      expect(reloadedController.career?.seasonSettlements.length, 1);
     },
   );
 
@@ -807,8 +808,12 @@ void main() {
 
       // Simulate a stale .bak (Year 1) and stale .tmp left beside a valid Year 2 save.
       final activePath = storage.resolvePath();
-      await File('$activePath.bak').writeAsString(completedYear1Json, flush: true);
-      await File('$activePath.tmp').writeAsString('{"incomplete":true}', flush: true);
+      await File(
+        '$activePath.bak',
+      ).writeAsString(completedYear1Json, flush: true);
+      await File(
+        '$activePath.tmp',
+      ).writeAsString('{"incomplete":true}', flush: true);
 
       final restartedController = GmCareerController(storage: storage);
       await restartedController.loadCareer();

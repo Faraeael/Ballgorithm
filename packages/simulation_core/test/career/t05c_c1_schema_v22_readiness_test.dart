@@ -11,6 +11,7 @@ String _asV21Json(GmCareer career) {
   map.remove('careerDraftRights');
   map.remove('carriedUnsignedProspects');
   map.remove('marketHistory');
+  map.remove('userRotation');
   (map['freeAgentPool'] as Map<String, dynamic>).remove('seasonYear');
   return jsonEncode(map);
 }

@@ -247,6 +247,8 @@ final class SeasonRolloverService {
       careerDraftRights: rolloverPlan.proposedDraftRightsCarryover,
       carriedUnsignedProspects: rolloverPlan.proposedCarriedUnsignedProspects,
       marketHistory: [...current.marketHistory, marketHistoryRecord],
+      // M010: preferences carry over; validity is re-checked at season entry.
+      userRotation: current.userRotation,
     );
 
     return SeasonRolloverResult(

@@ -73,6 +73,7 @@ class GmCareerController extends ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
   Future<void> _pendingCommand = Future<void>.value();
+  int _inFlightCommands = 0;
   bool _draftRecoveryRequired = false;
   bool _disposed = false;
   SeasonTransitionStage? _seasonTransitionStage;
@@ -358,6 +359,78 @@ class GmCareerController extends ChangeNotifier {
           current = next;
         }
       });
+
+  /// M010: saves validated lineup/rotation preferences for the human team.
+  ///
+  /// Manual settings must resolve against the current standard roster, and a
+  /// custom plan must list every standard player (an explicit 0 is allowed).
+  /// Rejected, never queued, while a command, batch or season transition is
+  /// running, so a batch always uses the settings committed before it began.
+  Future<void> updateUserRotation(
+    CareerRotationSettings settings, {
+    String slot = 'default',
+  }) => _rotationCommand('update rotation', slot, (current) {
+    if (!settings.isManual) return settings;
+    final team = RegularSeasonGameAdapter.standardTeamFor(current.userTeam);
+    final resolution = CareerRotationService.resolve(settings, team);
+    if (!resolution.isValid) {
+      throw CareerRotationInvalidException(resolution.issues);
+    }
+    if (resolution.unassignedPlayerIds.isNotEmpty) {
+      throw StateError(
+        'Custom rotation must assign every standard player: '
+        '${resolution.unassignedPlayerIds.map((id) => id.value).join(', ')}',
+      );
+    }
+    return settings;
+  });
+
+  /// M010: explicit switch back to automatic lineup and rotation.
+  Future<void> resetUserRotationToAuto({String slot = 'default'}) =>
+      _rotationCommand(
+        'reset rotation to auto',
+        slot,
+        (_) => CareerRotationSettings.auto,
+      );
+
+  /// M010: writes the deterministic repair proposal for an obsolete manual
+  /// plan. Refuses when the proposal still has issues (for example a custom
+  /// budget shortfall), because custom seconds are never redistributed.
+  Future<void> applyUserRotationRepair({String slot = 'default'}) =>
+      _rotationCommand('repair rotation', slot, (current) {
+        final proposal = CareerRotationService.proposeRepair(
+          current.userRotation,
+          RegularSeasonGameAdapter.standardTeamFor(current.userTeam),
+        );
+        if (proposal == null) {
+          throw StateError('Rotation has nothing to repair');
+        }
+        if (!proposal.isApplicable) {
+          throw CareerRotationInvalidException(proposal.remainingIssues);
+        }
+        return proposal.settings;
+      });
+
+  Future<void> _rotationCommand(
+    String action,
+    String slot,
+    CareerRotationSettings Function(GmCareer current) next,
+  ) {
+    if (_inFlightCommands > 0 ||
+        _isLoading ||
+        isBatchSimulating ||
+        _seasonTransitionStage != null) {
+      return Future.error(
+        StateError('Cannot $action while a simulation or save is in progress'),
+      );
+    }
+    return _runCareerCommand(action: action, () async {
+      final current = _requireCareer();
+      final settings = next(current);
+      if (settings == current.userRotation) return;
+      await _saveCareerState(current.copyWith(userRotation: settings), slot);
+    });
+  }
 
   Future<void> startOffseasonClearance({String slot = 'default'}) =>
       _runCareerCommand(action: 'start clearance', () async {
@@ -1129,7 +1202,10 @@ class GmCareerController extends ChangeNotifier {
   }
 
   Future<void> _serialize(Future<void> Function() command) {
-    final result = _pendingCommand.then((_) => command());
+    _inFlightCommands++;
+    final result = _pendingCommand
+        .then((_) => command())
+        .whenComplete(() => _inFlightCommands--);
     _pendingCommand = result.then<void>(
       (_) {},
       onError: (Object error, StackTrace stackTrace) {},

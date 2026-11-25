@@ -342,6 +342,7 @@ void main() {
         v23Map['schemaVersion'] = 23;
         v23Map.remove('carriedUnsignedProspects');
         v23Map.remove('marketHistory');
+        v23Map.remove('userRotation');
         final migratedFromV23 = GmCareerCodec.decode(jsonEncode(v23Map));
         expect(migratedFromV23.schemaVersion, GmCareer.currentSchemaVersion);
         expect(migratedFromV23.carriedUnsignedProspects, isEmpty);

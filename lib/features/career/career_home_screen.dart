@@ -3,6 +3,7 @@ import 'package:simulation_core/simulation_core.dart';
 
 import '../../theme/hardwood_command_theme.dart';
 import 'career_controller.dart';
+import 'career_rotation_screen.dart';
 import 'career_ui_labels.dart';
 import 'draft_board_screen.dart';
 import 'free_agents_screen.dart';
@@ -55,6 +56,11 @@ class CareerHomeScreen extends StatelessWidget {
         if (controller.errorMessage != null ||
             controller.draftRecoveryRequired) ...[
           _buildErrorBanner(context, t),
+          SizedBox(height: t.space300),
+        ],
+
+        if (_rotationNeedsAttention(career)) ...[
+          _buildRotationAttention(context, t, career),
           SizedBox(height: t.space300),
         ],
 
@@ -1375,7 +1381,115 @@ class CareerHomeScreen extends StatelessWidget {
     if (confirmed != true || !context.mounted) return;
     try {
       await controller.startRegularSeason(confirmed: true);
+    } on CareerRotationInvalidException catch (error) {
+      if (context.mounted) await _showRotationBlocked(context, error);
     } catch (_) {}
+  }
+
+  /// Season entry blocked by an obsolete manual plan (M010 D2): explain it and
+  /// offer the editor or an explicit switch to AUTO. Never bypasses readiness.
+  Future<void> _showRotationBlocked(
+    BuildContext context,
+    CareerRotationInvalidException error,
+  ) async {
+    final career = controller.career;
+    final action = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const ValueKey('rotation-blocked-dialog'),
+        title: const Text('Rotation Needs Attention'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'The season cannot start with your saved manual rotation:',
+              ),
+              for (final issue in error.issues)
+                Text(
+                  career == null
+                      ? '• ${issue.message}'
+                      : '• ${describeRotationIssue(issue, career)}',
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            key: const ValueKey('rotation-blocked-auto'),
+            onPressed: () => Navigator.pop(dialogContext, 'auto'),
+            child: const Text('Switch to AUTO'),
+          ),
+          FilledButton(
+            key: const ValueKey('rotation-blocked-open'),
+            onPressed: () => Navigator.pop(dialogContext, 'open'),
+            child: const Text('Open Lineup & Rotation'),
+          ),
+        ],
+      ),
+    );
+    if (!context.mounted) return;
+    if (action == 'open') {
+      await openCareerRotationEditor(context, controller);
+    } else if (action == 'auto') {
+      try {
+        await controller.resetUserRotationToAuto();
+      } catch (_) {}
+    }
+  }
+
+  bool _rotationNeedsAttention(GmCareer career) {
+    if (!career.userRotation.isManual) return false;
+    try {
+      return !CareerRotationService.resolveForCareer(career).isValid;
+    } catch (_) {
+      return false; // Roster readiness owns rosters below five players.
+    }
+  }
+
+  Widget _buildRotationAttention(
+    BuildContext context,
+    HardwoodCommandTokens t,
+    GmCareer career,
+  ) {
+    final issues = CareerRotationService.resolveForCareer(career).issues;
+    return Container(
+      key: const ValueKey('home-rotation-attention'),
+      padding: EdgeInsets.all(t.space300),
+      decoration: BoxDecoration(
+        color: t.statusDangerBg,
+        borderRadius: BorderRadius.circular(t.radiusLg),
+        border: Border.all(color: t.statusDanger),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'ROTATION NEEDS ATTENTION',
+            style: TextStyle(
+              color: t.statusDangerFg,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+            ),
+          ),
+          SizedBox(height: t.space100),
+          Text(
+            '${describeRotationIssue(issues.first, career)}'
+            '${issues.length > 1 ? ' (+${issues.length - 1} more)' : ''} '
+            'Season entry is blocked until this is resolved.',
+            style: TextStyle(color: t.textPrimary, fontSize: 13),
+          ),
+          SizedBox(height: t.space200),
+          HardwoodSecondaryButton(
+            key: const ValueKey('home-rotation-open'),
+            label: 'OPEN LINEUP & ROTATION',
+            icon: Icons.sports_basketball,
+            onPressed: () => openCareerRotationEditor(context, controller),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _confirmSimulateRound(

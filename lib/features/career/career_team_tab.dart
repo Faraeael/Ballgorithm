@@ -4,6 +4,7 @@ import 'package:simulation_core/simulation_core.dart';
 import '../../theme/hardwood_command_theme.dart';
 import 'career_controller.dart';
 import 'career_player_profile_screen.dart';
+import 'career_rotation_screen.dart';
 import 'career_ui_labels.dart';
 import 'widgets/hardwood_components.dart';
 
@@ -51,6 +52,9 @@ class _CareerTeamTabState extends State<CareerTeamTab> {
         _buildSubViewSwitcher(t),
         SizedBox(height: t.space300),
         if (_subView == _TeamSubView.rosterAndDepth) ...[
+          // M010: lineup/rotation lives with roster & depth, above the roster.
+          _buildRotationEntry(context, t, career),
+          SizedBox(height: t.space300),
           _buildRosterSummaryCard(t, career, team, capRoom),
           SizedBox(height: t.space200),
           _buildPositionFilterBar(t, team),
@@ -78,6 +82,81 @@ class _CareerTeamTabState extends State<CareerTeamTab> {
           _buildAllContractsSection(context, t, career, team),
         ],
       ],
+    );
+  }
+
+  /// Prominent M010 entry: current control mode and real readiness.
+  Widget _buildRotationEntry(
+    BuildContext context,
+    HardwoodCommandTokens t,
+    GmCareer career,
+  ) {
+    final manual = career.userRotation.isManual;
+    String readiness;
+    var ready = true;
+    try {
+      final resolution = CareerRotationService.resolveForCareer(career);
+      ready = resolution.isValid;
+      readiness = ready
+          ? (resolution.unassignedPlayerIds.isEmpty
+                ? 'Ready for simulation'
+                : '${resolution.unassignedPlayerIds.length} new player(s) at 0:00')
+          : '${resolution.issues.length} issue(s) — needs attention';
+    } catch (_) {
+      // Early offseason: fewer than five standard players or an uncovered
+      // position. Roster readiness rules handle this before tip-off.
+      ready = false;
+      readiness = 'Roster not ready for a lineup yet';
+    }
+    return AppPressable(
+      key: const ValueKey('team-rotation-entry'),
+      semanticLabel: 'Open Lineup and Rotation',
+      onPressed: () => openCareerRotationEditor(context, widget.controller),
+      borderRadius: BorderRadius.circular(t.radiusLg),
+      child: Container(
+        padding: EdgeInsets.all(t.space300),
+        decoration: BoxDecoration(
+          color: t.bgSurface,
+          borderRadius: BorderRadius.circular(t.radiusLg),
+          border: Border.all(
+            color: ready ? t.accentPrimary : t.statusDanger,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.sports_basketball, color: t.accentPrimary),
+            SizedBox(width: t.space300),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'LINEUP & ROTATION',
+                    style: TextStyle(
+                      color: t.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                  SizedBox(height: t.space100),
+                  Text(
+                    '${manual ? 'MANUAL' : 'AUTO'} · $readiness',
+                    key: const ValueKey('team-rotation-status'),
+                    style: TextStyle(
+                      color: ready ? t.textSecondary : t.statusDangerFg,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: t.textSecondary),
+          ],
+        ),
+      ),
     );
   }
 

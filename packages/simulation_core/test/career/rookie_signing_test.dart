@@ -526,7 +526,8 @@ void main() {
         ..remove('seasonSettlements')
         ..remove('careerDraftRights')
         ..remove('carriedUnsignedProspects')
-        ..remove('marketHistory');
+        ..remove('marketHistory')
+        ..remove('userRotation');
       final migrated = GmCareerCodec.decode(jsonEncode(v4));
       expect(migrated.schemaVersion, GmCareer.currentSchemaVersion);
       expect(migrated.rookieSigningLedger.isEmpty, isTrue);
@@ -551,7 +552,8 @@ void main() {
         ..remove('seasonSettlements')
         ..remove('careerDraftRights')
         ..remove('carriedUnsignedProspects')
-        ..remove('marketHistory');
+        ..remove('marketHistory')
+        ..remove('userRotation');
       final migratedV3 = GmCareerCodec.decode(jsonEncode(v3));
       expect(migratedV3.rookieSigningLedger.isEmpty, isTrue);
       expect(migratedV3.draftExecutionState.isNotStarted, isTrue);
@@ -567,7 +569,8 @@ void main() {
         ..remove('seasonSettlements')
         ..remove('careerDraftRights')
         ..remove('carriedUnsignedProspects')
-        ..remove('marketHistory');
+        ..remove('marketHistory')
+        ..remove('userRotation');
       final migratedV2 = GmCareerCodec.decode(jsonEncode(v2));
       expect(migratedV2.rookieSigningLedger.isEmpty, isTrue);
       expect(migratedV2.draftClass.prospects.length, 90);

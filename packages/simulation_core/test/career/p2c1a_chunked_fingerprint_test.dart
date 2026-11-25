@@ -352,6 +352,7 @@ void main() {
       v17Map.remove('careerDraftRights');
       v17Map.remove('carriedUnsignedProspects');
       v17Map.remove('marketHistory');
+      v17Map.remove('userRotation');
       final rsMap = v17Map['regularSeasonState'] as Map<String, dynamic>;
       rsMap.remove('gameInputSnapshots');
       final grMap = rsMap['gameResults'] as Map<String, dynamic>;
