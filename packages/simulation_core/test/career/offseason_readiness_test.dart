@@ -340,7 +340,9 @@ void main() {
         ..remove('carriedUnsignedProspects')
         ..remove('marketHistory')
         ..remove('userRotation')
-        ..remove('staff');
+        ..remove('staff')
+        ..remove('tradeHistory')
+        ..remove('emergencySettlement');
       final migrated = GmCareerCodec.decode(jsonEncode(v12));
       expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
       expect(

@@ -1,5 +1,6 @@
 import '../career/gm_career.dart';
 import '../career/rookie_signing_service.dart';
+import '../career/trade_record.dart';
 import '../models/ai_rookie_signing.dart';
 import '../models/draft_rights.dart';
 import '../models/draft_selection.dart';
@@ -53,11 +54,17 @@ final class RookieAiSigningService {
     return career.copyWith(aiRookieSigning: state);
   }
 
-  /// AI-owned rights without a decision, in overall-pick order.
+  /// Original AI-owned rights without a decision, in overall-pick order.
   List<DraftRights> pendingRights(GmCareer career) {
+    final transferred = {
+      for (final record in career.tradeHistory)
+        for (final asset in record.assets)
+          if (asset.kind == TradeAssetKind.rights) asset.playerId,
+    };
     final rights =
         career.draftExecutionState.draftRights.values
             .where((right) => right.owningTeamId != career.userFranchiseId)
+            .where((right) => !transferred.contains(right.prospectId))
             .where(
               (right) => !career.aiRookieSigning.hasDecision(right.prospectId),
             )

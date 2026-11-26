@@ -65,7 +65,9 @@ class GmOffseasonOverviewScreen extends StatelessWidget {
           );
     final ownedSelections = draft.selections
         .where(
-          (selection) => selection.selectingTeamId == career.userFranchiseId,
+          (selection) =>
+              draft.draftRights[selection.prospectId.value]?.owningTeamId ==
+              career.userFranchiseId,
         )
         .toList();
     final ownedRights = career.unsignedDraftRights

@@ -378,7 +378,9 @@ void main() {
           ..remove('carriedUnsignedProspects')
           ..remove('marketHistory')
           ..remove('userRotation')
-          ..remove('staff');
+          ..remove('staff')
+          ..remove('tradeHistory')
+          ..remove('emergencySettlement');
         if (version == 1) {
           legacy.remove('draftOrder');
           legacy.remove('draftClass');

@@ -6,7 +6,8 @@ import 'roster_category.dart';
 enum AcquisitionOrigin {
   initialPool('initialPool'),
   clearance('clearance'),
-  hardship('hardship');
+  hardship('hardship'),
+  emergency('emergency');
 
   const AcquisitionOrigin(this.jsonValue);
 

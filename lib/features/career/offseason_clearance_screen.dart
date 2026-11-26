@@ -211,6 +211,24 @@ class GmOffseasonClearanceScreen extends StatelessWidget {
                 child: const Text('Prepare AI Hardship Decisions'),
               ),
             ],
+            if (hardship.status == HardshipSettlementStatus.complete &&
+                readiness.status !=
+                    OffseasonReadinessStatus.readyForConfirmation &&
+                readiness.status != OffseasonReadinessStatus.cleared) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Emergency roster completion is limited to mandatory openings. '
+                'Each offer is a one-year standard contract with restricted relief.',
+              ),
+              FilledButton(
+                key: const ValueKey('review-emergency-roster'),
+                onPressed:
+                    controller.isLoading || controller.draftRecoveryRequired
+                    ? null
+                    : () => _reviewEmergency(context, career),
+                child: const Text('Review Emergency Completion'),
+              ),
+            ],
             if (readiness.status ==
                 OffseasonReadinessStatus.readyForConfirmation) ...[
               const SizedBox(height: 12),
@@ -285,6 +303,64 @@ class GmOffseasonClearanceScreen extends StatelessWidget {
       () => controller.prepareHardshipSettlement(
         humanParticipationConfirmed: true,
       ),
+    );
+  }
+
+  Future<void> _reviewEmergency(BuildContext context, GmCareer career) async {
+    final plan = const EmergencyRosterService().preview(career);
+    final feasible =
+        plan.status == EmergencyPlanStatus.optimal ||
+        plan.status == EmergencyPlanStatus.feasibleNotProvenOptimal;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Emergency roster completion'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Allocation: ${plan.status.name}'),
+              for (final blocker in plan.blockers) Text(blocker),
+              for (final team in plan.teams) ...[
+                Text(
+                  '${team.teamId.value}: standard ${team.standardBefore} → '
+                  '${team.standardAfter}; payroll ${team.payrollBefore} → '
+                  '${team.payrollAfter} CU; cash ${team.cashBefore} → '
+                  '${team.cashAfter} CU; restricted relief ${team.relief} CU.',
+                ),
+                Text(
+                  'Missing positions: ${team.missingPositionsBefore.join(', ')}'
+                  ' → ${team.missingPositionsAfter.join(', ')}',
+                ),
+              ],
+              for (final offer in plan.offers)
+                Text(
+                  '${offer.teamId.value}: ${_playerName(career, offer.playerId)} • '
+                  '${offer.salary} CU for one year • ${offer.relief} CU '
+                  'restricted relief',
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Decline'),
+          ),
+          if (feasible)
+            FilledButton(
+              key: const ValueKey('confirm-emergency-roster'),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Confirm'),
+            ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    await _run(
+      context,
+      () => controller.executeEmergencyRoster(plan, humanApproved: true),
     );
   }
 

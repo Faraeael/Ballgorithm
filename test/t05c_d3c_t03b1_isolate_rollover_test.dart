@@ -15,6 +15,14 @@ import '../integration_test/support/d3c_fixture_helper.dart';
 
 String _sha256(String s) => sha256.convert(utf8.encode(s)).toString();
 
+String _projectV27Sha(String encoded) {
+  final value = jsonDecode(encoded) as Map<String, dynamic>
+    ..['schemaVersion'] = 27
+    ..remove('tradeHistory')
+    ..remove('emergencySettlement');
+  return _sha256(jsonEncode(value));
+}
+
 final class _FailingArchiveWriteStorage extends FileGmCareerStorage {
   _FailingArchiveWriteStorage({required super.directoryPath});
 
@@ -98,7 +106,10 @@ void main() {
       workerIsolateHashes.add(prepOut.isolateHash);
       expect(prepOut.isolateHash, isNot(mainIsolateHash));
       expect(prepOut.output.archiveDigest, baselineArch1Sha);
-      expect(_sha256(prepOut.output.encodedNextCareer), baselineY2CareerSha);
+      expect(
+        _projectV27Sha(prepOut.output.encodedNextCareer),
+        baselineY2CareerSha,
+      );
 
       final verifyIsolateHash = await compute(
         (ArchiveVerifyRequest req) {
@@ -125,7 +136,7 @@ void main() {
           await ctrl.continueToNextSeason(confirmed: true);
           expect(ctrl.career!.currentYear, 2);
           expect(
-            _sha256(GmCareerCodec.encode(ctrl.career!)),
+            _projectV27Sha(GmCareerCodec.encode(ctrl.career!)),
             baselineY2CareerSha,
           );
           final storedArch1 = await storage.readArchive(seasonYear: 1);
@@ -149,7 +160,7 @@ void main() {
           // pool (408 -> 409); combined total remains 448.
           expect(y3.careerDraftRights.length, 39);
           expect(y3.freeAgentPool.entries.length, 409);
-          expect(_sha256(GmCareerCodec.encode(y3)), baselineY3CareerSha);
+          expect(_projectV27Sha(GmCareerCodec.encode(y3)), baselineY3CareerSha);
           final storedArch2 = await storage.readArchive(seasonYear: 2);
           expect(SeasonArchiveCodec.digestOf(storedArch2!), baselineArch2Sha);
         } finally {

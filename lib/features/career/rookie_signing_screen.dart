@@ -47,7 +47,8 @@ class GmRookieSigningScreen extends StatelessWidget {
         draft.selections
             .where(
               (selection) =>
-                  selection.selectingTeamId == career.userFranchiseId,
+                  draft.draftRights[selection.prospectId.value]?.owningTeamId ==
+                  career.userFranchiseId,
             )
             .toList()
           ..sort((a, b) => a.overallPick.compareTo(b.overallPick));

@@ -4,6 +4,7 @@ import 'package:simulation_core/simulation_core.dart';
 import '../../theme/hardwood_command_theme.dart';
 import 'career_controller.dart';
 import 'career_ui_labels.dart';
+import 'career_trade_screen.dart';
 import 'draft_board_screen.dart';
 import 'free_agents_screen.dart';
 import 'league_readiness_screen.dart';
@@ -60,6 +61,22 @@ class CareerMarketTab extends StatelessWidget {
           ),
           SizedBox(height: t.space300),
         ],
+
+        _marketModuleCard(
+          context,
+          t,
+          title: 'Trade Center',
+          subtitle:
+              'Build trade packages, review financial impact and view trade history.',
+          buttonKey: const ValueKey('market-open-trade-center'),
+          buttonLabel: 'Open Trade Center',
+          onPressed: () => Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => CareerTradeScreen(controller: controller),
+            ),
+          ),
+        ),
+        SizedBox(height: t.space200),
 
         _marketModuleCard(
           context,

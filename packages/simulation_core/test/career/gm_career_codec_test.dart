@@ -135,6 +135,9 @@ void main() {
       final jsonMap =
           jsonDecode(GmCareerCodec.encode(career)) as Map<String, dynamic>
             ..['schemaVersion'] = 18
+            ..remove('staff')
+            ..remove('tradeHistory')
+            ..remove('emergencySettlement')
             ..['playInState'] = <String, dynamic>{};
 
       expect(

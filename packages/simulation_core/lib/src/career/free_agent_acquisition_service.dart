@@ -35,6 +35,9 @@ final class FreeAgentAcquisitionService {
     HardshipSettlement? hardshipSettlementAfterAcquisition,
     FreeAgentOfferLedger? freeAgentOffersAfterAcquisition,
   }) {
+    if (origin == AcquisitionOrigin.emergency) {
+      throw StateError('Emergency acquisitions require an atomic settlement');
+    }
     if (career.phase != CareerPhase.openingOffseason) {
       throw StateError('Free-agent acquisition requires the opening offseason');
     }
@@ -185,6 +188,7 @@ final class FreeAgentAcquisitionService {
                 .authorizationFor(teamId)!
                 .additionalAmount,
       AcquisitionOrigin.initialPool => 0,
+      AcquisitionOrigin.emergency => 0,
     };
     final payrollAfter = capPayroll + addedCapSalary;
     if (payrollAfter > FinancialRules.salaryCap + capException ||

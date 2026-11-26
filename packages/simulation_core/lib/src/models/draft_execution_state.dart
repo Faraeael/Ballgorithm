@@ -151,7 +151,6 @@ final class DraftExecutionState {
       }
       rights.validate();
       if (rights.prospectId != selection.prospectId ||
-          rights.owningTeamId != selection.selectingTeamId ||
           rights.overallPick != selection.overallPick ||
           rights.seasonYear != selection.seasonYear) {
         throw const FormatException('Draft rights do not match selection');

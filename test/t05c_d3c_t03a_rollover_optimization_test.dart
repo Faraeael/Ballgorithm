@@ -11,6 +11,14 @@ import '../integration_test/support/d3c_fixture_helper.dart';
 
 String _sha256(String s) => sha256.convert(utf8.encode(s)).toString();
 
+String _projectV27Sha(String encoded) {
+  final value = jsonDecode(encoded) as Map<String, dynamic>
+    ..['schemaVersion'] = 27
+    ..remove('tradeHistory')
+    ..remove('emergencySettlement');
+  return _sha256(jsonEncode(value));
+}
+
 void main() {
   // Rebaselined for 6664ceb (M009-T05C-T05B AI free-agent offer policy), which
   // changes the fixture's offseason signings. Pre-6664ceb values reproduced at
@@ -61,7 +69,10 @@ void main() {
           .rolloverWithPlans(current: y1Completed, archiveRecord: rec1)
           .nextCareer;
       expect(encArch1.digest, baselineArch1Sha);
-      expect(_sha256(GmCareerCodec.encode(y2ViaRollover)), baselineY2CareerSha);
+      expect(
+        _projectV27Sha(GmCareerCodec.encode(y2ViaRollover)),
+        baselineY2CareerSha,
+      );
       expect(rec1.championTeamId, const TeamId('team-1'));
 
       // 2. prepareArchiveAndRollover path
@@ -70,7 +81,7 @@ void main() {
       );
       expect(prep2.archiveDigest, baselineArch2Sha);
       expect(
-        _sha256(GmCareerCodec.encode(prep2.rolloverResult.nextCareer)),
+        _projectV27Sha(GmCareerCodec.encode(prep2.rolloverResult.nextCareer)),
         baselineY3CareerSha,
       );
 
@@ -97,7 +108,7 @@ void main() {
           // pool (408 -> 409); combined total remains 448.
           expect(y3.careerDraftRights.length, 39);
           expect(y3.freeAgentPool.entries.length, 409);
-          expect(_sha256(GmCareerCodec.encode(y3)), baselineY3CareerSha);
+          expect(_projectV27Sha(GmCareerCodec.encode(y3)), baselineY3CareerSha);
           final storedArch2 = await storage.readArchive(seasonYear: 2);
           expect(storedArch2, isNotNull);
           expect(SeasonArchiveCodec.digestOf(storedArch2!), baselineArch2Sha);

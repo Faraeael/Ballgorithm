@@ -105,6 +105,7 @@ export 'src/career/free_agent_offer_submission_service.dart';
 export 'src/career/free_agent_market_service.dart';
 export 'src/career/offseason_readiness_gate.dart';
 export 'src/career/hardship_settlement_service.dart';
+export 'src/career/emergency_roster_service.dart';
 export 'src/career/offseason_clearance_service.dart';
 export 'src/models/offseason_clearance.dart';
 export 'src/career/ai_free_agent_offer_policy.dart';
@@ -139,3 +140,13 @@ export 'src/career/season_settlement_record.dart';
 export 'src/generation/free_agent_generator.dart';
 export 'src/draft/ai_rookie_signing_policy.dart';
 export 'src/draft/ai_rookie_signing_service.dart';
+export 'src/career/trade_api.dart';
+export 'src/career/trade_service.dart'
+    show
+        DraftPickTradeAsset,
+        DraftRightsTradeAsset,
+        PlayerTradeAsset,
+        PlayerTradeProposal,
+        PlayerTradeRejection;
+export 'src/career/trade_valuation.dart'
+    show FranchiseTradeStrategy, TradeEvaluationReason, TradeValuation;

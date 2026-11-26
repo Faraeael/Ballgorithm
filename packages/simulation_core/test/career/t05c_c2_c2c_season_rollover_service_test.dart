@@ -276,9 +276,9 @@ void main() {
 
         // Next career metadata & phase
         expect(next.id, completedChamp.id);
-        expect(next.schemaVersion, 27);
-        expect(GmCareer.currentSchemaVersion, 27);
-        expect(GmCareerCodec.currentSchemaVersion, 27);
+        expect(next.schemaVersion, 29);
+        expect(GmCareer.currentSchemaVersion, 29);
+        expect(GmCareerCodec.currentSchemaVersion, 29);
         expect(next.currentYear, 2);
         expect(next.phase, CareerPhase.openingOffseason);
         expect(next.regularSeasonState, isNull);
@@ -606,10 +606,12 @@ void main() {
           throwsStateError,
         );
 
-        // Schema v24 -> v25 lossless migration and rejection of injected v25 field on v24
+        // Schema v24 -> current lossless migration and rejection of injected v25 field on v24
         final v25Json = GmCareerCodec.encode(next);
         final v24Map = jsonDecode(v25Json) as Map<String, dynamic>;
         v24Map['schemaVersion'] = 24;
+        v24Map.remove('tradeHistory');
+        v24Map.remove('emergencySettlement');
         // Injecting marketHistory on v24 fails
         expect(
           () => GmCareerCodec.decode(jsonEncode(v24Map)),

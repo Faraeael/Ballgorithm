@@ -335,7 +335,6 @@ final class SeasonRolloverPlanner {
       }
       final selection = selectionFor(rights.prospectId);
       if (selection == null ||
-          selection.selectingTeamId != rights.owningTeamId ||
           selection.overallPick != rights.overallPick ||
           selection.seasonYear != rights.seasonYear) {
         throw StateError(

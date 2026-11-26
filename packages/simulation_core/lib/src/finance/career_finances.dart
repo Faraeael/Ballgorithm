@@ -370,6 +370,8 @@ final class CareerFinances {
     required RookieSigningLedger rookieSigningLedger,
     required int currentYear,
     Map<String, int> hardshipCapReliefByTeam = const {},
+    Map<String, int> emergencyCapReliefByTeam = const {},
+    Map<String, TeamId> tradeSigningTeams = const {},
     bool allowRolloverDeficit = false,
   }) {
     final issues = <ValidationIssue>[];
@@ -383,6 +385,19 @@ final class CareerFinances {
             code: ValidationCode.financialTeamInvalid,
             path: 'finances.hardshipCapRelief',
             message: 'invalid hardship relief for team ${entry.key}',
+          ),
+        );
+      }
+    }
+    for (final entry in emergencyCapReliefByTeam.entries) {
+      if (!teamsById.containsKey(entry.key) ||
+          entry.value < 1 ||
+          entry.value > 15 * 1200) {
+        issues.add(
+          ValidationIssue(
+            code: ValidationCode.financialTeamInvalid,
+            path: 'finances.emergencyCapRelief',
+            message: 'invalid emergency receipt relief for team ${entry.key}',
           ),
         );
       }
@@ -701,7 +716,8 @@ final class CareerFinances {
         } else {
           linkedRookieContracts.add(rookie.id);
           if (rookie.playerId != contract.playerId ||
-              rookie.teamId != contract.teamId ||
+              rookie.teamId !=
+                  (tradeSigningTeams[contract.id] ?? contract.teamId) ||
               rookie.category != contract.category ||
               rookie.startYear != contract.startYear ||
               rookie.durationYears != contract.durationYears) {
@@ -764,6 +780,7 @@ final class CareerFinances {
       }
       final capPayroll = capPayrollFor(team.id, currentYear);
       final hardshipRelief = hardshipCapReliefByTeam[team.id.value] ?? 0;
+      final emergencyRelief = emergencyCapReliefByTeam[team.id.value] ?? 0;
       if (finances.capGrandfathered && hardshipRelief > 0) {
         issues.add(
           ValidationIssue(
@@ -786,7 +803,8 @@ final class CareerFinances {
       if (finances.capGrandfathered) {
         if (capPayroll >
             finances.grandfatheredPayroll +
-                FinancialRules.maximumReliefOverage) {
+                FinancialRules.maximumReliefOverage +
+                emergencyRelief) {
           issues.add(
             ValidationIssue(
               code: ValidationCode.capBreach,
@@ -799,7 +817,10 @@ final class CareerFinances {
           );
         }
       } else if (capPayroll >
-          FinancialRules.salaryCap + finances.capException + hardshipRelief) {
+          FinancialRules.salaryCap +
+              finances.capException +
+              hardshipRelief +
+              emergencyRelief) {
         issues.add(
           ValidationIssue(
             code: ValidationCode.capBreach,

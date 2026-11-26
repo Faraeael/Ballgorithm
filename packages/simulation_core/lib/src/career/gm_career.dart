@@ -42,6 +42,8 @@ import '../simulation/game_fingerprint.dart';
 import 'regular_season_game_adapter.dart';
 
 import 'regular_season_game_input_evidence.dart';
+import 'trade_record.dart';
+import 'emergency_roster_service.dart';
 
 typedef _RegularSeasonResultValidationContext = ({
   String seasonId,
@@ -86,6 +88,7 @@ final class GmCareer {
     FreeAgentMarketState? freeAgentMarket,
     OffseasonClearanceState? offseasonClearance,
     HardshipSettlement? hardshipSettlement,
+    this.emergencySettlement,
     CareerFinances? finances,
     this.regularSeasonState,
     this.playInState,
@@ -96,6 +99,7 @@ final class GmCareer {
     Map<String, DraftRights> careerDraftRights = const {},
     Map<String, CarriedUnsignedProspect> carriedUnsignedProspects = const {},
     List<SeasonMarketHistoryRecord> marketHistory = const [],
+    List<TradeRecord> tradeHistory = const [],
     this.userRotation = CareerRotationSettings.auto,
     StaffState? staff,
   }) : draftExecutionState =
@@ -155,6 +159,9 @@ final class GmCareer {
          for (final k in carriedUnsignedProspects.keys.toList()..sort())
            k: carriedUnsignedProspects[k]!,
        }),
+       tradeHistory = tradeHistory.isEmpty
+           ? const []
+           : List.unmodifiable(tradeHistory),
        marketHistory = List.unmodifiable(marketHistory) {
     this.staff =
         staff ??
@@ -162,6 +169,7 @@ final class GmCareer {
           finances: this.finances,
           generationSeed: generationSeed,
         );
+    _tradeOrigins = _validateTradeHistory();
     validate();
   }
 
@@ -186,7 +194,7 @@ final class GmCareer {
     );
   }
 
-  static const int currentSchemaVersion = 27;
+  static const int currentSchemaVersion = 29;
 
   final String id;
   final int schemaVersion;
@@ -220,6 +228,7 @@ final class GmCareer {
 
   /// Separate one-time roster-completion settlement and authority.
   final HardshipSettlement hardshipSettlement;
+  final EmergencySettlement? emergencySettlement;
 
   /// Deterministic opening state for a career that entered regular season.
   final RegularSeasonState? regularSeasonState;
@@ -250,6 +259,222 @@ final class GmCareer {
 
   /// Append-only chronological historical market/draft/clearance/hardship records.
   final List<SeasonMarketHistoryRecord> marketHistory;
+
+  /// Append-only receipts; active asset ownership remains authoritative elsewhere.
+  final List<TradeRecord> tradeHistory;
+  late final Map<String, TeamId> _tradeOrigins;
+
+  TeamId _signingTeam(PlayerContract contract) =>
+      _tradeOrigins[contract.id] ?? contract.teamId;
+
+  TeamId? _latestRightsOwner(PlayerId prospectId) {
+    for (final record in tradeHistory.reversed) {
+      for (final asset in record.assets.reversed) {
+        if (asset.kind == TradeAssetKind.rights &&
+            asset.playerId == prospectId) {
+          return asset.to;
+        }
+      }
+    }
+    return null;
+  }
+
+  Map<String, TeamId> _validateTradeHistory() {
+    if (tradeHistory.isEmpty) return const {};
+    final teamIds = {for (final team in league.teams) team.id};
+    final firstOwners = <String, TeamId>{};
+    final rightOrigins = <String, TeamId>{};
+    final latestPlayers = <String, PlayerTradeTransfer>{};
+    final latestAssets = <String, TradeAssetTransfer>{};
+    final received = <(int, String)>{};
+    var lastYear = 0;
+    for (var i = 0; i < tradeHistory.length; i++) {
+      final record = tradeHistory[i];
+      record.validate();
+      final year = record.seasonYear;
+      if (record.sequence != i + 1 ||
+          year < lastYear ||
+          year > currentYear ||
+          !teamIds.contains(record.firstTeam) ||
+          !teamIds.contains(record.secondTeam) ||
+          (record.firstTeam != userFranchiseId &&
+              record.secondTeam != userFranchiseId)) {
+        throw FormatException('Invalid trade receipt ${record.id}');
+      }
+      lastYear = year;
+      var firstSent = false;
+      var secondSent = false;
+      var capDelta = 0;
+      var cashDelta = 0;
+      for (final asset in record.assets) {
+        if (!teamIds.contains(asset.from) ||
+            !teamIds.contains(asset.to) ||
+            !received.add((year, asset.canonicalKey))) {
+          throw FormatException('Invalid or replayed asset in ${record.id}');
+        }
+        firstSent |= asset.from == record.firstTeam;
+        secondSent |= asset.from == record.secondTeam;
+        final previous = latestAssets[asset.canonicalKey];
+        if (previous != null &&
+            (previous.to != asset.from ||
+                previous.originalOwner != asset.originalOwner ||
+                previous.overallPick != asset.overallPick)) {
+          throw FormatException('Broken ownership chain in ${record.id}');
+        }
+        latestAssets[asset.canonicalKey] = asset;
+        if (previous == null &&
+            asset.kind != TradeAssetKind.player &&
+            asset.originalOwner != asset.from) {
+          throw FormatException('Invalid original asset owner in ${record.id}');
+        }
+        if (asset.kind == TradeAssetKind.player) {
+          final transfer = record.transfers.firstWhere(
+            (t) => t.contractId == asset.contractId,
+          );
+          final prior = latestPlayers[transfer.contractId];
+          if (prior != null &&
+              (prior.to != transfer.from ||
+                  prior.playerId != transfer.playerId ||
+                  prior.startYear != transfer.startYear ||
+                  prior.endYear != transfer.endYear ||
+                  prior.termsDigest != transfer.termsDigest)) {
+            throw FormatException(
+              'Broken player ownership chain ${transfer.contractId}',
+            );
+          }
+          latestPlayers[transfer.contractId] = transfer;
+          firstOwners.putIfAbsent(transfer.contractId, () => transfer.from);
+          if (year == currentYear) {
+            final salary = finances
+                .scheduleFor(transfer.contractId)
+                ?.salaryForYear(year);
+            final contract = finances.contracts[transfer.contractId];
+            if (salary == null || contract == null) {
+              throw FormatException(
+                'Missing trade-year salary for ${transfer.contractId}',
+              );
+            }
+            final delta = asset.from == record.firstTeam ? -salary : salary;
+            cashDelta += delta;
+            if (contract.category == RosterCategory.standard) capDelta += delta;
+          }
+        } else if (asset.kind == TradeAssetKind.rights) {
+          final key = asset.playerId!.value;
+          final origin = rightOrigins.putIfAbsent(
+            key,
+            () => asset.originalOwner!,
+          );
+          if (origin != asset.originalOwner) {
+            throw FormatException('Conflicting draft-rights origin $key');
+          }
+        }
+      }
+      if (!firstSent || !secondSent) {
+        throw FormatException('Empty trade side in ${record.id}');
+      }
+      if (year == currentYear &&
+          record.firstTeamImpact !=
+              (capPayrollDelta: capDelta, cashPayrollDelta: cashDelta)) {
+        throw FormatException('Invalid payroll impact in ${record.id}');
+      }
+    }
+    for (final transfer in latestPlayers.values) {
+      final contract = finances.contracts[transfer.contractId];
+      if (contract == null) {
+        if (transfer.endYear >= currentYear &&
+            !retiredPlayers.any(
+              (player) =>
+                  player.playerId == transfer.playerId &&
+                  player.lastTeamId == transfer.to &&
+                  player.retiredAfterYear >= transfer.startYear &&
+                  player.retiredAfterYear < currentYear,
+            )) {
+          throw FormatException(
+            'Missing traded contract ${transfer.contractId}',
+          );
+        }
+        continue;
+      }
+      final schedule = finances.scheduleFor(contract.id);
+      if (contract.playerId != transfer.playerId ||
+          contract.teamId != transfer.to ||
+          contract.startYear != transfer.startYear ||
+          contract.startYear + contract.durationYears - 1 != transfer.endYear ||
+          schedule == null ||
+          TradeRecord.termsDigest(contract, schedule) != transfer.termsDigest) {
+        throw FormatException(
+          'Traded contract ${contract.id} does not match its receipt',
+        );
+      }
+    }
+    for (final transfer in latestAssets.values) {
+      if (transfer.kind == TradeAssetKind.pick &&
+          transfer.draftYear == currentYear) {
+        final pickNumber = transfer.overallPick!;
+        final selection = draftExecutionState.selections
+            .where((s) => s.overallPick == pickNumber)
+            .firstOrNull;
+        if (selection == null &&
+            draftExecutionState.isNotStarted &&
+            draftOrder.pickAt(pickNumber).currentOwnerTeamId != transfer.to) {
+          throw const FormatException(
+            'Traded pick owner disagrees with receipt',
+          );
+        }
+        final pick = draftOrder.pickAt(pickNumber);
+        if (pick.originalOwnerTeamId != transfer.originalOwner) {
+          throw FormatException('Traded pick origin disagrees with receipt');
+        }
+        if (selection != null &&
+            selection.originalOwnerTeamId != transfer.originalOwner) {
+          throw FormatException('Consumed pick origin disagrees with receipt');
+        }
+        if (selection != null && selection.selectingTeamId != transfer.to) {
+          throw const FormatException('Consumed pick disagrees with receipt');
+        }
+      }
+      if (transfer.kind == TradeAssetKind.rights) {
+        final pid = transfer.playerId!;
+        final active = transfer.draftYear == currentYear
+            ? draftExecutionState.draftRights[pid.value]
+            : careerDraftRights[pid.value];
+        final signed = rookieSigningLedger.forPlayer(pid);
+        if (active != null &&
+            (active.owningTeamId != transfer.to ||
+                active.seasonYear != transfer.draftYear ||
+                active.overallPick != transfer.overallPick)) {
+          throw FormatException(
+            'Draft-rights owner or origin disagrees for $pid',
+          );
+        }
+        if (signed != null &&
+            (signed.teamId != transfer.to ||
+                signed.draftSeasonYear != transfer.draftYear ||
+                signed.overallPick != transfer.overallPick)) {
+          throw FormatException(
+            'Signed prospect owner or origin disagrees for $pid',
+          );
+        }
+        if (active == null &&
+            signed == null &&
+            !retiredPlayers.any((player) => player.playerId == pid)) {
+          throw FormatException('Missing traded draft rights for $pid');
+        }
+        if (transfer.draftYear == currentYear) {
+          final selection = draftExecutionState.selections
+              .where((s) => s.prospectId == pid)
+              .firstOrNull;
+          if (selection == null ||
+              selection.selectingTeamId != transfer.originalOwner ||
+              selection.overallPick != transfer.overallPick ||
+              selection.seasonYear != transfer.draftYear) {
+            throw FormatException('Draft-rights origin disagrees for $pid');
+          }
+        }
+      }
+    }
+    return Map.unmodifiable(firstOwners);
+  }
 
   /// Human franchise lineup and rotation preferences (M010, schema v26).
   /// Existing careers default to AUTO. Obsolete manual plans are preserved for
@@ -392,6 +617,20 @@ final class GmCareer {
       draftClass: draftClass,
       seasonYear: currentYear,
     );
+    for (final selection in draftExecutionState.selections) {
+      final owner = draftExecutionState
+          .draftRights[selection.prospectId.value]!
+          .owningTeamId;
+      if (!teamIds.contains(owner.value) ||
+          owner !=
+              (_latestRightsOwner(selection.prospectId) ??
+                  selection.selectingTeamId)) {
+        throw FormatException(
+          'Draft rights for ${selection.prospectId.value} disagree with '
+          'selection and trade lineage',
+        );
+      }
+    }
     _validateRookieSignings(
       rosterTeamByPlayerId: rosterTeamByPlayerId,
       rosterCategoryByPlayerId: rosterCategoryByPlayerId,
@@ -400,6 +639,7 @@ final class GmCareer {
     _validateFreeAgentPool();
     _validateFreeAgentMarket();
     _validateFreeAgentOffers();
+    _validateEmergencySettlement();
     _validateHardshipSettlement();
     _validateOffseasonClearance();
     if (currentYear == 1 && finances.debtByTeam.isNotEmpty) {
@@ -412,6 +652,8 @@ final class GmCareer {
       rookieSigningLedger: rookieSigningLedger,
       currentYear: currentYear,
       hardshipCapReliefByTeam: _hardshipCapReliefByTeam,
+      emergencyCapReliefByTeam: _emergencyReliefByTeam,
+      tradeSigningTeams: _tradeOrigins,
       allowRolloverDeficit: currentYear >= 2,
     );
     _validateRegularSeasonState();
@@ -996,12 +1238,6 @@ final class GmCareer {
           '${acquisition.teamId.value}',
         );
       }
-      if (rosterTeamByPlayer[pid] != acquisition.teamId.value) {
-        throw FormatException(
-          'Acquired player $pid is not on franchise '
-          '${acquisition.teamId.value}',
-        );
-      }
       if (rosterCategoryByPlayer[pid] != acquisition.category) {
         throw FormatException(
           'Acquired player $pid roster category does not match the '
@@ -1011,12 +1247,17 @@ final class GmCareer {
       final contract = finances.contractForPlayer(acquisition.playerId);
       if (contract == null ||
           contract.id != acquisition.contractId ||
-          contract.teamId != acquisition.teamId ||
+          _signingTeam(contract) != acquisition.teamId ||
           contract.category != acquisition.category ||
           contract.source != ContractSource.freeAgent) {
         throw FormatException(
           'Acquisition ${acquisition.transactionId} lacks its matching '
           'freeAgent employment contract',
+        );
+      }
+      if (rosterTeamByPlayer[pid] != contract.teamId.value) {
+        throw FormatException(
+          'Acquired player $pid is not on its contract franchise',
         );
       }
       if (finances.scheduleFor(contract.id) == null) {
@@ -1241,7 +1482,8 @@ final class GmCareer {
             (acquisition) =>
                 acquisition.teamId == exception.teamId &&
                 (acquisition.origin == AcquisitionOrigin.clearance ||
-                    acquisition.origin == AcquisitionOrigin.hardship),
+                    acquisition.origin == AcquisitionOrigin.hardship ||
+                    acquisition.origin == AcquisitionOrigin.emergency),
           )
           .toList();
       final initialStandard =
@@ -1274,7 +1516,10 @@ final class GmCareer {
       final hardshipRelief =
           _hardshipCapReliefByTeam[exception.teamId.value] ?? 0;
       if (capPayroll >
-          FinancialRules.salaryCap + exception.amount + hardshipRelief) {
+          FinancialRules.salaryCap +
+              exception.amount +
+              hardshipRelief +
+              (_emergencyReliefByTeam[exception.teamId.value] ?? 0)) {
         throw FormatException(
           'Team payroll exceeds its approved cap exception',
         );
@@ -1414,8 +1659,19 @@ final class GmCareer {
       final teamAcquisitions = acquisitions
           .where((item) => item.teamId == authorization.teamId)
           .toList();
+      final emergencyOffers =
+          emergencySettlement?.offers
+              .where((offer) => offer.teamId == authorization.teamId)
+              .toList() ??
+          const <EmergencyOffer>[];
+      final emergencySalary = emergencyOffers.fold<int>(
+        0,
+        (sum, offer) => sum + offer.salary,
+      );
       final initialStandard =
-          team.roster.standardCount - teamAcquisitions.length;
+          team.roster.standardCount -
+          teamAcquisitions.length -
+          emergencyOffers.length;
       final missing = RosterRules.minRegularSeasonStandard - initialStandard;
       if (missing < 1 ||
           missing > FinancialRules.maximumReliefDeals ||
@@ -1429,7 +1685,8 @@ final class GmCareer {
       });
       final initialPayroll =
           finances.capPayrollFor(authorization.teamId, settlement.seasonYear) -
-          acquisitionSalary;
+          acquisitionSalary -
+          emergencySalary;
       final proposedSalary = teamOffers.fold<int>(
         0,
         (sum, offer) => sum + offer.firstYearSalary,
@@ -1451,6 +1708,7 @@ final class GmCareer {
       }
       final actualOverage =
           finances.capPayrollFor(authorization.teamId, settlement.seasonYear) -
+          emergencySalary -
           FinancialRules.salaryCap -
           authorization.existingOrdinaryRelief;
       final actualUsed = actualOverage > 0 ? actualOverage : 0;
@@ -1553,6 +1811,156 @@ final class GmCareer {
     }
   }
 
+  Map<String, int> get _emergencyReliefByTeam {
+    final result = <String, int>{};
+    for (final offer
+        in emergencySettlement?.offers ?? const <EmergencyOffer>[]) {
+      if (offer.relief > 0) {
+        result[offer.teamId.value] =
+            (result[offer.teamId.value] ?? 0) + offer.relief;
+      }
+    }
+    return result;
+  }
+
+  void _validateEmergencySettlement() {
+    final settlement = emergencySettlement;
+    final acquisitions = freeAgentPool.acquisitions.entries.values
+        .where((item) => item.origin == AcquisitionOrigin.emergency)
+        .toList();
+    if (settlement == null) {
+      if (acquisitions.isNotEmpty) {
+        throw const FormatException('Emergency acquisition lacks settlement');
+      }
+      return;
+    }
+    settlement.validate();
+    if (schemaVersion < 29 ||
+        settlement.seasonYear != currentYear ||
+        !offseasonClearance.isComplete ||
+        !hardshipSettlement.isComplete ||
+        freeAgentMarket.status != FreeAgentMarketStatus.marketComplete ||
+        freeAgentMarket.completedRounds != 2 ||
+        acquisitions.length != settlement.offers.length) {
+      throw const FormatException(
+        'Emergency settlement is outside its authorized season',
+      );
+    }
+    if (settlement.humanApproved !=
+        settlement.offers.any((offer) => offer.teamId == userFranchiseId)) {
+      throw const FormatException(
+        'Emergency consent does not match the human franchise offers',
+      );
+    }
+    // Transaction-time evidence is cross-checked against season-stable
+    // records: prior contracts keep their current-season salary until
+    // rollover, and later lawful signings are rookie contracts only.
+    final byTeam = {for (final team in league.teams) team.id.value: team};
+    final emergencyContractIds = {
+      for (final offer in settlement.offers)
+        PlayerContract.idFor(offer.playerId, currentYear),
+    };
+    for (final receipt in settlement.teams) {
+      final team = byTeam[receipt.teamId.value];
+      if (team == null) throw const FormatException('Unknown emergency team');
+      final teamFinances = finances.financesFor(team.id);
+      if (receipt.ordinaryRelief != teamFinances.capException ||
+          receipt.hardshipRelief !=
+              (_hardshipCapReliefByTeam[team.id.value] ?? 0) ||
+          receipt.grandfathered != teamFinances.capGrandfathered ||
+          (teamFinances.capGrandfathered &&
+              receipt.grandfatheredPayroll !=
+                  teamFinances.grandfatheredPayroll)) {
+        throw const FormatException(
+          'Emergency receipt authority disagrees with team finances',
+        );
+      }
+      final positionById = {
+        for (final player in team.players) player.id.value: player.position,
+      };
+      final prior = receipt.priorContractIds.toSet();
+      var standard = 0;
+      var payroll = finances.guaranteedLiabilityCapFor(team.id, currentYear);
+      final covered = <Position>{};
+      for (final id in receipt.priorContractIds) {
+        final contract = finances.contracts[id];
+        final schedule = finances.scheduleFor(id);
+        final salary = schedule?.salaryForYear(currentYear);
+        final position = contract == null
+            ? null
+            : positionById[contract.playerId.value];
+        if (contract == null ||
+            schedule == null ||
+            schedule.teamId != team.id ||
+            salary == null ||
+            position == null ||
+            emergencyContractIds.contains(id)) {
+          throw const FormatException(
+            'Emergency receipt references invalid prior contracts',
+          );
+        }
+        if (contract.category == RosterCategory.standard) {
+          standard++;
+          payroll += salary;
+        }
+        covered.add(position);
+      }
+      final missing = [
+        for (final position in Position.values)
+          if (!covered.contains(position)) position,
+      ];
+      if (standard != receipt.standardBefore ||
+          payroll != receipt.payrollBefore ||
+          missing.join(',') != receipt.missingPositionsBefore.join(',')) {
+        throw const FormatException(
+          'Emergency receipt starting state does not reconcile',
+        );
+      }
+      for (final schedule in finances.schedulesForTeam(team.id)) {
+        final contract = finances.contracts[schedule.contractId];
+        if (contract == null ||
+            schedule.salaryForYear(currentYear) == null ||
+            prior.contains(contract.id) ||
+            emergencyContractIds.contains(contract.id)) {
+          continue;
+        }
+        if (contract.source != ContractSource.rookie) {
+          throw const FormatException(
+            'Emergency receipt omits a pre-pass contract',
+          );
+        }
+      }
+    }
+    for (final offer in settlement.offers) {
+      final acquisition =
+          freeAgentPool.acquisitions.entries[offer.transactionId];
+      final contract = finances.contractForPlayer(offer.playerId);
+      final schedule = contract == null
+          ? null
+          : finances.scheduleFor(contract.id);
+      if (acquisition == null ||
+          acquisition.origin != AcquisitionOrigin.emergency ||
+          acquisition.teamId != offer.teamId ||
+          acquisition.playerId != offer.playerId ||
+          acquisition.seasonYear != currentYear ||
+          acquisition.category != RosterCategory.standard ||
+          contract == null ||
+          acquisition.contractId != contract.id ||
+          contract.teamId != offer.teamId ||
+          contract.startYear != currentYear ||
+          contract.durationYears != 1 ||
+          contract.category != RosterCategory.standard ||
+          contract.source != ContractSource.freeAgent ||
+          schedule == null ||
+          schedule.annualSalaries.length != 1 ||
+          schedule.annualSalaries.single != offer.salary) {
+        throw const FormatException(
+          'Emergency receipt does not match its exact acquisition',
+        );
+      }
+    }
+  }
+
   Map<String, int> get _hardshipCapReliefByTeam => {
     for (final authorization in hardshipSettlement.authorizations)
       if (hardshipSettlement.seasonYear == currentYear &&
@@ -1600,7 +2008,7 @@ final class GmCareer {
       final contract = finances.contractForPlayer(attempt.playerId);
       if (contract == null ||
           contract.id != acquisition.contractId ||
-          contract.teamId != attempt.teamId ||
+          _signingTeam(contract) != attempt.teamId ||
           contract.category != attempt.category ||
           contract.startYear != attempt.seasonYear ||
           contract.durationYears != attempt.durationYears ||
@@ -1649,9 +2057,9 @@ final class GmCareer {
         );
       }
       final rights = draftExecutionState.draftRights[pid];
-      if (rights == null || rights.owningTeamId != decision.teamId) {
+      if (rights == null || selection.selectingTeamId != decision.teamId) {
         throw FormatException(
-          'AI decision for $pid does not match current draft ownership',
+          'AI decision for $pid does not match its original draft owner',
         );
       }
       if (decision.teamId == userFranchiseId) {
@@ -1680,7 +2088,12 @@ final class GmCareer {
             'Signed AI decision for $pid does not match contract category',
           );
         }
-      } else if (contract != null) {
+      } else if (contract != null &&
+          (contract.teamId == decision.teamId ||
+              (_latestRightsOwner(contract.playerId) ??
+                      selection.selectingTeamId) !=
+                  contract.teamId ||
+              rights.owningTeamId != contract.teamId)) {
         throw FormatException(
           'Deferred AI decision for $pid contradicts a signed contract',
         );
@@ -1721,11 +2134,14 @@ final class GmCareer {
         if (selection == null) {
           throw FormatException('Signed rookie $pid was never drafted');
         }
-        if (selection.selectingTeamId != contract.teamId ||
+        if (((_latestRightsOwner(contract.playerId) ??
+                    selection.selectingTeamId) !=
+                contract.teamId) ||
             selection.seasonYear != contract.draftSeasonYear ||
             selection.overallPick != contract.overallPick) {
           throw FormatException(
-            'Rookie contract for $pid does not match its draft selection',
+            'Rookie contract for $pid does not match its draft selection '
+            'or trade lineage',
           );
         }
       }
@@ -1740,9 +2156,15 @@ final class GmCareer {
           );
         }
         if (rosterTeam != contract.teamId) {
-          throw FormatException(
-            'Signed rookie $pid roster franchise does not match contract',
-          );
+          final employment = finances.contractForPlayer(contract.playerId);
+          if (employment == null ||
+              employment.rookieContractId != contract.id ||
+              rosterTeam != employment.teamId ||
+              _tradeOrigins[employment.id] != contract.teamId) {
+            throw FormatException(
+              'Signed rookie $pid roster franchise does not match contract',
+            );
+          }
         }
         if (rosterCategoryByPlayerId[pid] != contract.category) {
           throw FormatException(
@@ -1804,6 +2226,7 @@ final class GmCareer {
     FreeAgentMarketState? freeAgentMarket,
     OffseasonClearanceState? offseasonClearance,
     HardshipSettlement? hardshipSettlement,
+    Object? emergencySettlement = _unset,
     Object? regularSeasonState = _unset,
     Object? playInState = _unset,
     Object? playoffState = _unset,
@@ -1814,9 +2237,20 @@ final class GmCareer {
     Map<String, DraftRights>? careerDraftRights,
     Map<String, CarriedUnsignedProspect>? carriedUnsignedProspects,
     List<SeasonMarketHistoryRecord>? marketHistory,
+    List<TradeRecord>? tradeHistory,
     CareerRotationSettings? userRotation,
     StaffState? staff,
   }) {
+    if (tradeHistory != null) {
+      if (tradeHistory.length < this.tradeHistory.length) {
+        throw const FormatException('Trade history is append-only');
+      }
+      for (var i = 0; i < this.tradeHistory.length; i++) {
+        if (!identical(tradeHistory[i], this.tradeHistory[i])) {
+          throw const FormatException('Trade history is append-only');
+        }
+      }
+    }
     return GmCareer(
       id: id ?? this.id,
       schemaVersion: schemaVersion ?? this.schemaVersion,
@@ -1838,6 +2272,9 @@ final class GmCareer {
       freeAgentMarket: freeAgentMarket ?? this.freeAgentMarket,
       offseasonClearance: offseasonClearance ?? this.offseasonClearance,
       hardshipSettlement: hardshipSettlement ?? this.hardshipSettlement,
+      emergencySettlement: identical(emergencySettlement, _unset)
+          ? this.emergencySettlement
+          : emergencySettlement as EmergencySettlement?,
       regularSeasonState: identical(regularSeasonState, _unset)
           ? this.regularSeasonState
           : regularSeasonState as RegularSeasonState?,
@@ -1855,6 +2292,7 @@ final class GmCareer {
       carriedUnsignedProspects:
           carriedUnsignedProspects ?? this.carriedUnsignedProspects,
       marketHistory: marketHistory ?? this.marketHistory,
+      tradeHistory: tradeHistory ?? this.tradeHistory,
       userRotation: userRotation ?? this.userRotation,
       staff: staff ?? this.staff,
     );

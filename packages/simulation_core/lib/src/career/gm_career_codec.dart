@@ -39,12 +39,14 @@ import 'season_history_record.dart';
 import 'season_market_history_record.dart';
 import 'season_settlement_record.dart';
 import 'gm_career.dart';
+import 'trade_record.dart';
+import 'emergency_roster_service.dart';
 
 /// Serialization and strict validation for persistent [GmCareer] state.
 final class GmCareerCodec {
   const GmCareerCodec._();
 
-  static const int currentSchemaVersion = 27;
+  static const int currentSchemaVersion = 29;
 
   /// Serializes a validated [GmCareer] into a canonical JSON string.
   static String encode(GmCareer career) {
@@ -106,6 +108,10 @@ final class GmCareerCodec {
       },
       'userRotation': career.userRotation.toJson(),
       'staff': career.staff.toJson(),
+      'tradeHistory': [
+        for (final record in career.tradeHistory) record.toJson(),
+      ],
+      'emergencySettlement': career.emergencySettlement?.toJson(),
     };
     return jsonEncode(map);
   }
@@ -132,6 +138,16 @@ final class GmCareerCodec {
         schemaVersion > currentSchemaVersion) {
       throw FormatException(
         'Unsupported career schema version: $schemaVersion (supported: 1..$currentSchemaVersion)',
+      );
+    }
+    if (schemaVersion < 28 && raw.containsKey('tradeHistory')) {
+      throw const FormatException(
+        'tradeHistory is not supported before career schema v28',
+      );
+    }
+    if (schemaVersion < 29 && raw.containsKey('emergencySettlement')) {
+      throw const FormatException(
+        'emergencySettlement is not supported before career schema v29',
       );
     }
 
@@ -785,6 +801,41 @@ final class GmCareerCodec {
       }
       staff = null;
     }
+    final List<TradeRecord> tradeHistory;
+    if (schemaVersion >= 28) {
+      final rawTrades = raw['tradeHistory'];
+      if (rawTrades is! List) {
+        throw const FormatException('Missing tradeHistory in career JSON v28');
+      }
+      tradeHistory = [
+        for (final entry in rawTrades)
+          if (entry is Map<String, dynamic>)
+            TradeRecord.fromJson(entry)
+          else
+            throw const FormatException('Malformed trade receipt'),
+      ];
+    } else {
+      tradeHistory = const [];
+    }
+
+    final EmergencySettlement? emergencySettlement;
+    if (schemaVersion >= 29) {
+      if (!raw.containsKey('emergencySettlement')) {
+        throw const FormatException(
+          'Missing emergencySettlement in career JSON v29',
+        );
+      }
+      final value = raw['emergencySettlement'];
+      if (value == null) {
+        emergencySettlement = null;
+      } else if (value is Map<String, dynamic>) {
+        emergencySettlement = EmergencySettlement.fromJson(value);
+      } else {
+        throw const FormatException('Malformed emergencySettlement');
+      }
+    } else {
+      emergencySettlement = null;
+    }
 
     final career = GmCareer(
       id: id,
@@ -819,6 +870,8 @@ final class GmCareerCodec {
       marketHistory: marketHistory,
       userRotation: userRotation,
       staff: staff,
+      tradeHistory: tradeHistory,
+      emergencySettlement: emergencySettlement,
     );
     if (schemaVersion == 17) _validateNativeCareer(career);
     final migrated = schemaVersion == 17 ? _migrateV17(career) : career;

@@ -309,7 +309,9 @@ void main() {
           ..remove('carriedUnsignedProspects')
           ..remove('marketHistory')
           ..remove('userRotation')
-          ..remove('staff');
+          ..remove('staff')
+          ..remove('tradeHistory')
+          ..remove('emergencySettlement');
 
         final decodedV1 = GmCareerCodec.decode(jsonEncode(v1Map));
         expect(decodedV1.schemaVersion, GmCareer.currentSchemaVersion);
@@ -333,7 +335,9 @@ void main() {
           ..remove('carriedUnsignedProspects')
           ..remove('marketHistory')
           ..remove('userRotation')
-          ..remove('staff');
+          ..remove('staff')
+          ..remove('tradeHistory')
+          ..remove('emergencySettlement');
 
         final decodedV2 = GmCareerCodec.decode(jsonEncode(v2Map));
         expect(decodedV2.schemaVersion, GmCareer.currentSchemaVersion);
@@ -360,7 +364,9 @@ void main() {
           ..remove('carriedUnsignedProspects')
           ..remove('marketHistory')
           ..remove('userRotation')
-          ..remove('staff');
+          ..remove('staff')
+          ..remove('tradeHistory')
+          ..remove('emergencySettlement');
 
         final migrated = GmCareerCodec.decode(jsonEncode(v2Map));
 

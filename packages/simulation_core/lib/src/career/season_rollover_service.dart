@@ -247,6 +247,7 @@ final class SeasonRolloverService {
       careerDraftRights: rolloverPlan.proposedDraftRightsCarryover,
       carriedUnsignedProspects: rolloverPlan.proposedCarriedUnsignedProspects,
       marketHistory: [...current.marketHistory, marketHistoryRecord],
+      tradeHistory: current.tradeHistory,
       // M010: preferences carry over; validity is re-checked at season entry.
       userRotation: current.userRotation,
       // M011: identities carry over; expired commitments end employment.

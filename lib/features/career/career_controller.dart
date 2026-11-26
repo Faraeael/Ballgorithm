@@ -438,6 +438,28 @@ class GmCareerController extends ChangeNotifier {
         return retained;
       });
 
+  /// Evaluates a trade without changing or saving the active career.
+  TradeOfferQuote evaluateTrade(PlayerTradeProposal proposal) =>
+      TradeOfferService.evaluate(_requireCareer(), proposal);
+
+  /// Commits only the accepted quote reviewed against the current career.
+  Future<void> executeTrade(
+    PlayerTradeProposal proposal,
+    TradeOfferQuote quote, {
+    String slot = 'default',
+  }) {
+    final blocked = _exclusiveCommandBlocker('execute trade');
+    if (blocked != null) return Future.error(blocked);
+    return _runCareerCommand(action: 'execute trade', () async {
+      final next = TradeOfferService.executeAccepted(
+        _requireCareer(),
+        proposal,
+        quote,
+      );
+      await _saveCareerState(next, slot);
+    });
+  }
+
   /// M011 (D2): permanent league-wide coaching activation.
   Future<void> enableCoaching({String slot = 'default'}) =>
       _staffCommand('enable coaching', slot, _staffMarket.enableCoaching);
@@ -601,6 +623,23 @@ class GmCareerController extends ChangeNotifier {
           current = next;
         }
       });
+
+  Future<void> executeEmergencyRoster(
+    EmergencyRosterPlan plan, {
+    required bool humanApproved,
+    String slot = 'default',
+  }) {
+    final blocked = _exclusiveCommandBlocker('complete emergency roster');
+    if (blocked != null) return Future.error(blocked);
+    return _runCareerCommand(action: 'complete emergency roster', () async {
+      final next = const EmergencyRosterService().execute(
+        _requireCareer(),
+        plan,
+        humanApproved: humanApproved,
+      );
+      await _saveCareerState(next, slot);
+    });
+  }
 
   Future<void> markOffseasonCleared({String slot = 'default'}) =>
       _runCareerCommand(action: 'mark offseason cleared', () async {

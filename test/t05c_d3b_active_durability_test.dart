@@ -300,6 +300,8 @@ void main() {
         v24Map.remove('marketHistory');
         v24Map.remove('userRotation');
         v24Map.remove('staff');
+        v24Map.remove('tradeHistory');
+        v24Map.remove('emergencySettlement');
         File(
           '${s.resolvePath('legacy_slot')}.bak',
         ).writeAsStringSync(jsonEncode(v24Map));

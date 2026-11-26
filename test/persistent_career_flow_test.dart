@@ -130,6 +130,17 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('nav-tab-market')));
         await tester.pumpAndSettle();
         expect(find.text('Rookie Draft'), findsOneWidget);
+        // T04 added Trade Center above it; the lazy list must scroll first.
+        await tester.scrollUntilVisible(
+          find.text('Free Agency Pool'),
+          200,
+          scrollable: find
+              .descendant(
+                of: find.byKey(const ValueKey('career-market-tab')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
         expect(find.text('Free Agency Pool'), findsOneWidget);
 
         // Verify Career tab exposes starting situation and finance/exit actions

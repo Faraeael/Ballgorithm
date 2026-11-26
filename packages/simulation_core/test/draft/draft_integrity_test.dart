@@ -244,7 +244,6 @@ void main() {
   final rightsCorruptions = <String, dynamic>{
     'seasonYear': 2,
     'overallPick': 2,
-    'owningTeamId': 'unknown-team',
     'prospectId': 'unknown-prospect',
   };
   for (final entry in rightsCorruptions.entries) {

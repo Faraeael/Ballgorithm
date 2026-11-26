@@ -553,7 +553,9 @@ void main() {
           ..remove('carriedUnsignedProspects')
           ..remove('marketHistory')
           ..remove('userRotation')
-          ..remove('staff');
+          ..remove('staff')
+          ..remove('tradeHistory')
+          ..remove('emergencySettlement');
         final pool = older['freeAgentPool'];
         if (pool is Map<String, dynamic>) {
           pool

@@ -344,6 +344,8 @@ void main() {
         v23Map.remove('marketHistory');
         v23Map.remove('userRotation');
         v23Map.remove('staff');
+        v23Map.remove('tradeHistory');
+        v23Map.remove('emergencySettlement');
         final migratedFromV23 = GmCareerCodec.decode(jsonEncode(v23Map));
         expect(migratedFromV23.schemaVersion, GmCareer.currentSchemaVersion);
         expect(migratedFromV23.carriedUnsignedProspects, isEmpty);

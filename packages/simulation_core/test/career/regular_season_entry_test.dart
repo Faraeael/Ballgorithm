@@ -56,7 +56,9 @@ void main() {
             ..remove('carriedUnsignedProspects')
             ..remove('marketHistory')
             ..remove('userRotation')
-            ..remove('staff');
+            ..remove('staff')
+            ..remove('tradeHistory')
+            ..remove('emergencySettlement');
 
       final migrated = GmCareerCodec.decode(jsonEncode(v14));
       final encoded =
@@ -89,7 +91,9 @@ void main() {
             ..remove('carriedUnsignedProspects')
             ..remove('marketHistory')
             ..remove('userRotation')
-            ..remove('staff');
+            ..remove('staff')
+            ..remove('tradeHistory')
+            ..remove('emergencySettlement');
 
       final migrated = GmCareerCodec.decode(jsonEncode(v17));
 
@@ -117,7 +121,9 @@ void main() {
             ..remove('carriedUnsignedProspects')
             ..remove('marketHistory')
             ..remove('userRotation')
-            ..remove('staff');
+            ..remove('staff')
+            ..remove('tradeHistory')
+            ..remove('emergencySettlement');
 
       final migrated = GmCareerCodec.decode(jsonEncode(v18));
 
@@ -143,7 +149,9 @@ void main() {
             ..remove('carriedUnsignedProspects')
             ..remove('marketHistory')
             ..remove('userRotation')
-            ..remove('staff');
+            ..remove('staff')
+            ..remove('tradeHistory')
+            ..remove('emergencySettlement');
 
       final migrated = GmCareerCodec.decode(jsonEncode(v19));
 

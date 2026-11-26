@@ -431,7 +431,9 @@ void main() {
         ..remove('carriedUnsignedProspects')
         ..remove('marketHistory')
         ..remove('userRotation')
-        ..remove('staff');
+        ..remove('staff')
+        ..remove('tradeHistory')
+        ..remove('emergencySettlement');
       final migrated = GmCareerCodec.decode(jsonEncode(v5));
 
       expect(migrated.schemaVersion, GmCareer.currentSchemaVersion);
@@ -589,7 +591,7 @@ void main() {
           as Map<String, dynamic>)['teamId'] = signed.teamId.value == 'team-1'
           ? 'team-2'
           : 'team-1';
-      expect(failure(wrongTeam).message, contains('current draft ownership'));
+      expect(failure(wrongTeam), isA<FormatException>());
     });
   });
 

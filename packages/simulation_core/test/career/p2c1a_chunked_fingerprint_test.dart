@@ -354,6 +354,8 @@ void main() {
       v17Map.remove('marketHistory');
       v17Map.remove('userRotation');
       v17Map.remove('staff');
+      v17Map.remove('tradeHistory');
+      v17Map.remove('emergencySettlement');
       final rsMap = v17Map['regularSeasonState'] as Map<String, dynamic>;
       rsMap.remove('gameInputSnapshots');
       final grMap = rsMap['gameResults'] as Map<String, dynamic>;

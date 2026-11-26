@@ -5,7 +5,10 @@ import '../models/free_agent_acquisition.dart';
 import '../models/free_agent_market.dart';
 import '../models/free_agent_offer.dart';
 import '../models/hardship_settlement.dart';
+import '../models/player_contract.dart';
+import '../models/roster_category.dart';
 import '../models/offseason_clearance.dart';
+import 'emergency_roster_service.dart';
 import 'gm_career.dart';
 
 /// Immutable, season-scoped archive of all draft, free-agency, clearance, and
@@ -21,6 +24,7 @@ final class SeasonMarketHistoryRecord {
     required this.freeAgentMarket,
     required this.offseasonClearance,
     required this.hardshipSettlement,
+    this.emergencySettlement,
   }) {
     validate();
   }
@@ -36,6 +40,7 @@ final class SeasonMarketHistoryRecord {
         freeAgentMarket: career.freeAgentMarket,
         offseasonClearance: career.offseasonClearance,
         hardshipSettlement: career.hardshipSettlement,
+        emergencySettlement: career.emergencySettlement,
       );
 
   factory SeasonMarketHistoryRecord.fromJson(Map<String, dynamic> json) {
@@ -48,6 +53,7 @@ final class SeasonMarketHistoryRecord {
     final rawMarket = json['freeAgentMarket'];
     final rawClearance = json['offseasonClearance'];
     final rawHardship = json['hardshipSettlement'];
+    final rawEmergency = json['emergencySettlement'];
 
     if (seasonYear is! int ||
         rawDraftOrder is! Map<String, dynamic> ||
@@ -59,6 +65,9 @@ final class SeasonMarketHistoryRecord {
         rawClearance is! Map<String, dynamic> ||
         rawHardship is! Map<String, dynamic>) {
       throw const FormatException('Malformed SeasonMarketHistoryRecord JSON');
+    }
+    if (rawEmergency != null && rawEmergency is! Map<String, dynamic>) {
+      throw const FormatException('Malformed historical emergencySettlement');
     }
 
     return SeasonMarketHistoryRecord(
@@ -73,6 +82,9 @@ final class SeasonMarketHistoryRecord {
       freeAgentMarket: FreeAgentMarketState.fromJson(rawMarket),
       offseasonClearance: OffseasonClearanceState.fromJson(rawClearance),
       hardshipSettlement: HardshipSettlement.fromJson(rawHardship),
+      emergencySettlement: rawEmergency == null
+          ? null
+          : EmergencySettlement.fromJson(rawEmergency as Map<String, dynamic>),
     );
   }
 
@@ -85,6 +97,7 @@ final class SeasonMarketHistoryRecord {
   final FreeAgentMarketState freeAgentMarket;
   final OffseasonClearanceState offseasonClearance;
   final HardshipSettlement hardshipSettlement;
+  final EmergencySettlement? emergencySettlement;
 
   void validate() {
     if (seasonYear < 1) {
@@ -96,6 +109,13 @@ final class SeasonMarketHistoryRecord {
     freeAgentMarket.validate();
     offseasonClearance.validate();
     hardshipSettlement.validate();
+    emergencySettlement?.validate();
+    if (emergencySettlement != null &&
+        emergencySettlement!.seasonYear != seasonYear) {
+      throw FormatException(
+        'Historical emergency settlement has mismatched season',
+      );
+    }
 
     if (freeAgentMarket.seasonYear != seasonYear ||
         offseasonClearance.seasonYear != seasonYear ||
@@ -121,6 +141,56 @@ final class SeasonMarketHistoryRecord {
         );
       }
     }
+    final emergency = freeAgentAcquisitions.entries.values
+        .where((item) => item.origin == AcquisitionOrigin.emergency)
+        .toList();
+    final offers = emergencySettlement?.offers ?? const <EmergencyOffer>[];
+    if (emergency.length != offers.length) {
+      throw const FormatException(
+        'Historical emergency acquisitions do not match settlement',
+      );
+    }
+    for (final offer in offers) {
+      final acquisition = freeAgentAcquisitions.entries[offer.transactionId];
+      if (acquisition == null ||
+          acquisition.origin != AcquisitionOrigin.emergency ||
+          acquisition.teamId != offer.teamId ||
+          acquisition.playerId != offer.playerId ||
+          acquisition.category != RosterCategory.standard ||
+          acquisition.contractId !=
+              PlayerContract.idFor(offer.playerId, seasonYear)) {
+        throw const FormatException(
+          'Historical emergency acquisition does not match offer',
+        );
+      }
+    }
+    final settlement = emergencySettlement;
+    if (settlement == null) return;
+    if (!offseasonClearance.isComplete || !hardshipSettlement.isComplete) {
+      throw const FormatException(
+        'Historical emergency settlement precedes clearance or hardship',
+      );
+    }
+    // Archived authority must match the season's own clearance and hardship
+    // records; historical cash, willingness and prior contracts are receipt
+    // evidence only once the season's contracts have expired.
+    for (final receipt in settlement.teams) {
+      var ordinary = 0;
+      for (final exception in offseasonClearance.capExceptions) {
+        if (exception.teamId == receipt.teamId) ordinary = exception.amount;
+      }
+      if (receipt.ordinaryRelief != ordinary ||
+          receipt.hardshipRelief !=
+              EmergencyTeamReceipt.consumedHardshipFor(
+                hardshipSettlement,
+                receipt.teamId,
+                seasonYear,
+              )) {
+        throw const FormatException(
+          'Historical emergency authority disagrees with season records',
+        );
+      }
+    }
   }
 
   Map<String, dynamic> toJson() => {
@@ -133,5 +203,7 @@ final class SeasonMarketHistoryRecord {
     'freeAgentMarket': freeAgentMarket.toJson(),
     'offseasonClearance': offseasonClearance.toJson(),
     'hardshipSettlement': hardshipSettlement.toJson(),
+    if (emergencySettlement != null)
+      'emergencySettlement': emergencySettlement!.toJson(),
   };
 }

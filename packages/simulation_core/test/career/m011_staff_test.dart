@@ -82,28 +82,39 @@ void main() {
       expect(again.toJson(), staff.toJson(), reason: 'deterministic');
     });
 
-    test('v26 saves migrate to v27 with identical money and no hires', () {
+    test('v26 and v27 saves migrate to v28 with identical finances', () {
       final current = _json(cleared);
       final v26 = Map<String, dynamic>.of(current)
         ..['schemaVersion'] = 26
-        ..remove('staff');
-      final migrated = GmCareerCodec.decode(jsonEncode(v26));
-      expect(migrated.schemaVersion, 27);
-      expect(migrated.staff.coachingEnabled, isFalse);
+        ..remove('staff')
+        ..remove('tradeHistory')
+        ..remove('emergencySettlement');
+      final migrated26 = GmCareerCodec.decode(jsonEncode(v26));
+      expect(migrated26.schemaVersion, 29);
+      expect(migrated26.tradeHistory, isEmpty);
+      expect(migrated26.staff.coachingEnabled, isFalse);
       expect(
-        jsonEncode(migrated.finances.toJson()),
+        jsonEncode(migrated26.finances.toJson()),
         jsonEncode(cleared.finances.toJson()),
       );
-      expect(GmCareerCodec.encode(migrated), GmCareerCodec.encode(cleared));
+      expect(GmCareerCodec.encode(migrated26), GmCareerCodec.encode(cleared));
 
-      // Misplaced or missing keys are rejected.
-      final v26WithStaff = Map<String, dynamic>.of(current)
-        ..['schemaVersion'] = 26;
+      final v27 = Map<String, dynamic>.of(current)
+        ..['schemaVersion'] = 27
+        ..remove('tradeHistory')
+        ..remove('emergencySettlement');
+      final migrated27 = GmCareerCodec.decode(jsonEncode(v27));
+      expect(migrated27.schemaVersion, 29);
+      expect(migrated27.tradeHistory, isEmpty);
+      expect(migrated27.finances.toJson(), cleared.finances.toJson());
+
+      final v26WithStaff = Map<String, dynamic>.of(v26)
+        ..['staff'] = current['staff'];
       expect(
         () => GmCareerCodec.decode(jsonEncode(v26WithStaff)),
         throwsFormatException,
       );
-      final v27Missing = Map<String, dynamic>.of(current)..remove('staff');
+      final v27Missing = Map<String, dynamic>.of(v27)..remove('staff');
       expect(
         () => GmCareerCodec.decode(jsonEncode(v27Missing)),
         throwsFormatException,

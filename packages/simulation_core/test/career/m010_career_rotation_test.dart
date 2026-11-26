@@ -282,7 +282,7 @@ void main() {
 
   group('M010-T02 CareerRotationSettings persistence', () {
     test('AUTO and manual settings round-trip through the current schema', () {
-      expect(GmCareerCodec.currentSchemaVersion, 27);
+      expect(GmCareerCodec.currentSchemaVersion, 29);
       expect(scheduled.userRotation, CareerRotationSettings.auto);
       final autoJson = jsonDecode(GmCareerCodec.encode(scheduled)) as Map;
       expect(autoJson['schemaVersion'], GmCareerCodec.currentSchemaVersion);
@@ -310,7 +310,9 @@ void main() {
         final v25 = Map<String, dynamic>.of(map)
           ..['schemaVersion'] = 25
           ..remove('userRotation')
-          ..remove('staff');
+          ..remove('staff')
+          ..remove('tradeHistory')
+          ..remove('emergencySettlement');
         final migrated = GmCareerCodec.decode(jsonEncode(v25));
         expect(migrated.userRotation, CareerRotationSettings.auto);
         expect(migrated.schemaVersion, GmCareerCodec.currentSchemaVersion);
@@ -319,7 +321,9 @@ void main() {
         // failure can only come from userRotation).
         final v25WithKey = Map<String, dynamic>.of(map)
           ..['schemaVersion'] = 25
-          ..remove('staff');
+          ..remove('staff')
+          ..remove('tradeHistory')
+          ..remove('emergencySettlement');
         expect(
           () => GmCareerCodec.decode(jsonEncode(v25WithKey)),
           throwsFormatException,
@@ -327,7 +331,9 @@ void main() {
         final v26Missing = Map<String, dynamic>.of(map)
           ..['schemaVersion'] = 26
           ..remove('userRotation')
-          ..remove('staff');
+          ..remove('staff')
+          ..remove('tradeHistory')
+          ..remove('emergencySettlement');
         expect(
           () => GmCareerCodec.decode(jsonEncode(v26Missing)),
           throwsFormatException,
